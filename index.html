@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>توثيق قاعدة بيانات مخزون المختبر</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            min-height: 100vh;
+            background-color: #f5f6fa;
+        }
+        nav {
+            width: 270px;
+            background-color: #1e1e2f;
+            color: #fff;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        nav h1 {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        nav h2 {
+            font-size: 14px;
+            margin: 20px 0 10px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+            color: #bbbbff;
+        }
+        nav a {
+            display: block;
+            color: #ddd;
+            text-decoration: none;
+            margin: 6px 0;
+            font-size: 14px;
+            padding: 4px 0;
+            transition: color 0.2s ease-in-out;
+        }
+        nav a:hover {
+            color: #00bcd4;
+        }
+        main {
+            flex: 1;
+            padding: 30px;
+        }
+        header {
+            margin-bottom: 25px;
+        }
+        header h1 {
+            margin: 0 0 10px;
+            color: #333;
+        }
+        header p {
+            margin: 0;
+            color: #555;
+        }
+        section {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px 20px 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+        }
+        section h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+        section p {
+            color: #555;
+            line-height: 1.7;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0 15px;
+            font-size: 13px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: right;
+        }
+        th {
+            background-color: #f0f3f7;
+            font-weight: bold;
+        }
+        @media (max-width: 800px) {
+            body { flex-direction: column; }
+            nav {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+            main { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <h1>توثيق قاعدة البيانات</h1>
+
+    <h2>البيانات الأساسية</h2>
+    <a href="#product_families">Product_Families</a>
+    <a href="#manufacturers">Manufacturers</a>
+    <a href="#suppliers">Suppliers</a>
+    <a href="#locations">Locations</a>
+    <a href="#automates">Automates</a>
+    <a href="#waste_reasons">Waste_Reasons</a>
+
+    <h2>المنتجات والمستندات</h2>
+    <a href="#products_master">Products_Master</a>
+    <a href="#packaging_units">Packaging_Units</a>
+    <a href="#product_documents">Product_Documents</a>
+
+    <h2>المشتريات والاستلام</h2>
+    <a href="#purchase_orders">Purchase_Orders</a>
+    <a href="#po_details">PO_Details</a>
+    <a href="#reception_log">Reception_Log</a>
+
+    <h2>المخزون والحركات</h2>
+    <a href="#inventory_batches">Inventory_Batches</a>
+    <a href="#active_containers">Active_Containers</a>
+    <a href="#stock_movement_log">Stock_Movement_Log</a>
+
+    <h2>الفهارس (Indexes)</h2>
+    <a href="#indexes">الفهارس على الجداول</a>
+</nav>
+
+<main>
+    <header>
+        <h1>نظام إدارة مخزون المختبر – توثيق الجداول</h1>
+        <p>
+            هذه الصفحة تشرح كل الجداول والحقول المستخدمة في قاعدة بيانات نظام إدارة مخزون المختبر،
+            مع توضيح دور كل حقل في العمل اليومي للمختبر (تتبع المخزون، المشتريات، الأرشفة، إلخ).[web:12][web:46]
+        </p>
+    </header>
+
+    <!-- ===================== Product_Families ===================== -->
+    <section id="product_families">
+        <h2>Product_Families – عائلات المنتجات</h2>
+        <p>يستخدم هذا الجدول لتعريف العائلات (التخصصات) التي تُنسب إليها المنتجات، مثل كيمياء، هرمونات، مناعة.[web:11]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr>
+                <td>Family_ID</td>
+                <td>INT UNSIGNED, PK, AUTO_INCREMENT</td>
+                <td>معرّف رقمي فريد لكل عائلة منتج.</td>
+            </tr>
+            <tr>
+                <td>Family_Name</td>
+                <td>VARCHAR(100), UNIQUE</td>
+                <td>اسم العائلة مثل "Biochemistry" أو "Hormones".</td>
+            </tr>
+            <tr>
+                <td>Deleted_At</td>
+                <td>DATETIME, NULL</td>
+                <td>تاريخ الحذف المنطقي للعائلة لإيقاف استخدامها دون حذف السجلات المرتبطة القديمة.</td>
+            </tr>
+        </table>
+    </section>
+
+    <!-- ===================== Manufacturers ===================== -->
+    <section id="manufacturers">
+        <h2>Manufacturers – الشركات المصنِّعة</h2>
+        <p>يحتوي على بيانات الشركات المصنِّعة للمنتجات، لتوثيق المصدر وربط المنتجات بشركاتها.[web:11]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Manuf_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد للشركة المصنِّعة.</td></tr>
+            <tr><td>Manuf_Name</td><td>VARCHAR(150), UNIQUE</td><td>اسم الشركة المصنِّعة.</td></tr>
+            <tr><td>Country_of_Origin</td><td>VARCHAR(100)</td><td>بلد المنشأ للمنتجات.</td></tr>
+            <tr><td>Website</td><td>VARCHAR(200)</td><td>الموقع الإلكتروني للشركة.</td></tr>
+            <tr><td>Deleted_At</td><td>DATETIME</td><td>تاريخ إلغاء/إخفاء الشركة من الاستخدام.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Suppliers ===================== -->
+    <section id="suppliers">
+        <h2>Suppliers – المورّدون</h2>
+        <p>يضم بيانات المورّدين الذين يتم التعامل معهم في المشتريات والفواتير.[web:11]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Supplier_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لكل مورّد.</td></tr>
+            <tr><td>Supplier_Name</td><td>VARCHAR(255), UNIQUE</td><td>اسم المورّد التجاري.</td></tr>
+            <tr><td>Contact_Person</td><td>VARCHAR(150)</td><td>اسم مسؤول الاتصال لدى المورّد.</td></tr>
+            <tr><td>Phone</td><td>VARCHAR(50)</td><td>رقم الهاتف الرئيسي للتواصل.</td></tr>
+            <tr><td>Email</td><td>VARCHAR(150)</td><td>البريد الإلكتروني للمراسلات.</td></tr>
+            <tr><td>Website</td><td>VARCHAR(200)</td><td>الموقع الإلكتروني للمورّد.</td></tr>
+            <tr><td>Address_Line1</td><td>VARCHAR(255)</td><td>العنوان – سطر 1.</td></tr>
+            <tr><td>Address_Line2</td><td>VARCHAR(255)</td><td>العنوان – سطر 2 (اختياري).</td></tr>
+            <tr><td>City</td><td>VARCHAR(100)</td><td>المدينة.</td></tr>
+            <tr><td>Postal_Code</td><td>VARCHAR(20)</td><td>الرمز البريدي.</td></tr>
+            <tr><td>Tax_ID_Number</td><td>VARCHAR(100)</td><td>الرقم الضريبي للمورّد.</td></tr>
+            <tr><td>Commercial_Reg_No</td><td>VARCHAR(100)</td><td>رقم السجل التجاري.</td></tr>
+            <tr><td>Bank_Name</td><td>VARCHAR(150)</td><td>اسم البنك المستخدم للتحويلات.</td></tr>
+            <tr><td>Bank_Account_IBAN</td><td>VARCHAR(150)</td><td>رقم حساب/IBAN للمورّد.</td></tr>
+            <tr><td>Deleted_At</td><td>DATETIME</td><td>تاريخ تعطيل المورّد عن الاستخدام.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Locations ===================== -->
+    <section id="locations">
+        <h2>Locations – مواقع التخزين</h2>
+        <p>تعريف الأماكن التي تُخزن فيها المواد (ثلاجة، فريزر، مخزن...) مع نطاق درجة الحرارة.[web:10]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Location_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد للموقع.</td></tr>
+            <tr><td>Location_Name</td><td>VARCHAR(100), UNIQUE</td><td>اسم الموقع مثل "Store Room" أو "Fridge 2-8".</td></tr>
+            <tr>
+                <td>Temperature_Zone</td>
+                <td>ENUM('Room Temp','Refrigerated 2-8','Frozen -20','Deep Freeze -80')</td>
+                <td>نوع/نطاق درجة الحرارة للموقع.</td>
+            </tr>
+            <tr><td>Deleted_At</td><td>DATETIME</td><td>تاريخ تعطيل الموقع.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Automates ===================== -->
+    <section id="automates">
+        <h2>Automates – أجهزة التحليل</h2>
+        <p>تفاصيل أجهزة التحليل المرتبطة بالمخزون (مثل أجهزة الكيمياء والأمصال).[web:7]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Automate_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لجهاز التحليل.</td></tr>
+            <tr><td>Automate_Name</td><td>VARCHAR(150), UNIQUE</td><td>اسم الجهاز (مثلاً: Cobas e411).</td></tr>
+            <tr><td>Model_Number</td><td>VARCHAR(100)</td><td>رقم الموديل للجهاز.</td></tr>
+            <tr><td>Serial_Number</td><td>VARCHAR(100)</td><td>الرقم التسلسلي للجهاز.</td></tr>
+            <tr><td>Date_of_Purchase</td><td>DATE</td><td>تاريخ شراء الجهاز.</td></tr>
+            <tr><td>Location_ID</td><td>INT UNSIGNED, FK → Locations</td><td>الموقع الحالي للجهاز.</td></tr>
+            <tr><td>Deleted_At</td><td>DATETIME</td><td>تاريخ إيقاف الجهاز.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Waste_Reasons ===================== -->
+    <section id="waste_reasons">
+        <h2>Waste_Reasons – أسباب الإتلاف</h2>
+        <p>قائمة مرجعية بأسباب هدر/إتلاف المخزون.[web:4]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Reason_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لسبب الإتلاف.</td></tr>
+            <tr><td>Reason_Name</td><td>VARCHAR(100)</td><td>اسم السبب (انتهاء صلاحية، انسكاب... إلخ).</td></tr>
+            <tr><td>Is_Active</td><td>BOOLEAN, DEFAULT TRUE</td><td>تحديد ما إذا كان السبب متاحاً للاستخدام حالياً.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Products_Master ===================== -->
+    <section id="products_master">
+        <h2>Products_Master – دليل المنتجات الرئيسي</h2>
+        <p>يمثل جميع المواد/الكواشف المسجلة في النظام مع خصائصها الكاملة.[web:11][web:14]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Product_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لكل منتج.</td></tr>
+            <tr><td>Product_Name</td><td>VARCHAR(255), UNIQUE</td><td>اسم المنتج كما يظهر للمستخدمين.</td></tr>
+            <tr><td>Family_ID</td><td>INT UNSIGNED, FK → Product_Families</td><td>العائلة التي ينتمي إليها المنتج.</td></tr>
+            <tr><td>Barcode</td><td>VARCHAR(100), UNIQUE, NULL</td><td>الباركود المستخدم في المسح.</td></tr>
+            <tr><td>Manuf_Cat_No</td><td>VARCHAR(100)</td><td>رقم الكتالوج لدى الشركة المصنِّعة.</td></tr>
+            <tr><td>Ordering_Unit</td><td>VARCHAR(50), DEFAULT 'Carton'</td><td>وحدة الشراء من المورد (كرتونة، كيت...).</td></tr>
+            <tr><td>Stock_Unit</td><td>VARCHAR(50), DEFAULT 'Box/Kit'</td><td>وحدة التخزين في المخزون.</td></tr>
+            <tr><td>Stock_Qty_Per_Order_Unit</td><td>INT UNSIGNED, DEFAULT 1</td><td>عدد وحدات المخزون داخل كل وحدة طلب.</td></tr>
+            <tr><td>Usage_Unit</td><td>VARCHAR(50), DEFAULT 'Test'</td><td>وحدة الاستهلاك (مثل Test).</td></tr>
+            <tr><td>Usage_Qty_Per_Stock_Unit</td><td>DECIMAL(10,2), DEFAULT 1.00</td><td>عدد وحدات الاستخدام في كل وحدة مخزون.</td></tr>
+            <tr><td>Minimum_Stock_Level</td><td>INT UNSIGNED, DEFAULT 5</td><td>الحد الأدنى للمخزون قبل التنبيه.</td></tr>
+            <tr><td>Alert_Before_Expiry_Days</td><td>INT UNSIGNED, DEFAULT 30</td><td>عدد الأيام قبل انتهاء الصلاحية لبدء التنبيه.</td></tr>
+            <tr><td>Open_Vial_Stability_Days</td><td>INT UNSIGNED, NULL</td><td>عدد الأيام التي تبقى فيها العبوة صالحة بعد الفتح.</td></tr>
+            <tr><td>Storage_Temp_Req</td><td>VARCHAR(50)</td><td>متطلبات درجة الحرارة الخاصة بالمنتج.</td></tr>
+            <tr><td>Manuf_ID</td><td>INT UNSIGNED, FK → Manufacturers</td><td>الشركة المصنِّعة للمنتج.</td></tr>
+            <tr><td>Preferred_Automate_ID</td><td>INT UNSIGNED, FK → Automates</td><td>الجهاز المفضّل لاستخدام هذا المنتج عليه.</td></tr>
+            <tr><td>Deleted_At</td><td>DATETIME</td><td>تاريخ تعطيل المنتج عن الاستخدام.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Packaging_Units ===================== -->
+    <section id="packaging_units">
+        <h2>Packaging_Units – وحدات التغليف</h2>
+        <p>قاموس للوحدات القياسية مثل كرتونة، صندوق، كيت، فايال.[web:11]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Unit_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لوحدة التغليف.</td></tr>
+            <tr><td>Unit_Name</td><td>VARCHAR(50), UNIQUE</td><td>اسم الوحدة (Carton, Box, Kit...).</td></tr>
+            <tr><td>Description</td><td>VARCHAR(150)</td><td>وصف إضافي للوحدة.</td></tr>
+            <tr><td>Deleted_At</td><td>DATETIME</td><td>تاريخ تعطيل الوحدة.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Product_Documents ===================== -->
+    <section id="product_documents">
+        <h2>Product_Documents – مستندات المنتجات</h2>
+        <p>توثيق ملفات COA, MSDS, النشرات، العقود لكل منتج.[web:1]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Doc_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد للمستند.</td></tr>
+            <tr><td>Product_ID</td><td>INT UNSIGNED, FK → Products_Master</td><td>المنتج المرتبط بهذا المستند.</td></tr>
+            <tr>
+                <td>Doc_Type</td>
+                <td>ENUM('COA','MSDS','Package Insert','Contract')</td>
+                <td>نوع المستند.</td>
+            </tr>
+            <tr><td>File_Path</td><td>VARCHAR(255)</td><td>مسار الملف على الخادم أو الشبكة.</td></tr>
+            <tr><td>Upload_Date</td><td>DATETIME, DEFAULT CURRENT_TIMESTAMP</td><td>تاريخ تحميل المستند للنظام.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Purchase_Orders ===================== -->
+    <section id="purchase_orders">
+        <h2>Purchase_Orders – أوامر الشراء</h2>
+        <p>يمثل أوامر الشراء المرسلة للمورّدين.[web:11][web:14]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>PO_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لأمر الشراء.</td></tr>
+            <tr><td>Supplier_ID</td><td>INT UNSIGNED, FK → Suppliers</td><td>المورّد المعني بالطلب.</td></tr>
+            <tr><td>Order_Date</td><td>DATE</td><td>تاريخ إنشاء أمر الشراء.</td></tr>
+            <tr><td>Expected_Delivery_Date</td><td>DATE</td><td>تاريخ التسليم المتوقع.</td></tr>
+            <tr>
+                <td>Status</td>
+                <td>ENUM('Draft','Pending_Approval','Approved','Sent','Partial_Received','Completed','Cancelled')</td>
+                <td>حالة أمر الشراء في دورة العمل.</td>
+            </tr>
+            <tr><td>Supplier_Invoice_Ref</td><td>VARCHAR(150)</td><td>مرجع فاتورة المورد إذا كان معروفاً.</td></tr>
+            <tr><td>Reception_Date</td><td>DATETIME</td><td>تاريخ إكمال الاستلام الفعلي.</td></tr>
+            <tr><td>Updated_At</td><td>DATETIME</td><td>آخر تاريخ تعديل للسجل.</td></tr>
+            <tr><td>Total_Amount_HT</td><td>DECIMAL(15,2)</td><td>إجمالي المبلغ بدون ضريبة (HT).</td></tr>
+            <tr><td>Total_Tax_Amount</td><td>DECIMAL(15,2)</td><td>إجمالي قيمة الضرائب على الطلب.</td></tr>
+            <tr><td>Total_Amount_TTC</td><td>DECIMAL(15,2)</td><td>الإجمالي شامل الضريبة (TTC).</td></tr>
+            <tr><td>Notes</td><td>TEXT</td><td>ملاحظات عامة على أمر الشراء.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== PO_Details ===================== -->
+    <section id="po_details">
+        <h2>PO_Details – تفاصيل أوامر الشراء</h2>
+        <p>بنود المنتجات لكل أمر شراء.[web:11]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لبند أمر الشراء.</td></tr>
+            <tr><td>PO_ID</td><td>INT UNSIGNED, FK → Purchase_Orders</td><td>أمر الشراء الذي ينتمي إليه البند.</td></tr>
+            <tr><td>Product_ID</td><td>INT UNSIGNED, FK → Products_Master</td><td>المنتج المطلوب في هذا البند.</td></tr>
+            <tr><td>Qty_Ordered</td><td>INT UNSIGNED</td><td>الكمية المطلوبة من المنتج.</td></tr>
+            <tr><td>Unit_Price_HT</td><td>DECIMAL(10,2)</td><td>سعر الوحدة بدون ضريبة.</td></tr>
+            <tr><td>Discount_Percent</td><td>DECIMAL(5,2), DEFAULT 0</td><td>نسبة الخصم على البند.</td></tr>
+            <tr><td>Tax_Rate_Percent</td><td>DECIMAL(5,2), DEFAULT 0</td><td>نسبة الضريبة على البند.</td></tr>
+            <tr>
+                <td>Line_Total_TTC</td>
+                <td>DECIMAL(10,2), STORED GENERATED</td>
+                <td>القيمة المحسوبة للبند بعد الخصم والضريبة.</td>
+            </tr>
+        </table>
+    </section>
+
+    <!-- ===================== Reception_Log ===================== -->
+    <section id="reception_log">
+        <h2>Reception_Log – سجل الاستلام</h2>
+        <p>توثيق الفواتير وسجلات الاستلام من المورّدين وربطها بأوامر الشراء.[web:3][web:8]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>BR_ID</td><td>INT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد لسجل الاستلام.</td></tr>
+            <tr><td>PO_ID</td><td>INT UNSIGNED, FK → Purchase_Orders</td><td>أمر الشراء المرتبط إن وجد.</td></tr>
+            <tr><td>Supplier_Invoice_Ref</td><td>VARCHAR(150), UNIQUE</td><td>رقم فاتورة المورد.</td></tr>
+            <tr><td>Reception_Date</td><td>DATETIME, DEFAULT CURRENT_TIMESTAMP</td><td>تاريخ ووقت تسجيل الاستلام.</td></tr>
+            <tr><td>Supplier_ID</td><td>INT UNSIGNED, FK → Suppliers</td><td>المورّد الذي تم الاستلام منه.</td></tr>
+            <tr>
+                <td>Status</td>
+                <td>ENUM('Completed','Variance Detected','Pending Audit')</td>
+                <td>حالة الاستلام (مكتمل، به فروقات، بانتظار مراجعة).</td>
+            </tr>
+            <tr><td>Variance_Notes</td><td>TEXT</td><td>شرح الفروقات إن وُجدت بين الكمية المطلوبة والمستلمة.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Inventory_Batches ===================== -->
+    <section id="inventory_batches">
+        <h2>Inventory_Batches – دفعات المخزون</h2>
+        <p>كل سجل يمثل دفعة (لوط) من منتج في موقع معيّن.[web:4]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Batch_ID</td><td>BIGINT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد للدفعة.</td></tr>
+            <tr><td>Product_ID</td><td>INT UNSIGNED, FK → Products_Master</td><td>المنتج الذي تنتمي إليه الدفعة.</td></tr>
+            <tr><td>Location_ID</td><td>INT UNSIGNED, FK → Locations</td><td>الموقع الذي تُخزن فيه الدفعة.</td></tr>
+            <tr><td>Lot_Number</td><td>VARCHAR(100)</td><td>رقم اللوط كما هو على عبوة الشركة.</td></tr>
+            <tr><td>Expiry_Date</td><td>DATE</td><td>تاريخ انتهاء صلاحية الدفعة.</td></tr>
+            <tr><td>Quantity_Initial</td><td>INT UNSIGNED</td><td>الكمية الابتدائية عند الاستلام.</td></tr>
+            <tr><td>Quantity_Current</td><td>INT UNSIGNED</td><td>الكمية الحالية المتبقية في الدفعة.</td></tr>
+            <tr><td>PO_ID</td><td>INT UNSIGNED, FK → Purchase_Orders</td><td>رقم أمر الشراء الذي جاءت منه هذه الدفعة.</td></tr>
+            <tr><td>BR_ID</td><td>INT UNSIGNED, FK → Reception_Log</td><td>سجل الاستلام المرتبط.</td></tr>
+            <tr>
+                <td>Status</td>
+                <td>ENUM('Available','Quarantined','Expired','Depleted')</td>
+                <td>حالة الدفعة (متاحة، في حجر، منتهية، منتهية الكمية).</td>
+            </tr>
+            <tr><td>Created_At</td><td>DATETIME, DEFAULT CURRENT_TIMESTAMP</td><td>تاريخ إنشاء الدفعة في النظام.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Active_Containers ===================== -->
+    <section id="active_containers">
+        <h2>Active_Containers – العبوات المفتوحة</h2>
+        <p>تتبع العبوات/الكيتات المفتوحة ومقدار ما بقي فيها.[web:10]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Container_ID</td><td>BIGINT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد للعبوة المفتوحة.</td></tr>
+            <tr><td>Parent_Batch_ID</td><td>BIGINT UNSIGNED, FK → Inventory_Batches</td><td>الدفعة الأصلية التي جاءت منها العبوة.</td></tr>
+            <tr><td>Product_ID</td><td>INT UNSIGNED, FK → Products_Master</td><td>المنتج داخل العبوة.</td></tr>
+            <tr><td>Date_Opened</td><td>DATETIME, DEFAULT CURRENT_TIMESTAMP</td><td>تاريخ ووقت فتح العبوة.</td></tr>
+            <tr><td>Open_Expiration_Date</td><td>DATE</td><td>تاريخ انتهاء العبوة بعد الفتح بناءً على ثباتية الفتح.</td></tr>
+            <tr><td>Initial_Usage_Qty</td><td>DECIMAL(10,2)</td><td>كمية الاستخدام المتاحة عند فتح العبوة.</td></tr>
+            <tr><td>Remaining_Usage_Qty</td><td>DECIMAL(10,2)</td><td>الكمية المتبقية من الاستخدام.</td></tr>
+            <tr><td>Current_Location_ID</td><td>INT UNSIGNED, FK → Locations</td><td>الموقع الحالي للعبوة المفتوحة.</td></tr>
+            <tr>
+                <td>Status</td>
+                <td>ENUM('In_Use','Empty','Discarded')</td>
+                <td>حالة العبوة (قيد الاستخدام، فارغة، تم إتلافها).</td>
+            </tr>
+        </table>
+    </section>
+
+    <!-- ===================== Stock_Movement_Log ===================== -->
+    <section id="stock_movement_log">
+        <h2>Stock_Movement_Log – سجل حركات المخزون</h2>
+        <p>سجل كامل لجميع الحركات التي تؤثر على المخزون لتحقيق تتبع وأرشفة دقيقة.[web:4][web:5]</p>
+        <table>
+            <tr><th>الحقل</th><th>النوع</th><th>الوصف</th></tr>
+            <tr><td>Movement_ID</td><td>BIGINT UNSIGNED, PK, AUTO_INCREMENT</td><td>معرّف فريد للحركة.</td></tr>
+            <tr><td>Transaction_Date</td><td>DATETIME, DEFAULT CURRENT_TIMESTAMP</td><td>تاريخ ووقت تسجيل الحركة.</td></tr>
+            <tr><td>Product_ID</td><td>INT UNSIGNED, FK → Products_Master</td><td>المنتج الذي تأثر بالحركة.</td></tr>
+            <tr><td>Batch_ID</td><td>BIGINT UNSIGNED, FK → Inventory_Batches, NULL</td><td>الدفعة المتأثرة (إن كانت الحركة على مستوى دفعة).</td></tr>
+            <tr><td>Container_ID</td><td>BIGINT UNSIGNED, FK → Active_Containers, NULL</td><td>العبوة المتأثرة (إن كانت الحركة على عبوة مفتوحة).</td></tr>
+            <tr>
+                <td>Movement_Type</td>
+                <td>ENUM('Purchase_Receive','Open_Pack','Patient_Test','QC_Run','Calibration','Adjustment','Waste','Transfer')</td>
+                <td>نوع الحركة (استلام شراء، فتح عبوة، اختبار مريض، ضبط جودة، معايرة، تعديل، إتلاف، نقل).</td>
+            </tr>
+            <tr><td>Reason_ID</td><td>INT UNSIGNED, FK → Waste_Reasons</td><td>سبب الحركة عند كونها هدر/إتلاف أو تعديل.</td></tr>
+            <tr><td>Qty_Change</td><td>DECIMAL(10,2)</td><td>قيمة التغيير في الكمية (موجب للإضافة، سالب للاستهلاك أو الإتلاف).</td></tr>
+            <tr><td>Unit_Used</td><td>VARCHAR(50)</td><td>الوحدة المستخدمة في التغيير (Test، Kit، إلخ).</td></tr>
+            <tr><td>Notes</td><td>TEXT</td><td>ملاحظات إضافية للحركة.</td></tr>
+        </table>
+    </section>
+
+    <!-- ===================== Indexes ===================== -->
+    <section id="indexes">
+        <h2>الفهارس (Indexes) على الجداول</h2>
+        <p>تم إنشاء عدة فهارس لتحسين سرعة الاستعلامات على الحقول المستخدمة كثيراً في البحث والتقارير.[web:57]</p>
+        <table>
+            <tr><th>اسم الفهرس</th><th>الجدول</th><th>الحقول</th><th>الغرض</th></tr>
+            <tr>
+                <td>idx_product_barcode</td>
+                <td>Products_Master</td>
+                <td>Barcode</td>
+                <td>تسريع البحث عن المنتج باستخدام الباركود.</td>
+            </tr>
+            <tr>
+                <td>idx_batch_expiry</td>
+                <td>Inventory_Batches</td>
+                <td>Expiry_Date</td>
+                <td>تحسين استعلامات متابعة تواريخ الانتهاء.</td>
+            </tr>
+            <tr>
+                <td>idx_batch_lot</td>
+                <td>Inventory_Batches</td>
+                <td>Lot_Number</td>
+                <td>تسريع البحث عن دفعة معينة برقم اللوط.</td>
+            </tr>
+            <tr>
+                <td>idx_reception_invoice_ref</td>
+                <td>Reception_Log</td>
+                <td>Supplier_Invoice_Ref</td>
+                <td>تسريع الوصول إلى الاستلام حسب رقم فاتورة المورد.</td>
+            </tr>
+            <tr>
+                <td>idx_reception_po_id</td>
+                <td>Reception_Log</td>
+                <td>PO_ID</td>
+                <td>تسهيل الربط بين أوامر الشراء وسجلات الاستلام.</td>
+            </tr>
+            <tr>
+                <td>idx_movement_date</td>
+                <td>Stock_Movement_Log</td>
+                <td>Transaction_Date</td>
+                <td>تحسين تقارير الحركات حسب التاريخ.</td>
+            </tr>
+            <tr>
+                <td>idx_movement_type</td>
+                <td>Stock_Movement_Log</td>
+                <td>Movement_Type</td>
+                <td>تسريع تحليل الحركات حسب النوع (هدر، بشراء، إلخ).</td>
+            </tr>
+        </table>
+    </section>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,217 @@
+# database/purchase_order_manager.py
+
+import mysql.connector
+import logging
+from datetime import datetime, date
+from typing import List, Dict, Optional, Any
+
+class PurchaseOrderManager:
+    def __init__(self, db_instance):
+        self.db = db_instance
+
+    def generate_custom_po_id(self) -> Optional[int]:
+        """
+        توليد رقم طلب بصيغة YY + SequentialNumber يتجدد سنوياً.
+        مثال: سنة 2025 -> 251, 252 ... 2510, 2511
+        """
+        current_year_prefix = datetime.now().strftime('%y') 
+        
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = "SELECT MAX(PO_ID) FROM Purchase_Orders WHERE CAST(PO_ID AS CHAR) LIKE %s"
+                cursor.execute(query, (f"{current_year_prefix}%",))
+                max_id = cursor.fetchone()[0]
+                
+                if max_id:
+                    str_max_id = str(max_id)
+                    serial_part = str_max_id[2:]
+                    
+                    if serial_part == "": 
+                        new_serial = 1
+                    else:
+                        new_serial = int(serial_part) + 1
+                else:
+                    new_serial = 1
+                
+                # 5. دمج السنة مع الرقم التسلسلي الجديد بدون أصفار فاصلة
+                final_id = int(f"{current_year_prefix}{new_serial}")
+                return final_id
+                
+        except Exception as e:
+            logging.error(f"Erreur lors de la génération du PO_ID annuel: {e}")
+            # في حالة الخطأ، نستخدم السنة مع رقم عشوائي كخطة بديلة لتجنب توقف النظام
+            import random
+            return int(f"{current_year_prefix}{random.randint(100, 999)}")
+
+    def create_purchase_order(self, supplier_id: int, order_date: Any, expected_delivery_date: Optional[Any] = None, notes: Optional[str] = None) -> Optional[int]:
+        """إصلاح الاستدعاء بإزالة المعامل الزائد لتفادي خطأ Argument."""
+        new_po_id = self.generate_custom_po_id() # تم إزالة order_date من هنا
+        if not new_po_id: return None
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                query = """INSERT INTO Purchase_Orders (PO_ID, Supplier_ID, Order_Date, Expected_Delivery_Date, Notes, Status) 
+                           VALUES (%s, %s, %s, %s, %s, 'Draft')"""
+                cursor.execute(query, (new_po_id, supplier_id, order_date, expected_delivery_date, notes))
+                conn.commit()
+                return new_po_id
+        except Exception as err:
+            logging.error(f"Erreur DB: {err}")
+            return None
+
+    def get_all_purchase_orders(self, months: int = 6, start_date=None, end_date=None) -> List[Dict]:
+        """
+        جلب أوامر الشراء.
+        - يدعم الفلترة بنطاق تاريخ محدد (start_date, end_date).
+        - يدعم الفلترة بعدد الأشهر (months) للتوافق مع الكود القديم.
+        """
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                query = """
+                    SELECT 
+                        po.PO_ID, 
+                        po.Order_Date, 
+                        po.Expected_Delivery_Date, 
+                        po.Status, 
+                        po.Notes,
+                        s.Supplier_Name,
+                        COALESCE((
+                            SELECT SUM(Line_Total_TTC) 
+                            FROM PO_Details 
+                            WHERE PO_ID = po.PO_ID
+                        ), 0) as Total_Amount_TTC
+                    FROM Purchase_Orders po
+                    LEFT JOIN Suppliers s ON po.Supplier_ID = s.Supplier_ID
+                    WHERE po.Deleted_At IS NULL
+                """
+                
+                params = []
+                
+                if start_date and end_date:
+                    query += " AND po.Order_Date BETWEEN %s AND %s"
+                    params.extend([start_date, end_date])
+                
+                elif months is not None:
+                    query += " AND po.Order_Date >= DATE_SUB(CURDATE(), INTERVAL %s MONTH)"
+                    params.append(months)
+                
+                query += " ORDER BY po.PO_ID DESC"
+                
+                cursor.execute(query, tuple(params))
+                return cursor.fetchall()
+                
+        except Exception as e:
+            logging.error(f"Error fetching POs: {e}")
+            return []
+        
+        
+    def get_full_order_details(self, po_id: int) -> Optional[Dict]:
+        """جلب بيانات الطلب والمنتجات والماركات والملاحظات (اللازمة للـ PDF)."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                # 1. جلب الرأس
+                query_header = """
+                    SELECT po.*, s.Supplier_Name 
+                    FROM Purchase_Orders po
+                    LEFT JOIN Suppliers s ON po.Supplier_ID = s.Supplier_ID
+                    WHERE po.PO_ID = %s
+                """
+                cursor.execute(query_header, (po_id,))
+                header = cursor.fetchone()
+                if not header: return None
+
+                # 2. جلب التفاصيل مع دمج الماركة (Brand) وملاحظة السطر (Item_Note)
+                query_details = """
+                    SELECT 
+                        pd.*, 
+                        p.Product_Name, 
+                        p.Ordering_Unit,
+                        m.Manuf_Name
+                    FROM PO_Details pd
+                    JOIN Products_Master p ON pd.Product_ID = p.Product_ID
+                    LEFT JOIN Manufacturers m ON p.Manuf_ID = m.Manuf_ID
+                    WHERE pd.PO_ID = %s
+                """
+                cursor.execute(query_details, (po_id,))
+                header['Details'] = cursor.fetchall() or []
+                
+                return header
+        except Exception as e:
+            logging.error(f"Error fetching full order {po_id}: {e}")
+            return None
+
+    def update_full_order(self, po_id: int, data: Dict) -> bool:
+        """تحديث شامل للرأس والأسطر (دعم Item_Note)."""
+        try:
+            with self.db.get_db_connection() as conn:
+                conn.start_transaction()
+                cursor = conn.cursor()
+
+                # 1. تحديث الرأس
+                cursor.execute("""
+                    UPDATE Purchase_Orders 
+                    SET Supplier_ID=%s, Order_Date=%s, Expected_Delivery_Date=%s, Notes=%s
+                    WHERE PO_ID=%s
+                """, (data['Supplier_ID'], data['Order_Date'], data.get('Expected_Delivery_Date'), data.get('Notes', ''), po_id))
+
+                # 2. استبدال الأسطر
+                cursor.execute("DELETE FROM PO_Details WHERE PO_ID = %s", (po_id,))
+
+                for item in data.get('Items', []):
+                    # حسابات مالية بسيطة للأسطر
+                    qty = float(item['Qty_Ordered'])
+                    price = float(item.get('Unit_Price_HT', 0))
+                    discount = float(item.get('Discount_Percent', 0))
+                    tax = float(item.get('Tax_Rate_Percent', 0))
+                    
+                    line_ht = qty * price * (1 - discount/100)
+                    line_ttc = line_ht * (1 + tax/100)
+
+                    insert_detail = """
+                        INSERT INTO PO_Details 
+                        (PO_ID, Product_ID, Qty_Ordered, Item_Note, 
+                         Unit_Price_HT, Discount_Percent, Tax_Rate_Percent, Line_Total_HT, Line_Total_TTC)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(insert_detail, (
+                        po_id, item['Product_ID'], qty, item.get('Item_Note', ''),
+                        price, discount, tax, line_ht, line_ttc
+                    ))
+
+                # 3. تحديث إجماليات الرأس
+                self._recalculate_po_totals(conn, po_id)
+                conn.commit()
+                return True
+        except Exception as e:
+            if conn: conn.rollback()
+            logging.error(f"Error updating full order {po_id}: {e}")
+            return False
+
+    def update_status(self, po_id: int, new_status: str) -> bool:
+        """تحديث حالة الطلب."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE Purchase_Orders SET Status = %s WHERE PO_ID = %s", (new_status, po_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error updating status: {e}")
+            return False
+
+    def _recalculate_po_totals(self, conn, po_id):
+        cursor = conn.cursor()
+        query = """
+            UPDATE Purchase_Orders 
+            SET Total_Amount_HT = COALESCE((SELECT SUM(Line_Total_HT) FROM PO_Details WHERE PO_ID = %s), 0),
+                Total_Amount_TTC = COALESCE((SELECT SUM(Line_Total_TTC) FROM PO_Details WHERE PO_ID = %s), 0),
+                Total_Tax_Amount = COALESCE((SELECT SUM(Line_Total_TTC - Line_Total_HT) FROM PO_Details WHERE PO_ID = %s), 0)
+            WHERE PO_ID = %s
+        """
+        cursor.execute(query, (po_id, po_id, po_id, po_id))

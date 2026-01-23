@@ -1,0 +1,450 @@
+# ui/main_window.py
+
+import os
+import sys
+import logging
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                               QStackedWidget, QLabel, QPushButton, QSizePolicy,
+                               QFrame, QButtonGroup, QTabWidget, QApplication, QMessageBox) 
+from PySide6.QtCore import Qt, QSize, QFile, QTextStream, QSettings, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+from PySide6.QtGui import QFont, QPixmap, QIcon
+import qtawesome as qta
+
+# Import your existing widgets
+from .widgets.master_data.suppliers_tab import SuppliersTab
+from .widgets.master_data.products_tab import ProductsTab
+from .widgets.dashboard.dashboard_view import DashboardTab
+from .widgets.procurement.procurement_tabs import ProcurementTab
+from .widgets.inventory.inventory_tabs import InventoryTab
+from .widgets.master_data.manufacturers_tab import ManufacturersTab
+from .widgets.master_data.locations_tab import LocationsTab
+from .widgets.master_data.automates_tab import AutomatesTab
+from .widgets.master_data.waste_reasons_tab import WasteReasonsTab
+from .widgets.settings.settings_tab import SettingsTab
+from .widgets.master_data.product_families_tab import ProductFamiliesTab
+from .widgets.master_data.packaging_units_tab import PackagingUnitsTab
+from .widgets.user_management_tab import UserManagementTab
+from .widgets.master_data.external_partners_tab import ExternalPartnersTab
+from .widgets.billing.billing_tab import BillingTab
+from .widgets.history import MovementHistoryTab
+
+def get_resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+class MainWindow(QMainWindow):
+    def __init__(self, data_manager, current_user, connection_error=None): 
+        super().__init__()
+        self.data_manager = data_manager
+        self.current_user = current_user 
+        self.want_logout = False
+
+        # --- حالة الشريط الجانبي ---
+        self.is_sidebar_expanded = True
+        self.sidebar_full_width = 260
+        self.sidebar_compact_width = 70
+        self.button_texts = {} 
+
+        full_name = self.current_user.get('Full_Name', 'Utilisateur') if self.current_user else 'Invité'
+        self.setWindowTitle(f"MODERNSTOCK | {full_name}")
+
+        logo_path = get_resource_path(os.path.join("ui", "logo.png"))
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
+        else:
+            self.setWindowIcon(qta.icon('fa5s.heartbeat', color='#007572'))
+        self.setMinimumSize(QSize(1366, 768))
+
+        self.main_widget = QWidget()
+        self.setCentralWidget(self.main_widget)
+        self.main_layout = QHBoxLayout(self.main_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        self._setup_show_sidebar_button()
+        self._setup_sidebar()
+
+        self.content_area = QStackedWidget()
+        self.main_layout.addWidget(self.content_area)
+        
+        self._create_pages()
+        self.load_stylesheet()
+        
+        self.apply_permissions()
+
+        if connection_error:
+            self.switch_page(4) 
+        else:
+            role = self.current_user.get('Role') if self.current_user else 'Technician'
+            
+            if role in ['Admin', 'Manager']:
+                # الأدمن والمدير يبدأون بلوحة التحكم
+                self.switch_page(0)
+                if self.nav_group.button(0): self.nav_group.button(0).setChecked(True)
+            else:
+                # التقني يبدأ بصفحة المخزن
+                self.switch_page(3)
+                if self.nav_group.button(3): self.nav_group.button(3).setChecked(True)
+    def load_stylesheet(self):
+        try:
+            style_path = get_resource_path("ui/styles.qss")
+            style_file = QFile(style_path)
+            if style_file.open(QFile.ReadOnly | QFile.Text):
+                stream = QTextStream(style_file)
+                self.setStyleSheet(stream.readAll())
+                style_file.close()
+        except Exception as e:
+            logging.error(f"Error loading stylesheet: {e}")
+
+    def _setup_show_sidebar_button(self):
+        self.show_sidebar_container = QFrame()
+        self.show_sidebar_container.setObjectName("show_sidebar_container") 
+        self.show_sidebar_container.setFixedWidth(0)
+        
+        layout = QVBoxLayout(self.show_sidebar_container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        layout.addStretch()
+        
+        self.btn_show_sidebar = QPushButton()
+        self.btn_show_sidebar.setObjectName("btn_show_sidebar")
+        self.btn_show_sidebar.setIcon(qta.icon("fa5s.chevron-right", color="#2c3e50"))
+        self.btn_show_sidebar.setCursor(Qt.PointingHandCursor)
+        self.btn_show_sidebar.clicked.connect(self.toggle_sidebar_visibility)
+        
+        layout.addWidget(self.btn_show_sidebar)
+        layout.addStretch()
+
+        self.main_layout.addWidget(self.show_sidebar_container)
+
+    def update_header_layout(self, compact):
+        if self.header_container.layout():
+            old_layout = self.header_container.layout()
+            old_layout.removeWidget(self.btn_toggle)
+            old_layout.removeWidget(self.logo_label)
+            old_layout.removeWidget(self.text_container)
+            self.btn_toggle.setParent(self.header_container)
+            self.logo_label.setParent(self.header_container)
+            self.text_container.setParent(self.header_container)
+            QWidget().setLayout(old_layout)
+
+        if compact:
+            layout = QVBoxLayout(self.header_container)
+            layout.setContentsMargins(5, 10, 5, 5)
+            layout.setSpacing(5) 
+            self.header_container.setFixedHeight(90)
+            layout.addWidget(self.btn_toggle, alignment=Qt.AlignHCenter)
+            layout.addWidget(self.logo_label, alignment=Qt.AlignHCenter)
+            self.text_container.hide()
+            self.btn_toggle.show()
+            self.logo_label.show()
+        else:
+            layout = QHBoxLayout(self.header_container)
+            layout.setContentsMargins(15, 15, 15, 15)
+            layout.setSpacing(10)
+            self.header_container.setFixedHeight(80)
+            layout.addWidget(self.logo_label)
+            layout.addWidget(self.text_container)
+            layout.addStretch()
+            layout.addWidget(self.btn_toggle)
+            self.text_container.show()
+            self.btn_toggle.show()
+            self.logo_label.show()
+
+    def _setup_sidebar(self):
+        self.sidebar_container = QFrame()
+        self.sidebar_container.setObjectName("sidebar_container")
+        self.sidebar_container.setProperty("state", "expanded")
+        self.sidebar_container.setFixedWidth(self.sidebar_full_width)
+        
+        sidebar_layout = QVBoxLayout(self.sidebar_container)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(6)
+
+        self.header_container = QWidget()
+        self.header_container.setObjectName("header_container")
+        self.header_container.setFixedHeight(80) 
+
+        self.logo_label = QLabel()
+        logo_path = get_resource_path(os.path.join("ui", "logo.png"))
+        if os.path.exists(logo_path):
+            self.logo_pixmap = QPixmap(logo_path)
+        else:
+            self.logo_pixmap = qta.icon('fa5s.heartbeat', color='#007572').pixmap(QSize(64, 64))
+        self.logo_label.setPixmap(self.logo_pixmap.scaled(35, 35, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.logo_label.setFixedSize(35, 35)
+
+        self.text_container = QWidget()
+        text_layout = QVBoxLayout(self.text_container)
+        text_layout.setContentsMargins(0, 2, 0, 2)
+        text_layout.setSpacing(0)
+        lbl_title = QLabel("MODERNSTOCK")
+        lbl_title.setStyleSheet("font-family: 'Segoe UI', sans-serif; font-size: 16px; font-weight: 800; color: #2c3e50;")
+        lbl_sub = QLabel("gestion de stock")
+        lbl_sub.setStyleSheet("font-size: 10px; font-weight: 600; color: #007572; letter-spacing: 1px;")
+        text_layout.addWidget(lbl_title)
+        text_layout.addWidget(lbl_sub)
+        
+        self.btn_toggle = QPushButton()
+        self.btn_toggle.setIcon(qta.icon("fa5s.bars", color="#546e7a"))
+        self.btn_toggle.setFixedSize(35, 35)
+        self.btn_toggle.setCursor(Qt.PointingHandCursor)
+        self.btn_toggle.setFlat(True)
+        self.btn_toggle.clicked.connect(self.toggle_sidebar_compact)
+
+        self.update_header_layout(compact=False)
+        sidebar_layout.addWidget(self.header_container)
+
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setStyleSheet("background-color: #f0f2f5; margin: 0px 10px;")
+        line.setFixedHeight(1)
+        sidebar_layout.addWidget(line)
+        sidebar_layout.addSpacing(10)
+
+        self.nav_group = QButtonGroup(self)
+        self.nav_group.idClicked.connect(self.switch_page)
+
+        # --- [تعديل] إضافة زر Traçabilité (ID: 7) ---
+        buttons_info = [
+            (0, "Tableau de Bord", "fa5s.chart-pie"),
+            (1, "Données de Base", "fa5s.layer-group"),
+            (2, "Achats & Entrées", "fa5s.shopping-cart"), 
+            (3, "Stock & Magasin",  "fa5s.boxes"),
+            (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
+            (7, "Traçabilité",      "fa5s.history"), 
+            (5, "Utilisateurs",    "fa5s.users"),
+            (4, "Paramètres",      "fa5s.sliders-h")
+            
+        ]
+
+        for btn_id, text, icon_name in buttons_info:
+            icon = qta.icon(icon_name, color="#546e7a", color_active="#007572")
+            
+            btn = QPushButton(text)
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(20, 20))
+            btn.setCheckable(True)
+            btn.setProperty("class", "nav_button")
+            btn.setCursor(Qt.PointingHandCursor)
+            self.button_texts[btn] = text
+            self.nav_group.addButton(btn, btn_id)
+            sidebar_layout.addWidget(btn)
+
+        sidebar_layout.addStretch()
+
+        self.btn_logout = QPushButton("Déconnexion")
+        self.btn_logout.setIcon(qta.icon("fa5s.power-off", color="#e74c3c"))
+        self.btn_logout.setProperty("class", "logout_button")
+        self.btn_logout.setCursor(Qt.PointingHandCursor)
+        self.btn_logout.clicked.connect(self.logout)
+        self.button_texts[self.btn_logout] = "Déconnexion"
+        sidebar_layout.addWidget(self.btn_logout)
+
+        self.btn_hide_sidebar = QPushButton()
+        self.btn_hide_sidebar.setIcon(qta.icon("fa5s.chevron-left", color="#b0bec5"))
+        self.btn_hide_sidebar.setProperty("class", "hide_button")
+        self.btn_hide_sidebar.setCursor(Qt.PointingHandCursor)
+        self.btn_hide_sidebar.clicked.connect(self.toggle_sidebar_visibility)
+        sidebar_layout.addWidget(self.btn_hide_sidebar)
+
+        self.main_layout.addWidget(self.sidebar_container)
+
+    def toggle_sidebar_compact(self):
+        if self.sidebar_container.width() == 0: return
+
+        target_width = self.sidebar_compact_width if self.is_sidebar_expanded else self.sidebar_full_width
+
+        self.anim = QPropertyAnimation(self.sidebar_container, b"minimumWidth")
+        self.anim.setDuration(250)
+        self.anim.setStartValue(self.sidebar_container.width())
+        self.anim.setEndValue(target_width)
+        self.anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.anim.start()
+        
+        self.anim_max = QPropertyAnimation(self.sidebar_container, b"maximumWidth")
+        self.anim_max.setDuration(250)
+        self.anim_max.setStartValue(self.sidebar_container.width())
+        self.anim_max.setEndValue(target_width)
+        self.anim_max.start()
+
+        if self.is_sidebar_expanded:
+            self.sidebar_container.setProperty("state", "compact")
+            self.update_header_layout(compact=True)
+            
+            for btn in self.nav_group.buttons() + [self.btn_logout]:
+                btn.setText("")
+                btn.setToolTip(self.button_texts[btn])
+        else:
+            self.sidebar_container.setProperty("state", "expanded")
+            self.update_header_layout(compact=False)
+            
+            for btn in self.nav_group.buttons() + [self.btn_logout]:
+                btn.setText(self.button_texts[btn])
+                btn.setToolTip("")
+
+        self.is_sidebar_expanded = not self.is_sidebar_expanded
+        self.sidebar_container.style().unpolish(self.sidebar_container)
+        self.sidebar_container.style().polish(self.sidebar_container)
+
+    def toggle_sidebar_visibility(self):
+        current_width = self.sidebar_container.width()
+        
+        if current_width > 0:
+            start_val = current_width
+            end_val = 0
+            self.show_sidebar_container.setFixedWidth(30)
+        else:
+            start_val = 0
+            end_val = self.sidebar_full_width if self.is_sidebar_expanded else self.sidebar_compact_width
+            self.show_sidebar_container.setFixedWidth(0)
+
+        self.anim_vis = QPropertyAnimation(self.sidebar_container, b"maximumWidth")
+        self.anim_vis.setDuration(300)
+        self.anim_vis.setStartValue(start_val)
+        self.anim_vis.setEndValue(end_val)
+        self.anim_vis.setEasingCurve(QEasingCurve.InOutSine)
+        
+        self.anim_vis_min = QPropertyAnimation(self.sidebar_container, b"minimumWidth")
+        self.anim_vis_min.setDuration(300)
+        self.anim_vis_min.setStartValue(start_val)
+        self.anim_vis_min.setEndValue(end_val)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(self.anim_vis)
+        group.addAnimation(self.anim_vis_min)
+        group.start()
+
+    def apply_permissions(self):
+        if not self.current_user:
+            return
+            
+        role = self.current_user.get('Role', 'Technician')
+        is_admin = (role == 'Admin')
+        is_manager = (role == 'Manager')
+        is_technician = (role == 'Technician')
+
+        # 0: Tableau de Bord - (Admin + Manager فقط)
+        if self.nav_group.button(0):
+            self.nav_group.button(0).setVisible(is_admin or is_manager)
+
+        # 1: Données de Base - (Admin + Manager فقط)
+        if self.nav_group.button(1):
+            self.nav_group.button(1).setVisible(is_admin or is_manager)
+
+        # 2: Achats & Entrées - (Admin + Manager فقط)
+        if self.nav_group.button(2):
+            self.nav_group.button(2).setVisible(is_admin or is_manager)
+
+        # 3: Stock & Magasin - (متاح للجميع: Admin, Manager, Technician)
+        if self.nav_group.button(3):
+            self.nav_group.button(3).setVisible(True)
+
+        # 6: Sous-Traitants / Facturation - (متاح للجميع حسب طلبك الجديد)
+        if self.nav_group.button(6):
+            self.nav_group.button(6).setVisible(True)
+
+        # 7: Traçabilité - (Admin فقط)
+        # تم حجبها عن التقني والمدير لتبقى محصورة للأدمن
+        if self.nav_group.button(7):
+            self.nav_group.button(7).setVisible(is_admin)
+
+        # 5: Utilisateurs - (Admin فقط)
+        if self.nav_group.button(5):
+            self.nav_group.button(5).setVisible(is_admin)
+
+        # 4: Paramètres - (Admin فقط)
+        if self.nav_group.button(4):
+            self.nav_group.button(4).setVisible(is_admin)
+
+        # تطبيق صلاحيات داخلية في تبويب المخزن
+        if hasattr(self, 'inventory_tab'):
+            if hasattr(self.inventory_tab, 'apply_role_permissions'):
+                self.inventory_tab.apply_role_permissions(role)
+    def logout(self):
+        ans = QMessageBox.question(self, "Déconnexion", "Voulez-vous vraiment vous déconnecter ?", 
+                                   QMessageBox.Yes | QMessageBox.No)
+        if ans == QMessageBox.Yes:
+            self.want_logout = True 
+            settings = QSettings("ModernLam", "StockManager")
+            settings.remove("last_logged_user") 
+            self.close()
+
+    def _create_pages(self):
+        if self.data_manager is None:
+            # زدنا العدد ليشمل الصفحة الجديدة (0-7 = 8 صفحات)
+            for i in range(8): 
+                p = QWidget(); l = QVBoxLayout(p)
+                l.addWidget(QLabel("Connexion requise..."), alignment=Qt.AlignCenter)
+                self.content_area.addWidget(p)
+            self.content_area.addWidget(SettingsTab(None))
+            return
+
+        # Index 0
+        self.content_area.addWidget(DashboardTab(self.data_manager)) 
+        
+        # Index 1
+        self.content_area.addWidget(self._setup_master_data_tab())   
+        
+        # Index 2
+        self.content_area.addWidget(ProcurementTab(self.data_manager)) 
+        
+        # Index 3
+        self.inventory_tab = InventoryTab(self.data_manager)
+        self.inventory_tab.current_user = self.current_user 
+        self.content_area.addWidget(self.inventory_tab) 
+        
+        # Index 4 (Paramètres)
+        self.content_area.addWidget(SettingsTab(self.data_manager)) 
+        
+        # Index 5 (Utilisateurs)
+        self.user_mgmt_tab = UserManagementTab(self.data_manager)
+        self.content_area.addWidget(self.user_mgmt_tab)             
+
+        # Index 6 (Facturation)
+        try:
+            self.billing_tab = BillingTab(self.data_manager)
+            self.content_area.addWidget(self.billing_tab)
+        except NameError:
+            temp_widget = QWidget()
+            QVBoxLayout(temp_widget).addWidget(QLabel("Page Facturation"))
+            self.content_area.addWidget(temp_widget)
+
+        # Index 7 (Traçabilité) <-- الصفحة الجديدة
+        try:
+            self.history_tab = MovementHistoryTab(self.data_manager)
+            self.content_area.addWidget(self.history_tab)
+        except NameError:
+            temp_widget = QWidget()
+            QVBoxLayout(temp_widget).addWidget(QLabel("Page Traçabilité"))
+            self.content_area.addWidget(temp_widget)
+
+    def switch_page(self, page_id):
+        self.content_area.setCurrentIndex(page_id)
+
+    def _setup_master_data_tab(self):
+        tabs = QTabWidget()
+        tabs.addTab(ProductsTab(self.data_manager), "Produits")
+        mgr = self.data_manager
+        
+        if hasattr(mgr, 'families'): 
+            tabs.addTab(ProductFamiliesTab(mgr), "Familles")
+        if hasattr(mgr, 'packaging_units'): 
+            tabs.addTab(PackagingUnitsTab(mgr), "Unités (Pkg)")
+        if hasattr(mgr, 'suppliers'): 
+            tabs.addTab(SuppliersTab(mgr.suppliers), "Fournisseurs")
+        if hasattr(mgr, 'manufacturers'): 
+            tabs.addTab(ManufacturersTab(mgr.manufacturers), "Fabricants")
+        if hasattr(mgr, 'partners'): 
+            tabs.addTab(ExternalPartnersTab(mgr.partners), "Partenaires Externes")
+        if hasattr(mgr, 'automates') and hasattr(mgr, 'locations'):
+            tabs.addTab(AutomatesTab(mgr.automates, mgr.locations), "Automates")
+        if hasattr(mgr, 'locations'): 
+            tabs.addTab(LocationsTab(mgr.locations), "Emplacements")
+        if hasattr(mgr, 'waste_reasons'): 
+            tabs.addTab(WasteReasonsTab(mgr.waste_reasons), "Motifs Rebut")
+            
+        return tabs

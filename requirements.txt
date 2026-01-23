@@ -1,0 +1,11 @@
+mysql-connector-python
+pandas
+python-dotenv
+SQLAlchemy
+PySide6
+qtawesome
+pywin32
+python-barcode
+Pillow
+reportlab
+xlsxwriter
