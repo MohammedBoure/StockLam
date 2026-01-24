@@ -247,3 +247,4 @@ MODIFY COLUMN Movement_Type ENUM(
     'External_Transfer', 'Return_To_Supplier'
 ) NOT NULL;
 
+

@@ -33,6 +33,23 @@ if root_logger.hasHandlers():
     for handler in root_logger.handlers:
         root_logger.removeHandler(handler)
 
+
+log_file = os.path.join(os.path.dirname(sys.executable) if hasattr(sys, '_MEIPASS') else os.path.abspath("."), "app.log")
+
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(log_file, encoding='utf-8') 
+    ]
+)
+
+logging.getLogger("mysql.connector").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+logger = logging.getLogger("MODERNLAM")
+
 TABLE_IMPORT_ORDER = [
     'Users', 'Location_Types', 'Product_Families', 'Packaging_Units', 
     'Manufacturers', 'Suppliers', 'External_Partners', 'Locations', 'Automates', 'Waste_Reasons', # Added External_Partners
@@ -49,38 +66,20 @@ def get_external_path(filename):
         return os.path.join(os.path.dirname(sys.executable), filename)
     return os.path.join(os.path.abspath("."), filename)
 
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
 
 log_file = get_external_path("app.log")
 
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
-logging.basicConfig(
-    level=logging.DEBUG, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(log_file, encoding='utf-8') 
-    ]
-)
-
-logger = logging.getLogger("MODERNLAM")
-
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (datetime, date)):
-            return obj.isoformat()
-        if isinstance(obj, Decimal):
-            return float(obj)
-        return super().default(obj)
-
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (datetime, date)):
-            return obj.isoformat()
-        if isinstance(obj, Decimal):
-            return float(obj)
-        return super().default(obj)
 
 class Database:
     _instance = None
@@ -115,13 +114,13 @@ class Database:
             try:
                 Database._pool = pooling.MySQLConnectionPool(
                     pool_name="modernlam_pool",
-                    pool_size=10,
+                    pool_size=3,  
                     pool_reset_session=True,
                     use_pure=True,
                     auth_plugin='mysql_native_password',
                     **self.db_config
                 )
-                logging.info("🚀 Connection Pool initialized successfully.")
+                logging.info("🚀 Connection Pool initialized successfully (Size: 3).")
             except Exception as e:
                 logging.error(f"❌ Failed to initialize Connection Pool: {e}")
                 raise
@@ -133,30 +132,26 @@ class Database:
         except Exception as e:
             logging.error(f"Failed to create SQLAlchemy engine: {e}")
 
-        # --- 4. تهيئة الهيكل (Schema) ---
         is_local = self.db_config['host'] in ['127.0.0.1', 'localhost']
         if is_local:
             self._initialize_schema()
 
     def _ensure_database_exists(self):
-        """إنشاء قاعدة البيانات إذا لم تكن موجودة بالاتصال بالسيرفر مباشرة بدون تحديد اسم القاعدة."""
         try:
             conn_config = self.db_config.copy()
-            db_name = conn_config.pop('database') # نزع اسم القاعدة للاتصال بالسيرفر فقط
+            db_name = conn_config.pop('database')
             conn_config['use_pure'] = True
             conn_config['auth_plugin'] = 'mysql_native_password'
 
             with mysql.connector.connect(**conn_config) as conn:
                 cursor = conn.cursor()
                 cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
-                logging.info(f"✅ Database '{db_name}' verified/created.")
         except mysql.connector.Error as err:
             logging.error(f"❌ Could not verify/create database: {err}")
             raise
 
     @contextmanager
     def get_db_connection(self):
-        """الحصول على اتصال من التجمع (Pool) لضمان السرعة القصوى."""
         conn = None
         try:
             conn = Database._pool.get_connection()
@@ -173,7 +168,16 @@ class Database:
     def get_raw_connection(self):
         return Database._pool.get_connection()
     
-    def _initialize_schema(self):        
+    def _initialize_schema(self): 
+        try:
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SHOW TABLES LIKE 'Users'")
+                if cursor.fetchone():
+                    logging.info("⚡ Schema exists. Skipping initialization checks.")
+                    return
+        except:
+            pass      
         schema_queries = [            
             # --- 1. Users & Auth ---
             """CREATE TABLE IF NOT EXISTS Users (
@@ -475,7 +479,7 @@ class Database:
                 Movement_Type ENUM(
                     'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run', 
                     'Calibration', 'Adjustment', 'Waste', 'Transfer', 
-                    'External_Transfer', 'Return_To_Supplier' -- تمت الإضافة هنا
+                    'External_Transfer', 'Return_To_Supplier'
                 ) NOT NULL,
                 Reason_ID INT UNSIGNED NULL,
                 Qty_Change DECIMAL(10, 2) NOT NULL,

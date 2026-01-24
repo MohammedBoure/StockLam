@@ -1,5 +1,3 @@
-# ui/widgets/inventory/tabs_history.py
-
 import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QHeaderView, QPushButton, 
@@ -60,7 +58,8 @@ class MovementDetailsDialog(QDialog):
             "✏️ Ajustements Manuels",    
             "🗑️ Rebuts / Pertes", 
             "🚚 Transferts Internes",
-            "💰 Ventes / Transf. Externes"
+            "💰 Ventes / Transf. Externes",
+            "↩️ Retours Fournisseurs (Avoirs)"
         ])
         
         # ربط البيانات البرمجية للفلترة بناءً على الأنواع المعرفة في السجل
@@ -74,6 +73,7 @@ class MovementDetailsDialog(QDialog):
         self.combo_type.setItemData(7, "Waste")
         self.combo_type.setItemData(8, "Transfer")
         self.combo_type.setItemData(9, "External_Transfer")
+        self.combo_type.setItemData(10, "Return_To_Supplier")
 
         # حل مشكلة العرض: استخدام MinimumWidth بدلاً من FixedWidth لضمان ظهور الكلمات بالكامل
         self.combo_type.setMinimumWidth(220) 
@@ -197,7 +197,8 @@ class MovementHistoryTab(QWidget):
             "✏️ Ajustements Manuels",    
             "🗑️ Rebuts / Pertes", 
             "🚚 Transferts Internes",
-            "💰 Ventes / Transf. Externes"
+            "💰 Ventes / Transf. Externes",
+            "↩️ Retours Fournisseurs (Avoirs)"  
         ])
         
         self.combo_type.setItemData(0, None)
@@ -210,6 +211,7 @@ class MovementHistoryTab(QWidget):
         self.combo_type.setItemData(7, "Waste")
         self.combo_type.setItemData(8, "Transfer")
         self.combo_type.setItemData(9, "External_Transfer")
+        self.combo_type.setItemData(10, "Return_To_Supplier")
 
         # حل مشكلة العرض: زيادة العرض الثابت واستخدام الحد الأدنى المناسب
         self.combo_type.setMinimumWidth(220) 
@@ -319,7 +321,8 @@ class MovementHistoryTab(QWidget):
             'Adjustment': 'Ajustement',
             'Waste': 'Rebut / Perte',
             'Transfer': 'Transfert Interne',
-            'External_Transfer': 'Vente / Transf. Externe' 
+            'External_Transfer': 'Vente / Transf. Externe',
+            'Return_To_Supplier': 'Retour Fournisseur'
         }
 
         for r, mov in enumerate(data):
@@ -364,6 +367,10 @@ class MovementHistoryTab(QWidget):
                 t_item.setBackground(QBrush(QColor("#ffebee"))) # أحمر (خسارة)
             elif raw_type == 'Adjustment':
                 t_item.setForeground(QBrush(QColor("#d35400"))) # بني (تعديل جرد)
+            elif raw_type == 'Return_To_Supplier': 
+                t_item.setBackground(QBrush(QColor("#d35400"))) 
+                t_item.setForeground(QBrush(QColor("white")))
+                t_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 
             self.table.setItem(r, 4, t_item)
             

@@ -91,13 +91,25 @@ class ReceptionDialog(BaseDialog):
             self.buttons.hide()
 
         self.adjust_screen_size()
+        
+        # 1. إنشاء العناصر أولاً
         self.create_widgets()
+        # 2. ربط الأحداث
         self.setup_connections()
+        # 3. ترتيب الواجهة
         self.init_ui()
 
-        # تحميل البيانات (الآن لن يحدث خطأ لأن self.br_id معرف بالأعلى)
+        # 4. الآن يمكننا تعطيل الحقول بأمان (لأنها أصبحت موجودة)
+        # هذا يحقق طلبك: الحقول تظهر disabled في البداية
+        self.toggle_inputs_state(False)
+
+        # تحميل البيانات إذا كنا في وضع التعديل
         if self.edit_mode and self.reception_data:
             self.load_reception_data()
+            # إذا كنا نعدل فاتورة موجودة بالفعل، نعيد تفعيل الحقول
+            if self.br_id:
+                self.toggle_inputs_state(True)
+            
             if self.target_batch_id:
                 QTimer.singleShot(100, self.highlight_target_row)
 
@@ -415,15 +427,11 @@ class ReceptionDialog(BaseDialog):
             pass 
 
     def enable_header_editing(self):
-        """
-        إعادة فتح حقول الرأس (Facture/BL/Date) للتعديل.
-        """
-        # فتح الحقول
+        """إعادة فتح حقول الرأس للتعديل."""
         self.invoice_ref.setReadOnly(False)
         self.bl_ref.setReadOnly(False)
         self.reception_date.setReadOnly(False)
         
-        # تغيير زر التفعيل ليصبح زر حفظ
         self.btn_validate_ref.setText(" Enregistrer")
         self.btn_validate_ref.setEnabled(True)
         self.btn_validate_ref.setStyleSheet("""
@@ -437,37 +445,30 @@ class ReceptionDialog(BaseDialog):
             QPushButton:hover { background-color: #3498db; }
         """)
         
-        # إخفاء زر التعديل مؤقتاً
         self.btn_unlock_header.setVisible(False)
         
-        # تركيز المؤشر
+        self.toggle_inputs_state(False)
+        
         self.invoice_ref.setFocus()
 
 
     def validate_header_and_create(self):
         """
-        نسخة مصححة تمنع التكرار (Double Entry) عند الضغط على الزر.
+        التحقق من الرأس، الحفظ، ثم فتح الحقول بالقوة.
         """
-        # 1. جلب البيانات وتنظيفها
+        # 1. التحقق من المدخلات
         inv_ref = self.invoice_ref.text().strip()
         bl_ref = self.bl_ref.text().strip()
 
-        # شرط الإدخال: يجب أن يكون أحدهما على الأقل مملوءاً
         if not inv_ref and not bl_ref:
-            QMessageBox.warning(
-                self, 
-                "Données manquantes", 
-                "Veuillez saisir au moins une référence (Facture ou BL) avant de valider."
-            )
-            self.invoice_ref.setFocus()
+            QMessageBox.warning(self, "Manquant", "Veuillez saisir Facture ou BL.")
             return False
 
-        # --- حماية ضد التكرار: تعطيل الزر فوراً ---
-        self.btn_validate_ref.setEnabled(False)
-        self.btn_validate_ref.setText(" Traitement...")
-        QGuiApplication.processEvents()  # تحديث الواجهة فوراً ليظهر الزر معطلاً
-
         try:
+            # تعطيل الزر لتجنب التكرار
+            self.btn_validate_ref.setEnabled(False)
+            self.btn_validate_ref.repaint() # تحديث الواجهة فوراً
+
             u_id = self.get_current_user_id()
             mgr = self.manager.reception if hasattr(self.manager, 'reception') else self.manager
 
@@ -480,21 +481,18 @@ class ReceptionDialog(BaseDialog):
                 "Created_By": u_id
             }
 
-            # 2. منطق الإنشاء أو التحديث
-            if self.br_id:
-                # الحالة أ: الرأس موجود مسبقاً -> تحديث فقط
-                mgr.update_reception_header_info(self.br_id, header_data)
-            else:
-                # الحالة ب: إنشاء جديد
+            # 2. الحفظ في قاعدة البيانات
+            if not self.br_id:
                 new_id = mgr.create_new_reception_header(header_data)
-                
                 if not new_id:
-                    # فشل الإنشاء (غالباً تكرار في قاعدة البيانات)
-                    raise ValueError("Cette référence existe déjà ou erreur de création.")
-                
+                    self.btn_validate_ref.setEnabled(True)
+                    QMessageBox.critical(self, "Erreur", "Référence existante !")
+                    return False
                 self.br_id = new_id
+            else:
+                mgr.update_reception_header_info(self.br_id, header_data)
 
-            # 3. تحديث حالة الطلب (PO)
+            # 3. تحديث حالة PO
             po_id = self.po_data.get('PO_ID')
             if po_id:
                 with mgr.db.get_db_connection() as conn:
@@ -502,40 +500,53 @@ class ReceptionDialog(BaseDialog):
                     cursor.execute("UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (po_id,))
                     conn.commit()
 
-            # 4. قفل الواجهة بنجاح
+            # 4. تحديث الواجهة (المنطقة الحرجة)
             self.invoice_ref.setReadOnly(True)
             self.bl_ref.setReadOnly(True)
             self.reception_date.setReadOnly(True)
             
             self.btn_validate_ref.setText(" Validé")
-            # لا نفعّل الزر مرة أخرى لأنه "Validé"
-            self.btn_validate_ref.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border: none;")
-            
-            # إظهار زر التعديل
+            self.btn_validate_ref.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
             self.btn_unlock_header.setVisible(True)
 
+            # --- [الحل الجذري] فتح الحقول يدوياً واحداً تلو الآخر للتأكد ---
+            self.cb_product.setEnabled(True)
+            self.cb_unit_type.setEnabled(True)
+            self.inp_qty.setEnabled(True)
+            self.inp_lot.setEnabled(True)
+            self.inp_expiry.setEnabled(True)
+            self.cb_location.setEnabled(True)
+            self.inp_price.setEnabled(True)
+            self.inp_remise.setEnabled(True)
+            self.cb_remise_type.setEnabled(True)
+            self.chk_tva.setEnabled(True)
+            self.inp_observation.setEnabled(True)
+            
+            self.btn_add.setEnabled(True)
+            self.btn_modify.setEnabled(True)
+            self.btn_delete.setEnabled(True)
+            self.table_items.setEnabled(True)
+            # -------------------------------------------------------------
+
+            # وضع المؤشر في حقل المنتج
+            self.cb_product.setFocus()
+            
+            QMessageBox.information(self, "Succès", "Vous pouvez maintenant saisir les produits.")
             return True
 
         except Exception as e:
-            # في حالة حدوث خطأ، نعيد تفعيل الزر ليحاول المستخدم مرة أخرى
             self.btn_validate_ref.setEnabled(True)
-            self.btn_validate_ref.setText(" Valider & Verrouiller")
-            
-            logging.error(f"Validation error: {e}")
-            QMessageBox.critical(self, "Erreur Système", str(e))
+            QMessageBox.critical(self, "Erreur", str(e))
             return False
         
     def validate_header_and_create(self):
         """
-        1. التحقق من إدخال Facture أو BL.
-        2. إنشاء الرأس في قاعدة البيانات.
-        3. تحويل حالة الطلب (PO) إلى Completed فوراً.
-        4. قفل الحقول.
+        التحقق من الرأس، الحفظ، ثم فتح حقول المنتجات (تصحيح المشكلة).
         """
+        # 1. التحقق من المدخلات
         inv_ref = self.invoice_ref.text().strip()
         bl_ref = self.bl_ref.text().strip()
 
-        # 1. شرط الإدخال: يجب أن يكون أحدهما على الأقل مملوءاً
         if not inv_ref and not bl_ref:
             QMessageBox.warning(
                 self, 
@@ -546,6 +557,9 @@ class ReceptionDialog(BaseDialog):
             return False
 
         try:
+            # تعطيل الزر مؤقتاً
+            self.btn_validate_ref.setEnabled(False)
+            
             u_id = self.get_current_user_id()
             mgr = self.manager.reception if hasattr(self.manager, 'reception') else self.manager
 
@@ -558,47 +572,53 @@ class ReceptionDialog(BaseDialog):
                 "Created_By": u_id
             }
 
-            # 2. إنشاء أو تحديث الرأس
+            # 2. إنشاء أو تحديث الرأس في قاعدة البيانات
             if not self.br_id:
-                # محاولة الإنشاء
                 new_id = mgr.create_new_reception_header(header_data)
-                
                 if not new_id:
-                    # في حال الفشل (غالباً تكرار)، نعرض خطأ
-                    QMessageBox.critical(
-                        self, "Erreur Doublon", 
-                        "Cette référence (Facture/BL) existe déjà pour ce fournisseur.\nVeuillez vérifier vos saisies."
-                    )
+                    self.btn_validate_ref.setEnabled(True)
+                    QMessageBox.critical(self, "Erreur Doublon", "Cette référence existe déjà.")
                     return False
                 self.br_id = new_id
             else:
-                # إذا كان موجوداً، نحدث البيانات فقط
                 mgr.update_reception_header_info(self.br_id, header_data)
 
-            # 3. تحويل حالة الطلب إلى Completed فوراً (كما طلبت)
+            # 3. تحديث حالة PO
             po_id = self.po_data.get('PO_ID')
             if po_id:
-                # نستخدم الاتصال المباشر لضمان التحديث
                 with mgr.db.get_db_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (po_id,))
                     conn.commit()
                 logging.info(f"PO #{po_id} marked as Completed immediately after validation.")
 
-            # 4. قفل الحقول وتحديث حالة الزر
+            # 4. تحديث الواجهة (الخطوة المصححة)
             self.invoice_ref.setReadOnly(True)
             self.bl_ref.setReadOnly(True)
             self.reception_date.setReadOnly(True)
             
             self.btn_validate_ref.setText(" Validé (Commande Complétée)")
-            self.btn_validate_ref.setEnabled(False) # تعطيل الزر
+            # لا نعيد تفعيل زر التحقق لأنه انتهى دوره
             self.btn_validate_ref.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border: none;")
             
+            # إظهار زر التعديل (القلم) في حال أراد المستخدم تغيير الرأس لاحقاً
+            self.btn_unlock_header.setVisible(True)
+
+            # ---------------------------------------------------------
+            # [الحل]: تفعيل حقول المنتجات الآن
+            # ---------------------------------------------------------
+            self.toggle_inputs_state(True)
+            
+            # وضع المؤشر في قائمة المنتجات مباشرة
+            self.cb_product.setFocus()
+
             QMessageBox.information(self, "Succès", "Réception validée. Vous pouvez maintenant ajouter les produits.")
             return True
 
         except Exception as e:
             logging.error(f"Validation error: {e}")
+            # في حالة الخطأ، نعيد تفعيل الزر ليحاول المستخدم مرة أخرى
+            self.btn_validate_ref.setEnabled(True)
             QMessageBox.critical(self, "Erreur Système", str(e))
             return False
 
@@ -752,7 +772,7 @@ class ReceptionDialog(BaseDialog):
         row2.addWidget(self.cb_remise_type, 1)
         row2.addWidget(self.chk_tva)
         row2.addWidget(self.lbl_item_ttc)
-        row2.addWidget(QLabel("<b>Note:</b>"))
+        row2.addWidget(QLabel("<b>Réclamation:</b>"))
         row2.addWidget(self.inp_observation, 3)
         entry_layout.addLayout(row2)
 

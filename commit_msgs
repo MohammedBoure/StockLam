@@ -2,3 +2,32 @@
 -----
 
 first commit 
+-----
+
+feat: overhaul Reception workflow, add Credit Notes, and optimize startup performance
+
+Procurement & Reception:
+- Fix `ReceptionDialog` initialization order to prevent AttributeError on startup.
+- Implement input locking mechanism: Product fields remain disabled until Invoice/BL validation.
+- Fix validation logic to force-enable input fields immediately after header creation (no restart required).
+- Ensure Purchase Order status updates to 'Completed' upon reception header validation.
+
+Credit Notes (Avoirs):
+- Implement full Credit Note management (Create, Edit, Delete).
+- Add `CreditNoteManager` with "Delta" calculation logic to correctly adjust stock during edits (diff between old/new qty).
+- Add `BatchSelectionDialog` to handle specific lot selection for returns.
+- Implement "Strict Mode" for credit notes linked to specific reception vouchers.
+- Enable stock restoration upon Credit Note deletion.
+
+Performance & Architecture:
+- Implement Lazy Loading in `MainWindow`: Tabs are initialized only when accessed to reduce startup time.
+- Optimize `Database` class: Reduced connection pool size to 3, silenced verbose logging, and added a check to skip schema initialization if tables exist.
+- Refactor `DashboardView` to fetch heavy KPI data in a background thread (`QThread`) to prevent UI freezing.
+
+Statistics & Reporting:
+- Fix unit display in Consumption Reports: Apply conversion factor to display 'Usage Units' (e.g., Tests) instead of fractional 'Stock Units' (e.g., 0.01 Box).
+- Update Stock Movement Log to support 'Return_To_Supplier' transaction type.
+
+UI/UX:
+- Improve Logout confirmation dialog to default to "No" for safety.
+- Refactor `base.py` logging configuration to reduce console noise.

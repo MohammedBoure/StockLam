@@ -170,9 +170,9 @@ class StatisticsManager:
     def get_detailed_consumption_report(self, start_date, end_date, report_type='consumed'):
         """
         تقرير التفاصيل.
-        [تعديل]: 
-        1. الكمية: تعرض عدد الوحدات المستهلكة مباشرة (Tests/Unités) بدون فواصل.
-        2. التكلفة: تحسب بناءً على نسبة الاستهلاك من سعر العلبة.
+        [تصحيح جذري]: 
+        بما أن قاعدة البيانات تخزن الكميات بوحدة التخزين (Stock Unit)،
+        يجب ضرب الكمية في معامل التحويل لعرض وحدة الاستخدام (Usage Unit).
         """
         try:
             with self.db.get_db_connection() as conn:
@@ -188,14 +188,22 @@ class StatisticsManager:
                         pm.Product_ID, 
                         pm.Product_Name, 
                         
-                        -- [تعديل 1] جلب اسم وحدة الاستخدام (Test, Comprimé) بدلاً من العلبة
-                        -- نستخدم Alias 'Stock_Unit' لكي لا نضطر لتعديل كود الواجهة
-                        COALESCE(pm.Usage_Unit, pm.Stock_Unit) as Stock_Unit,
+                        -- وحدات القياس
+                        pm.Stock_Unit as Stock_Unit,
+                        COALESCE(pm.Usage_Unit, 'Unité') as Usage_Unit,
                         
-                        -- [تعديل 2] جمع الكمية المستهلكة مباشرة بدون قسمة (لإزالة الفواصل)
+                        -- 1. الكمية بوحدة الاستخدام (Tests)
+                        -- المعادلة: الكمية المخزنة (علب) * معامل التحويل = عدد الفحوصات
+                        COALESCE(
+                            SUM(ABS(sml.Qty_Change) * COALESCE(NULLIF(pm.Usage_Qty_Per_Stock_Unit, 0), 1)), 
+                            0
+                        ) as total_qty_usage,
+
+                        -- 2. الكمية بوحدة التخزين (Boîtes) - هي نفسها المخزنة
                         COALESCE(SUM(ABS(sml.Qty_Change)), 0) as total_qty_stock,
                         
-                        -- [هام] التكلفة تبقى كما هي (تحويل لوحدة المخزون * سعر العلبة)
+                        -- 3. التكلفة الإجمالية
+                        -- المعادلة: الكمية المخزنة (علب) * سعر العلبة
                         COALESCE(
                             SUM(
                                 ABS(sml.Qty_Change) *
@@ -212,7 +220,7 @@ class StatisticsManager:
                     WHERE sml.Movement_Type IN {mvt_types}
                       AND DATE(sml.Transaction_Date) BETWEEN %s AND %s
                       
-                    GROUP BY pm.Product_ID, pm.Product_Name, pm.Usage_Unit, pm.Stock_Unit
+                    GROUP BY pm.Product_ID, pm.Product_Name, pm.Stock_Unit, pm.Usage_Unit, pm.Usage_Qty_Per_Stock_Unit
                     ORDER BY total_cost_ttc DESC
                 """
                 cursor.execute(query, (start_date, end_date))

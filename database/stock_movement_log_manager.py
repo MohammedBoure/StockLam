@@ -25,7 +25,8 @@ class StockMovementLogManager:
         """
         valid_movements = [
             'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run', 
-            'Calibration', 'Adjustment', 'Waste', 'Transfer', 'External_Transfer'
+            'Calibration', 'Adjustment', 'Waste', 'Transfer', 
+            'External_Transfer', 'Return_To_Supplier' 
         ]
         
         if movement_type not in valid_movements:

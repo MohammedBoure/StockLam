@@ -58,4 +58,4 @@ class LabDataManager:
         self.partners = ExternalPartnersManager(self.db)
         self.external_transfers = ExternalTransferManager(self.db)
 
-        self.credit_note = CreditNoteManager(db_instance)
+        self.credit_notes = CreditNoteManager(self.db)

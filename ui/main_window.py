@@ -4,13 +4,14 @@ import os
 import sys
 import logging
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QStackedWidget, QLabel, QPushButton, QSizePolicy,
-                               QFrame, QButtonGroup, QTabWidget, QApplication, QMessageBox) 
-from PySide6.QtCore import Qt, QSize, QFile, QTextStream, QSettings, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
-from PySide6.QtGui import QFont, QPixmap, QIcon
+                               QStackedWidget, QLabel, QPushButton, QFrame, QButtonGroup, 
+                               QTabWidget, QMessageBox) 
+from PySide6.QtCore import Qt, QSize, QFile, QTextStream, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+from PySide6.QtGui import QPixmap, QIcon
 import qtawesome as qta
 
-# Import your existing widgets
+# Import your widgets
+# ملاحظة: الاستيرادات ستبقى، لكن لن نستخدمها إلا عند الحاجة داخل التابع
 from .widgets.master_data.suppliers_tab import SuppliersTab
 from .widgets.master_data.products_tab import ProductsTab
 from .widgets.dashboard.dashboard_view import DashboardTab
@@ -40,7 +41,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.data_manager = data_manager
         self.current_user = current_user 
-        self.want_logout = False
+        self.connection_error = connection_error
+        
+        # --- تحسين: تخزين الصفحات التي تم تحميلها فقط ---
+        self.loaded_pages = {} 
 
         # --- حالة الشريط الجانبي ---
         self.is_sidebar_expanded = True
@@ -70,24 +74,24 @@ class MainWindow(QMainWindow):
         self.content_area = QStackedWidget()
         self.main_layout.addWidget(self.content_area)
         
-        self._create_pages()
+        # تهيئة الـ StackedWidget بعناصر فارغة
+        self._init_placeholders()
         self.load_stylesheet()
         
         self.apply_permissions()
 
         if connection_error:
+            # إذا كان هناك خطأ، نعرض صفحة الإعدادات (4)
             self.switch_page(4) 
         else:
             role = self.current_user.get('Role') if self.current_user else 'Technician'
-            
             if role in ['Admin', 'Manager']:
-                # الأدمن والمدير يبدأون بلوحة التحكم
-                self.switch_page(0)
+                self.switch_page(0) # Dashboard
                 if self.nav_group.button(0): self.nav_group.button(0).setChecked(True)
             else:
-                # التقني يبدأ بصفحة المخزن
-                self.switch_page(3)
+                self.switch_page(3) # Stock
                 if self.nav_group.button(3): self.nav_group.button(3).setChecked(True)
+
     def load_stylesheet(self):
         try:
             style_path = get_resource_path("ui/styles.qss")
@@ -103,21 +107,16 @@ class MainWindow(QMainWindow):
         self.show_sidebar_container = QFrame()
         self.show_sidebar_container.setObjectName("show_sidebar_container") 
         self.show_sidebar_container.setFixedWidth(0)
-        
         layout = QVBoxLayout(self.show_sidebar_container)
         layout.setContentsMargins(0, 0, 0, 0)
-        
         layout.addStretch()
-        
         self.btn_show_sidebar = QPushButton()
         self.btn_show_sidebar.setObjectName("btn_show_sidebar")
         self.btn_show_sidebar.setIcon(qta.icon("fa5s.chevron-right", color="#2c3e50"))
         self.btn_show_sidebar.setCursor(Qt.PointingHandCursor)
         self.btn_show_sidebar.clicked.connect(self.toggle_sidebar_visibility)
-        
         layout.addWidget(self.btn_show_sidebar)
         layout.addStretch()
-
         self.main_layout.addWidget(self.show_sidebar_container)
 
     def update_header_layout(self, compact):
@@ -208,7 +207,6 @@ class MainWindow(QMainWindow):
         self.nav_group = QButtonGroup(self)
         self.nav_group.idClicked.connect(self.switch_page)
 
-        # --- [تعديل] إضافة زر Traçabilité (ID: 7) ---
         buttons_info = [
             (0, "Tableau de Bord", "fa5s.chart-pie"),
             (1, "Données de Base", "fa5s.layer-group"),
@@ -218,12 +216,10 @@ class MainWindow(QMainWindow):
             (7, "Traçabilité",      "fa5s.history"), 
             (5, "Utilisateurs",    "fa5s.users"),
             (4, "Paramètres",      "fa5s.sliders-h")
-            
         ]
 
         for btn_id, text, icon_name in buttons_info:
             icon = qta.icon(icon_name, color="#546e7a", color_active="#007572")
-            
             btn = QPushButton(text)
             btn.setIcon(icon)
             btn.setIconSize(QSize(20, 20))
@@ -255,16 +251,13 @@ class MainWindow(QMainWindow):
 
     def toggle_sidebar_compact(self):
         if self.sidebar_container.width() == 0: return
-
         target_width = self.sidebar_compact_width if self.is_sidebar_expanded else self.sidebar_full_width
-
         self.anim = QPropertyAnimation(self.sidebar_container, b"minimumWidth")
         self.anim.setDuration(250)
         self.anim.setStartValue(self.sidebar_container.width())
         self.anim.setEndValue(target_width)
         self.anim.setEasingCurve(QEasingCurve.InOutQuad)
         self.anim.start()
-        
         self.anim_max = QPropertyAnimation(self.sidebar_container, b"maximumWidth")
         self.anim_max.setDuration(250)
         self.anim_max.setStartValue(self.sidebar_container.width())
@@ -274,14 +267,12 @@ class MainWindow(QMainWindow):
         if self.is_sidebar_expanded:
             self.sidebar_container.setProperty("state", "compact")
             self.update_header_layout(compact=True)
-            
             for btn in self.nav_group.buttons() + [self.btn_logout]:
                 btn.setText("")
                 btn.setToolTip(self.button_texts[btn])
         else:
             self.sidebar_container.setProperty("state", "expanded")
             self.update_header_layout(compact=False)
-            
             for btn in self.nav_group.buttons() + [self.btn_logout]:
                 btn.setText(self.button_texts[btn])
                 btn.setToolTip("")
@@ -292,7 +283,6 @@ class MainWindow(QMainWindow):
 
     def toggle_sidebar_visibility(self):
         current_width = self.sidebar_container.width()
-        
         if current_width > 0:
             start_val = current_width
             end_val = 0
@@ -321,108 +311,90 @@ class MainWindow(QMainWindow):
     def apply_permissions(self):
         if not self.current_user:
             return
-            
         role = self.current_user.get('Role', 'Technician')
         is_admin = (role == 'Admin')
         is_manager = (role == 'Manager')
-        is_technician = (role == 'Technician')
+        
+        # التحكم في ظهور الأزرار
+        if self.nav_group.button(0): self.nav_group.button(0).setVisible(is_admin or is_manager)
+        if self.nav_group.button(1): self.nav_group.button(1).setVisible(is_admin or is_manager)
+        if self.nav_group.button(2): self.nav_group.button(2).setVisible(is_admin or is_manager)
+        if self.nav_group.button(3): self.nav_group.button(3).setVisible(True)
+        if self.nav_group.button(6): self.nav_group.button(6).setVisible(True)
+        if self.nav_group.button(7): self.nav_group.button(7).setVisible(is_admin)
+        if self.nav_group.button(5): self.nav_group.button(5).setVisible(is_admin)
+        if self.nav_group.button(4): self.nav_group.button(4).setVisible(is_admin)
 
-        # 0: Tableau de Bord - (Admin + Manager فقط)
-        if self.nav_group.button(0):
-            self.nav_group.button(0).setVisible(is_admin or is_manager)
-
-        # 1: Données de Base - (Admin + Manager فقط)
-        if self.nav_group.button(1):
-            self.nav_group.button(1).setVisible(is_admin or is_manager)
-
-        # 2: Achats & Entrées - (Admin + Manager فقط)
-        if self.nav_group.button(2):
-            self.nav_group.button(2).setVisible(is_admin or is_manager)
-
-        # 3: Stock & Magasin - (متاح للجميع: Admin, Manager, Technician)
-        if self.nav_group.button(3):
-            self.nav_group.button(3).setVisible(True)
-
-        # 6: Sous-Traitants / Facturation - (متاح للجميع حسب طلبك الجديد)
-        if self.nav_group.button(6):
-            self.nav_group.button(6).setVisible(True)
-
-        # 7: Traçabilité - (Admin فقط)
-        # تم حجبها عن التقني والمدير لتبقى محصورة للأدمن
-        if self.nav_group.button(7):
-            self.nav_group.button(7).setVisible(is_admin)
-
-        # 5: Utilisateurs - (Admin فقط)
-        if self.nav_group.button(5):
-            self.nav_group.button(5).setVisible(is_admin)
-
-        # 4: Paramètres - (Admin فقط)
-        if self.nav_group.button(4):
-            self.nav_group.button(4).setVisible(is_admin)
-
-        # تطبيق صلاحيات داخلية في تبويب المخزن
-        if hasattr(self, 'inventory_tab'):
-            if hasattr(self.inventory_tab, 'apply_role_permissions'):
-                self.inventory_tab.apply_role_permissions(role)
     def logout(self):
-        ans = QMessageBox.question(self, "Déconnexion", "Voulez-vous vraiment vous déconnecter ?", 
-                                   QMessageBox.Yes | QMessageBox.No)
+        """تسجيل الخروج مع طلب التأكيد"""
+        ans = QMessageBox.question(
+            self, 
+            "Confirmation",  
+            "Voulez-vous vraiment vous déconnecter ?",  
+            QMessageBox.Yes | QMessageBox.No,  
+            QMessageBox.No  
+        )
+        
         if ans == QMessageBox.Yes:
             self.want_logout = True 
+            
+            from PySide6.QtCore import QSettings
             settings = QSettings("ModernLam", "StockManager")
-            settings.remove("last_logged_user") 
+            
             self.close()
 
-    def _create_pages(self):
-        if self.data_manager is None:
-            # زدنا العدد ليشمل الصفحة الجديدة (0-7 = 8 صفحات)
-            for i in range(8): 
-                p = QWidget(); l = QVBoxLayout(p)
-                l.addWidget(QLabel("Connexion requise..."), alignment=Qt.AlignCenter)
-                self.content_area.addWidget(p)
-            self.content_area.addWidget(SettingsTab(None))
-            return
+    def _init_placeholders(self):
+        for i in range(8):
+            self.content_area.addWidget(QWidget())
 
-        # Index 0
-        self.content_area.addWidget(DashboardTab(self.data_manager)) 
-        
-        # Index 1
-        self.content_area.addWidget(self._setup_master_data_tab())   
-        
-        # Index 2
-        self.content_area.addWidget(ProcurementTab(self.data_manager)) 
-        
-        # Index 3
-        self.inventory_tab = InventoryTab(self.data_manager)
-        self.inventory_tab.current_user = self.current_user 
-        self.content_area.addWidget(self.inventory_tab) 
-        
-        # Index 4 (Paramètres)
-        self.content_area.addWidget(SettingsTab(self.data_manager)) 
-        
-        # Index 5 (Utilisateurs)
-        self.user_mgmt_tab = UserManagementTab(self.data_manager)
-        self.content_area.addWidget(self.user_mgmt_tab)             
+    def _load_page(self, page_id):
+        if page_id in self.loaded_pages:
+            return self.loaded_pages[page_id]
 
-        # Index 6 (Facturation)
-        try:
-            self.billing_tab = BillingTab(self.data_manager)
-            self.content_area.addWidget(self.billing_tab)
-        except NameError:
-            temp_widget = QWidget()
-            QVBoxLayout(temp_widget).addWidget(QLabel("Page Facturation"))
-            self.content_area.addWidget(temp_widget)
+        widget = None
+        if page_id == 0:
+            widget = DashboardTab(self.data_manager)
+        elif page_id == 1:
+            widget = self._setup_master_data_tab()
+        elif page_id == 2:
+            widget = ProcurementTab(self.data_manager)
+        elif page_id == 3:
+            widget = InventoryTab(self.data_manager)
+            if hasattr(widget, 'current_user'):
+                widget.current_user = self.current_user
+            role = self.current_user.get('Role', 'Technician') if self.current_user else 'Technician'
+            widget.apply_role_permissions(role)
+        elif page_id == 4:
+            widget = SettingsTab(self.data_manager)
+        elif page_id == 5:
+            widget = UserManagementTab(self.data_manager)
+        elif page_id == 6:
+            try:
+                widget = BillingTab(self.data_manager)
+            except:
+                widget = QLabel("Module Facturation non chargé")
+        elif page_id == 7:
+            try:
+                widget = MovementHistoryTab(self.data_manager)
+            except:
+                widget = QLabel("Module Historique non chargé")
 
-        # Index 7 (Traçabilité) <-- الصفحة الجديدة
-        try:
-            self.history_tab = MovementHistoryTab(self.data_manager)
-            self.content_area.addWidget(self.history_tab)
-        except NameError:
-            temp_widget = QWidget()
-            QVBoxLayout(temp_widget).addWidget(QLabel("Page Traçabilité"))
-            self.content_area.addWidget(temp_widget)
+        if widget:
+            old_widget = self.content_area.widget(page_id)
+            self.content_area.removeWidget(old_widget)
+            self.content_area.insertWidget(page_id, widget)
+            self.loaded_pages[page_id] = widget
+            return widget
+        return None
 
     def switch_page(self, page_id):
+        if self.connection_error and page_id != 4:
+            QMessageBox.warning(self, "Erreur Connexion", "Veuillez configurer la base de données dans les paramètres.")
+            self.nav_group.button(4).setChecked(True)
+            self.switch_page(4)
+            return
+
+        self._load_page(page_id)
         self.content_area.setCurrentIndex(page_id)
 
     def _setup_master_data_tab(self):

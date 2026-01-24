@@ -4,14 +4,70 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, 
     QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QPushButton, 
     QTableWidget, QTableWidgetItem, QHeaderView, QLabel, QMessageBox, 
-    QFrame, QCompleter, QTabWidget, QAbstractItemView
+    QFrame, QCompleter, QTabWidget, QAbstractItemView, QMenu, QDialog, QDialogButtonBox
 )
-from PySide6.QtCore import Qt, QDate, QStringListModel
-from PySide6.QtGui import QColor, QFont, QBrush
+from PySide6.QtCore import Qt, QDate, QStringListModel, Signal
+from PySide6.QtGui import QColor, QFont, QBrush, QAction
 import qtawesome as qta
 
 from ui.widgets.inventory.dialogs import BarcodeLineEdit, NumericSpinBox
 
+# ==============================================================================
+# 1. نافذة اختيار الدفعة (Batch Selection)
+# ==============================================================================
+class BatchSelectionDialog(QDialog):
+    def __init__(self, matches, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sélectionner le Lot")
+        self.resize(650, 300)
+        self.selected_item = None
+        
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Ce produit existe en plusieurs lots/dates.\nVeuillez choisir la ligne exacte à retourner :"))
+        
+        self.table = QTableWidget()
+        cols = ["Désignation", "Lot", "Péremption", "Qté Reçue", "Prix Unitaire"]
+        self.table.setColumnCount(len(cols))
+        self.table.setHorizontalHeaderLabels(cols)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        
+        self.table.setRowCount(len(matches))
+        for i, item in enumerate(matches):
+            self.table.setItem(i, 0, QTableWidgetItem(str(item.get('Product_Name'))))
+            self.table.setItem(i, 1, QTableWidgetItem(str(item.get('Lot_Number'))))
+            self.table.setItem(i, 2, QTableWidgetItem(str(item.get('Expiry_Date') or '---')))
+            
+            qty = item.get('Quantity_Initial') or item.get('Qty_Received') or 0
+            self.table.setItem(i, 3, QTableWidgetItem(str(qty)))
+            
+            price = float(item.get('Unit_Price_Received') or item.get('Purchase_Price') or 0)
+            self.table.setItem(i, 4, QTableWidgetItem(f"{price:.2f}"))
+            
+            # تخزين البيانات الكاملة لاستخدامها عند الاختيار
+            self.table.item(i, 0).setData(Qt.UserRole, item)
+            
+        self.table.doubleClicked.connect(self.accept_selection)
+        layout.addWidget(self.table)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept_selection)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+    def accept_selection(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            self.selected_item = self.table.item(row, 0).data(Qt.UserRole)
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Attention", "Veuillez sélectionner une ligne.")
+
+# ==============================================================================
+# 2. نموذج الإدخال والتعديل (Form)
+# ==============================================================================
 class CreditNoteForm(QWidget):
     def __init__(self, data_manager):
         super().__init__()
@@ -21,6 +77,12 @@ class CreditNoteForm(QWidget):
         self.all_products_cache = []       # كل المنتجات (للوضع العادي)
         self.reception_batches_cache = []  # منتجات الـ Bon المحدد (للوضع المقيد)
         self.current_reception_mode = False # هل نحن بصدد إنشاء avoir لـ bon محدد؟
+        
+        # متغير لتتبع وضع التعديل (ID الـ Avoir الجاري تعديله)
+        self.current_edit_id = None 
+        
+        # متغير لتتبع سطر الجدول الجاري تعديله (تعديل المنتجات داخل القائمة)
+        self.editing_row = None
         
         self.selected_product = None 
         self.init_ui()
@@ -70,7 +132,7 @@ class CreditNoteForm(QWidget):
         entry_layout = QHBoxLayout(entry_group)
 
         search_layout = QVBoxLayout()
-        self.lbl_search_info = QLabel("Recherche (Global):") # سيتغير النص ديناميكياً
+        self.lbl_search_info = QLabel("Recherche (Global):")
         self.txt_search = BarcodeLineEdit()
         self.txt_search.setPlaceholderText("Scan ou tapez ici...")
         self.txt_search.returnPressed.connect(self.on_barcode_scanned)
@@ -102,7 +164,7 @@ class CreditNoteForm(QWidget):
 
         qty_layout = QVBoxLayout()
         self.spin_qty = NumericSpinBox() 
-        self.spin_qty.setRange(0, 99999) # السماح بـ 0 وأعداد عشرية
+        self.spin_qty.setRange(0, 99999)
         self.spin_price = QDoubleSpinBox()
         self.spin_price.setRange(0, 99999999)
         self.spin_price.setDecimals(2)
@@ -130,6 +192,12 @@ class CreditNoteForm(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.setColumnHidden(0, True)
         self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        
+        # [تعديل] ربط النقر على الجدول لرفع البيانات للتعديل
+        self.table.cellClicked.connect(self.load_line_data)
+        
         main_layout.addWidget(self.table)
 
         # --- Footer ---
@@ -137,9 +205,15 @@ class CreditNoteForm(QWidget):
         footer_frame.setStyleSheet("background-color: #ecf0f1; border-radius: 6px; padding: 5px;")
         footer_layout = QHBoxLayout(footer_frame)
         
-        self.btn_reset = QPushButton("Réinitialiser Mode")
+        self.btn_reset = QPushButton("Réinitialiser")
         self.btn_reset.setStyleSheet("background-color: #95a5a6; color: white;")
         self.btn_reset.clicked.connect(self.reset_form)
+        
+        # زر إلغاء التعديل للوثيقة كاملة (مخفي افتراضياً)
+        self.btn_cancel_edit = QPushButton("Annuler Modif")
+        self.btn_cancel_edit.setStyleSheet("background-color: #e74c3c; color: white;")
+        self.btn_cancel_edit.clicked.connect(self.cancel_edit_mode)
+        self.btn_cancel_edit.hide()
         
         self.lbl_total = QLabel("Total TTC: 0.00 DA")
         self.lbl_total.setStyleSheet("font-size: 18px; font-weight: 900; color: #c0392b;")
@@ -150,6 +224,7 @@ class CreditNoteForm(QWidget):
         self.btn_save.clicked.connect(self.save_credit_note)
 
         footer_layout.addWidget(self.btn_reset)
+        footer_layout.addWidget(self.btn_cancel_edit)
         footer_layout.addStretch()
         footer_layout.addWidget(self.lbl_total)
         footer_layout.addSpacing(20)
@@ -169,11 +244,9 @@ class CreditNoteForm(QWidget):
             self.update_completer(self.all_products_cache)
 
     def update_completer(self, product_list):
-        """تحديث قائمة الاكمال التلقائي بناءً على المصدر (الكل أو الاستلام المحدد)"""
         search_list = []
         seen = set()
         for p in product_list:
-            # نتأكد من عدم تكرار الأسماء في القائمة
             name = p.get('Product_Name', '')
             barcode = p.get('Barcode') or p.get('Internal_Barcode')
             
@@ -195,14 +268,11 @@ class CreditNoteForm(QWidget):
 
     def find_product(self, query):
         """
-        البحث الذكي:
-        - إذا كنا في وضع (Avoir sur Bon): نبحث فقط في self.reception_batches_cache
-        - إذا كنا في وضع عادي: نبحث في self.all_products_cache
+        البحث الذكي مع دعم تعدد الدفعات (Lots).
         """
-        found = None
-        query = query.lower()
+        matches = []
+        query = query.lower().strip()
         
-        # تحديد المصدر
         source_list = self.reception_batches_cache if self.current_reception_mode else self.all_products_cache
         
         for p in source_list:
@@ -211,55 +281,107 @@ class CreditNoteForm(QWidget):
             p_code2 = str(p.get('Internal_Barcode', '')).lower()
             
             if query == p_code or query == p_code2 or query == p_name:
-                found = p
-                break
-        
-        if found:
-            self.selected_product = found
-            self.lbl_product_name.setText(f"✅ {found['Product_Name']}")
-            
-            if self.current_reception_mode:
-                # في وضع الاستلام: نجبر المستخدم على استخدام نفس اللوت والسعر
-                lot = found.get('Lot_Number', '')
-                price = float(found.get('Unit_Price_Received', 0))
-                expiry_str = str(found.get('Expiry_Date', ''))[:10]
-                
-                self.txt_lot.setText(lot)
-                self.txt_lot.setReadOnly(True) # منع تغيير اللوت
-                self.txt_lot.setStyleSheet("background-color: #ecf0f1; color: #7f8c8d;")
-                
-                if expiry_str:
-                    self.date_expiry.setDate(QDate.fromString(expiry_str, "yyyy-MM-dd"))
-                    self.date_expiry.setReadOnly(True)
-                
-                self.spin_price.setValue(price)
-                self.spin_price.setReadOnly(True) # منع تغيير السعر
-                
-                # الكمية الافتراضية 1، ولكن لا تتجاوز الكمية المستلمة (اختياري)
-                # max_qty = float(found.get('Quantity_Initial', 9999))
-                # self.spin_qty.setValue(min(1.0, max_qty))
-                self.spin_qty.setFocus()
-                self.spin_qty.selectAll()
-            else:
-                # الوضع العادي
-                self.txt_lot.setReadOnly(False)
-                self.txt_lot.setStyleSheet("")
-                self.date_expiry.setReadOnly(False)
-                self.spin_price.setReadOnly(False)
-                self.spin_price.setValue(float(found.get('Purchase_Price', 0)))
-                self.spin_qty.setFocus()
+                matches.append(p)
+            elif query in p_name and len(query) > 3:
+                matches.append(p)
 
-        else:
+        if not matches:
             self.selected_product = None
             self.lbl_product_name.setText("❌ Produit introuvable" + (" (dans ce Bon)" if self.current_reception_mode else ""))
             self.clear_entry_fields(keep_search=True)
+            return
+
+        selected_match = None
+        if len(matches) == 1:
+            selected_match = matches[0]
+        else:
+            # إذا تكرر المنتج، أظهر الديالوج للاختيار
+            dialog = BatchSelectionDialog(matches, self)
+            if dialog.exec():
+                selected_match = dialog.selected_item
+            else:
+                return 
+
+        if selected_match:
+            self._apply_selected_product(selected_match)
+
+    def _apply_selected_product(self, found):
+        """تطبيق المنتج المختار على الواجهة"""
+        self.selected_product = found
+        self.lbl_product_name.setText(f"✅ {found['Product_Name']}")
+        
+        lot = found.get('Lot_Number', '')
+        price = float(found.get('Unit_Price_Received') or found.get('Purchase_Price') or found.get('Unit_Price', 0))
+        
+        # معالجة التاريخ
+        raw_expiry = found.get('Expiry_Date')
+        if raw_expiry and str(raw_expiry) != 'None' and str(raw_expiry) != '---':
+            try:
+                expiry_date = QDate.fromString(str(raw_expiry)[:10], "yyyy-MM-dd")
+                self.date_expiry.setDate(expiry_date)
+            except: pass
+        
+        if self.current_reception_mode:
+            self.txt_lot.setText(lot)
+            self.txt_lot.setReadOnly(True)
+            self.txt_lot.setStyleSheet("background-color: #ecf0f1; color: #7f8c8d;")
+            self.date_expiry.setReadOnly(True)
+            self.spin_price.setValue(price)
+            self.spin_price.setReadOnly(True)
+        else:
+            self.txt_lot.setText(lot) 
+            self.txt_lot.setReadOnly(False)
+            self.txt_lot.setStyleSheet("")
+            self.date_expiry.setReadOnly(False)
+            self.spin_price.setValue(price)
+            self.spin_price.setReadOnly(False)
+            
+        self.spin_qty.setFocus()
+        self.spin_qty.selectAll()
 
     def toggle_stock_fields(self):
         is_return = (self.combo_type.currentData() == "Return_Goods")
         self.txt_lot.setEnabled(is_return)
         self.date_expiry.setEnabled(is_return)
         if self.current_reception_mode:
-            self.txt_lot.setReadOnly(True) # يبقى مقفلاً في وضع البون
+            self.txt_lot.setReadOnly(True)
+
+    def load_line_data(self, row, col):
+        """[جديد] رفع بيانات السطر المحدد للتعديل"""
+        if col == 7: return # إذا ضغطنا على زر الحذف، لا نفعل شيئاً هنا
+
+        item_id = self.table.item(row, 0)
+        if not item_id: return
+
+        # استرجاع كائن المنتج الكامل المخزن
+        product_data = item_id.data(Qt.UserRole)
+        if not product_data:
+            # محاولة البحث عنه يدوياً في الكاش إذا لم يكن مخزناً
+            p_id = int(item_id.text())
+            source = self.reception_batches_cache if self.current_reception_mode else self.all_products_cache
+            product_data = next((p for p in source if p['Product_ID'] == p_id), None)
+        
+        if product_data:
+            self.selected_product = product_data
+            self.lbl_product_name.setText(f"✏️ MODIFICATION: {product_data['Product_Name']}")
+            
+            # تعبئة الحقول من الجدول مباشرة (لأنها قد تكون عدلت يدوياً)
+            self.txt_lot.setText(self.table.item(row, 2).text().replace("---", ""))
+            
+            expiry_txt = self.table.item(row, 3).text()
+            if expiry_txt and expiry_txt != "---":
+                self.date_expiry.setDate(QDate.fromString(expiry_txt, "yyyy-MM-dd"))
+            
+            self.spin_qty.setValue(float(self.table.item(row, 4).text()))
+            self.spin_price.setValue(float(self.table.item(row, 5).text()))
+            
+            # ضبط وضع التعديل
+            self.editing_row = row
+            self.btn_add_line.setText("Modifier la ligne")
+            self.btn_add_line.setStyleSheet("background-color: #f39c12; color: white; border-radius: 4px; padding: 10px; font-weight: bold;")
+            
+            self.spin_qty.setFocus()
+            self.spin_qty.selectAll()
 
     def add_line_to_table(self):
         if not self.selected_product:
@@ -283,27 +405,67 @@ class CreditNoteForm(QWidget):
         expiry = self.date_expiry.date().toString("yyyy-MM-dd") if is_return else None
         total_line = qty * price
 
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        
-        self.table.setItem(row, 0, QTableWidgetItem(str(self.selected_product['Product_ID'])))
-        self.table.setItem(row, 1, QTableWidgetItem(self.selected_product['Product_Name']))
-        self.table.setItem(row, 2, QTableWidgetItem(lot if is_return else "---"))
-        self.table.setItem(row, 3, QTableWidgetItem(expiry if is_return else "---"))
-        self.table.setItem(row, 4, QTableWidgetItem(str(qty)))
-        self.table.setItem(row, 5, QTableWidgetItem(f"{price:.2f}"))
-        self.table.setItem(row, 6, QTableWidgetItem(f"{total_line:.2f}"))
-        
-        btn_del = QPushButton("✖")
-        btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
-        btn_del.clicked.connect(lambda checked=False, r=row: self.remove_line(r)) 
-        self.table.setCellWidget(row, 7, btn_del)
+        # التحقق: هل نحن نضيف سطر جديد أم نعدل سطر موجود؟
+        if self.editing_row is not None:
+            row = self.editing_row
+            # تحديث السطر الموجود
+            self.table.item(row, 0).setText(str(self.selected_product['Product_ID']))
+            self.table.item(row, 0).setData(Qt.UserRole, self.selected_product) # تحديث البيانات المخفية
+            self.table.item(row, 1).setText(self.selected_product['Product_Name'])
+            self.table.item(row, 2).setText(lot if is_return else "---")
+            self.table.item(row, 3).setText(expiry if is_return else "---")
+            self.table.item(row, 4).setText(str(qty))
+            self.table.item(row, 5).setText(f"{price:.2f}")
+            self.table.item(row, 6).setText(f"{total_line:.2f}")
+            
+            # إعادة الزر لحالته الأصلية
+            self.editing_row = None
+            self.btn_add_line.setText("Ajouter")
+            self.btn_add_line.setStyleSheet("background-color: #27ae60; color: white; border-radius: 4px; padding: 10px; font-weight: bold;")
+            
+        else:
+            # إضافة سطر جديد
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            
+            item_id = QTableWidgetItem(str(self.selected_product['Product_ID']))
+            item_id.setData(Qt.UserRole, self.selected_product) # تخزين المنتج الكامل لاستعادته عند التعديل
+            
+            self.table.setItem(row, 0, item_id)
+            self.table.setItem(row, 1, QTableWidgetItem(self.selected_product['Product_Name']))
+            self.table.setItem(row, 2, QTableWidgetItem(lot if is_return else "---"))
+            self.table.setItem(row, 3, QTableWidgetItem(expiry if is_return else "---"))
+            self.table.setItem(row, 4, QTableWidgetItem(str(qty)))
+            self.table.setItem(row, 5, QTableWidgetItem(f"{price:.2f}"))
+            self.table.setItem(row, 6, QTableWidgetItem(f"{total_line:.2f}"))
+            
+            btn_del = QPushButton("✖")
+            btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
+            btn_del.clicked.connect(lambda checked=False, r=row: self.remove_line(r)) 
+            self.table.setCellWidget(row, 7, btn_del)
         
         self.calculate_total()
         self.clear_entry_fields()
 
     def remove_line(self, row):
+        # [تعديل] إضافة تأكيد الحذف
+        confirm = QMessageBox.question(
+            self, "Confirmation", 
+            "Voulez-vous vraiment retirer cette ligne ?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if confirm == QMessageBox.No:
+            return
+
         self.table.removeRow(row)
+        
+        # إذا قمنا بحذف السطر الذي كنا نعدله، نلغي وضع التعديل
+        if self.editing_row == row:
+            self.editing_row = None
+            self.btn_add_line.setText("Ajouter")
+            self.btn_add_line.setStyleSheet("background-color: #27ae60; color: white; border-radius: 4px; padding: 10px; font-weight: bold;")
+            self.clear_entry_fields()
+            
         self.calculate_total()
 
     def calculate_total(self):
@@ -329,9 +491,14 @@ class CreditNoteForm(QWidget):
             self.spin_price.setValue(0)
             
         self.txt_search.setFocus()
+        
+        # التأكد من إعادة الزر لوضعه الطبيعي إذا تم استدعاء التنظيف يدوياً
+        if self.editing_row is None:
+             self.btn_add_line.setText("Ajouter")
+             self.btn_add_line.setStyleSheet("background-color: #27ae60; color: white; border-radius: 4px; padding: 10px; font-weight: bold;")
 
     def reset_form(self):
-        """إعادة تعيين النموذج إلى الوضع الافتراضي"""
+        """إعادة تعيين النموذج للوضع الافتراضي (خروج من وضع التعديل والاستلام)"""
         self.table.setRowCount(0)
         self.txt_ref.clear()
         self.calculate_total()
@@ -341,20 +508,22 @@ class CreditNoteForm(QWidget):
         self.lbl_search_info.setText("Recherche (Global):")
         self.lbl_search_info.setStyleSheet("color: black;")
         
-        # إعادة تفعيل الحقول وتفريغها
+        # إعادة تفعيل الحقول
         self.txt_lot.setReadOnly(False)
         self.date_expiry.setReadOnly(False)
         self.spin_price.setReadOnly(False)
         self.txt_lot.setStyleSheet("")
         
-        # إعادة تحميل المنتجات العامة في البحث
+        self.editing_row = None
+        self.btn_add_line.setText("Ajouter")
+        
+        self.cancel_edit_mode() # لإخفاء زر إلغاء التعديل
         self.update_completer(self.all_products_cache)
 
     def populate_from_reception(self, data):
-        """
-        تجهيز الواجهة لعمل Avoir بناءً على Reception محدد.
-        لا نقوم بملء الجدول، بل نقيد البحث بمنتجات هذا الاستلام.
-        """
+        """تجهيز الواجهة لعمل Avoir من استلام"""
+        self.reset_form() # تنظيف أولاً
+        
         header = data.get('Header', {})
         batches = data.get('Batches', [])
 
@@ -362,38 +531,101 @@ class CreditNoteForm(QWidget):
             QMessageBox.warning(self, "Vide", "Cette réception ne contient aucun produit.")
             return
 
-        # 1. تفعيل الوضع المقيد
         self.current_reception_mode = True
         self.reception_batches_cache = batches
         
-        # 2. تحديث واجهة المستخدم
+        # تعبئة المورد
         supplier_id = header.get('Supplier_ID')
         idx = self.combo_supplier.findData(supplier_id)
         if idx >= 0: 
             self.combo_supplier.setCurrentIndex(idx)
-            self.combo_supplier.setEnabled(False) # قفل المورد
+            self.combo_supplier.setEnabled(False)
 
         orig_ref = header.get('Supplier_Invoice_Ref', '') or str(header.get('BR_ID'))
         self.txt_ref.setText(f"AVOIR-{orig_ref}")
         
-        # ضبط النوع على إرجاع
         idx_type = self.combo_type.findData("Return_Goods")
         self.combo_type.setCurrentIndex(idx_type)
 
-        # 3. تحديث البحث ليظهر فقط منتجات هذا البون
         self.update_completer(self.reception_batches_cache)
         self.lbl_search_info.setText(f"Recherche (Limité au Bon #{header.get('BR_ID')}):")
         self.lbl_search_info.setStyleSheet("color: #d35400; font-weight: bold;")
         
-        self.table.setRowCount(0) # تفريغ الجدول
-        self.calculate_total()
-        
         QMessageBox.information(self, "Mode Avoir", 
-            "Mode création d'Avoir activé pour ce Bon de Réception.\n\n"
-            "Veuillez scanner ou rechercher les produits à retourner.\n"
-            "Seuls les produits de ce Bon seront acceptés.")
+            "Mode création d'Avoir activé pour ce Bon de Réception.\n"
+            "Veuillez scanner ou rechercher les produits à retourner.")
         
         self.txt_search.setFocus()
+
+    def load_for_edit(self, credit_note_id):
+        """تحميل Avoir موجود للتعديل"""
+        try:
+            # نطلب التفاصيل من المدير (يجب أن تكون دالة get_credit_note_details موجودة)
+            data = self.manager.credit_notes.get_credit_note_details(credit_note_id)
+            if not data:
+                QMessageBox.warning(self, "Erreur", "Impossible de charger les données.")
+                return
+
+            self.reset_form()
+            
+            header = data['Header']
+            details = data['Details']
+            
+            # تفعيل وضع التعديل
+            self.current_edit_id = credit_note_id
+            self.btn_save.setText("💾 Modifier l'Avoir")
+            self.btn_save.setStyleSheet("background-color: #d35400; color: white; padding: 10px 20px; font-weight: bold;")
+            self.btn_cancel_edit.show()
+            
+            # تعبئة الهيدر
+            idx_supp = self.combo_supplier.findData(header['Supplier_ID'])
+            if idx_supp >= 0: self.combo_supplier.setCurrentIndex(idx_supp)
+            
+            self.txt_ref.setText(header['Credit_Note_Ref'])
+            if header.get('Credit_Date'):
+                self.date_edit.setDate(QDate.fromString(str(header['Credit_Date']), "yyyy-MM-dd"))
+            
+            idx_type = self.combo_type.findData(header['Type'])
+            if idx_type >= 0: self.combo_type.setCurrentIndex(idx_type)
+
+            # تعبئة الجدول
+            for item in details:
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+                
+                lot = item.get('Lot_Number') or "---"
+                expiry = str(item.get('Expiry_Date')) if item.get('Expiry_Date') else "---"
+                
+                item_id = QTableWidgetItem(str(item['Product_ID']))
+                # تخزين البيانات في UserRole لتسهيل التعديل لاحقاً
+                item_id.setData(Qt.UserRole, item) 
+                
+                self.table.setItem(row, 0, item_id)
+                self.table.setItem(row, 1, QTableWidgetItem(str(item['Product_Name'])))
+                self.table.setItem(row, 2, QTableWidgetItem(lot))
+                self.table.setItem(row, 3, QTableWidgetItem(expiry))
+                self.table.setItem(row, 4, QTableWidgetItem(str(item['Qty_Returned'])))
+                self.table.setItem(row, 5, QTableWidgetItem(str(item['Unit_Price'])))
+                self.table.setItem(row, 6, QTableWidgetItem(str(item['Line_Total'])))
+                
+                btn_del = QPushButton("✖")
+                btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
+                btn_del.clicked.connect(lambda checked=False, r=row: self.remove_line(r)) 
+                self.table.setCellWidget(row, 7, btn_del)
+
+            self.calculate_total()
+            QMessageBox.information(self, "Mode Modification", f"Modification de l'Avoir #{credit_note_id}")
+
+        except Exception as e:
+            logging.error(f"Load Edit Error: {e}")
+            QMessageBox.critical(self, "Erreur", str(e))
+
+    def cancel_edit_mode(self):
+        """إلغاء وضع التعديل"""
+        self.current_edit_id = None
+        self.btn_save.setText("💾 Valider l'Avoir")
+        self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-weight: bold;")
+        self.btn_cancel_edit.hide()
 
     def save_credit_note(self):
         if self.table.rowCount() == 0:
@@ -415,23 +647,34 @@ class CreditNoteForm(QWidget):
             'Credit_Date': self.date_edit.date().toString("yyyy-MM-dd"),
             'Type': self.combo_type.currentData(),
             'Total_Amount_TTC': total_ttc,
-            'Total_Amount_HT': total_ttc, # يمكن تعديله لحساب الضرائب
+            'Total_Amount_HT': total_ttc,
             'Notes': "Saisie via Interface Avoir"
         }
 
         items = []
         for r in range(self.table.rowCount()):
+            exp_str = self.table.item(r, 3).text()
+            expiry_val = exp_str if exp_str != "---" and exp_str != "None" else None
+
             items.append({
                 'Product_ID': int(self.table.item(r, 0).text()),
                 'Lot_Number': self.table.item(r, 2).text(),
-                'Expiry_Date': self.table.item(r, 3).text() if self.table.item(r, 3).text() != "---" else None,
+                'Expiry_Date': expiry_val,
                 'Qty_Returned': float(self.table.item(r, 4).text()),
                 'Unit_Price': float(self.table.item(r, 5).text())
             })
 
         try:
-            # هنا نفترض وجود current_user_id في مكان ما، سنضع 1 كمثال
-            success, msg = self.manager.credit_notes.create_credit_note(header_data, items, user_id=1)
+            # التحقق: هل نحن في وضع التعديل أم الإنشاء؟
+            if self.current_edit_id:
+                success, msg = self.manager.credit_notes.update_credit_note(
+                    self.current_edit_id, header_data, items, user_id=1
+                )
+            else:
+                success, msg = self.manager.credit_notes.create_credit_note(
+                    header_data, items, user_id=1
+                )
+
             if success:
                 QMessageBox.information(self, "Succès", msg)
                 self.reset_form()
@@ -439,12 +682,18 @@ class CreditNoteForm(QWidget):
                     self.parent().refresh_history()
             else:
                 QMessageBox.critical(self, "Erreur", f"Échec: {msg}")
+
         except Exception as e:
             logging.error(f"Save Error: {e}")
             QMessageBox.critical(self, "Erreur", str(e))
 
+
+# ==============================================================================
+# 3. القائمة والسجل (List)
+# ==============================================================================
 class CreditNoteList(QWidget):
-    # ... (نفس الكود السابق لـ CreditNoteList بدون تغيير)
+    request_edit = Signal(int) # إشارة لطلب التعديل
+
     def __init__(self, data_manager):
         super().__init__()
         self.manager = data_manager
@@ -461,7 +710,8 @@ class CreditNoteList(QWidget):
         layout.addLayout(hbox)
 
         self.table = QTableWidget()
-        cols = ["ID", "Réf. Avoir", "Fournisseur", "Date", "Type", "Montant TTC", "Statut"]
+        # [تعديل] إزالة "Statut" من الأعمدة
+        cols = ["ID", "Réf. Avoir", "Fournisseur", "Date", "Type", "Montant TTC"]
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -470,8 +720,64 @@ class CreditNoteList(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setColumnHidden(0, True) 
         
+        # تفعيل القائمة المنبثقة (Right Click)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        
+        # تفعيل النقر المزدوج للتعديل
+        self.table.doubleClicked.connect(self.trigger_edit)
+        
         layout.addWidget(self.table)
         self.load_data()
+
+    def show_context_menu(self, pos):
+        index = self.table.indexAt(pos)
+        if not index.isValid(): return
+
+        menu = QMenu(self)
+        
+        action_edit = QAction("✏️ Modifier", self)
+        action_edit.triggered.connect(self.trigger_edit)
+        menu.addAction(action_edit)
+
+        action_delete = QAction("🗑️ Supprimer", self)
+        action_delete.triggered.connect(self.trigger_delete)
+        menu.addAction(action_delete)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def get_selected_id(self):
+        row = self.table.currentRow()
+        if row < 0: return None
+        item = self.table.item(row, 0)
+        return int(item.text()) if item else None
+
+    def trigger_edit(self):
+        cn_id = self.get_selected_id()
+        if cn_id:
+            self.request_edit.emit(cn_id)
+
+    def trigger_delete(self):
+        cn_id = self.get_selected_id()
+        if not cn_id: return
+        
+        reply = QMessageBox.question(
+            self, "Confirmation", 
+            "Voulez-vous vraiment supprimer cet Avoir ?\n\n"
+            "⚠️ Attention : Si c'est un retour marchandise, le stock sera restauré.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            if hasattr(self.manager.credit_notes, 'delete_credit_note'):
+                success, msg = self.manager.credit_notes.delete_credit_note(cn_id, user_id=1)
+                if success:
+                    QMessageBox.information(self, "Succès", msg)
+                    self.load_data()
+                else:
+                    QMessageBox.critical(self, "Erreur", msg)
+            else:
+                QMessageBox.warning(self, "Erreur", "La fonction de suppression n'est pas implémentée dans le Manager.")
 
     def load_data(self):
         try:
@@ -491,12 +797,14 @@ class CreditNoteList(QWidget):
                 amt_item = QTableWidgetItem(f"{amt:,.2f} DA")
                 amt_item.setForeground(QBrush(QColor("#c0392b")))
                 self.table.setItem(row, 5, amt_item)
-                self.table.setItem(row, 6, QTableWidgetItem(str(note['Status'])))
+                # [تعديل] تم إزالة عمود الحالة
         except Exception as e:
             logging.error(f"Error loading credit notes: {e}")
 
+# ==============================================================================
+# 4. الواجهة الرئيسية للتبويب (Main Tab)
+# ==============================================================================
 class CreditNoteTab(QWidget):
-    # ... (نفس الكود السابق لـ CreditNoteTab بدون تغيير كبير، فقط populate_from_reception)
     def __init__(self, data_manager):
         super().__init__()
         self.manager = data_manager
@@ -511,6 +819,10 @@ class CreditNoteTab(QWidget):
         
         self.tabs.addTab(self.form_tab, "📝 Saisie Avoir")
         self.tabs.addTab(self.list_tab, "📜 Historique")
+        
+        # ربط إشارة طلب التعديل
+        self.list_tab.request_edit.connect(self.handle_edit_request)
+        
         self.tabs.currentChanged.connect(self.on_tab_change)
         layout.addWidget(self.tabs)
 
@@ -519,6 +831,11 @@ class CreditNoteTab(QWidget):
 
     def refresh_history(self):
         self.list_tab.load_data()
+
+    def handle_edit_request(self, credit_note_id):
+        """التعامل مع طلب التعديل القادم من القائمة"""
+        self.tabs.setCurrentIndex(0) # الانتقال لتبويب النموذج
+        self.form_tab.load_for_edit(credit_note_id)
 
     def populate_from_reception(self, data):
         self.tabs.setCurrentIndex(0)

@@ -221,3 +221,256 @@ class CreditNoteManager:
             logging.error(f"Error fetching credit notes: {e}")
             return []
         
+    def delete_credit_note(self, credit_note_id, user_id=None):
+        """
+        حذف Avoir مع إعادة المخزون إذا كان نوعه إرجاع بضاعة.
+        """
+        conn = None
+        try:
+            conn = self.db.get_raw_connection()
+            conn.start_transaction()
+            cursor = conn.cursor(dictionary=True)
+
+            # 1. جلب تفاصيل الـ Avoir قبل الحذف لمعرفة الكميات والباتشات
+            cursor.execute("SELECT Type FROM Supplier_Credit_Notes WHERE Credit_Note_ID = %s", (credit_note_id,))
+            header = cursor.fetchone()
+            if not header:
+                return False, "Avoir introuvable."
+
+            if header['Type'] == 'Return_Goods':
+                cursor.execute("SELECT * FROM Credit_Note_Details WHERE Credit_Note_ID = %s", (credit_note_id,))
+                details = cursor.fetchall()
+
+                # 2. إعادة الكميات للمخزون
+                for item in details:
+                    if item['Batch_ID'] and item['Qty_Returned'] > 0:
+                        # إعادة الكمية للباتش
+                        # ملاحظة: نعيد الحالة إلى Available إذا كانت Depleted
+                        sql_restore = """
+                            UPDATE Inventory_Batches 
+                            SET Quantity_Current = Quantity_Current + %s,
+                                Status = CASE WHEN Status = 'Depleted' THEN 'Available' ELSE Status END
+                            WHERE Batch_ID = %s
+                        """
+                        cursor.execute(sql_restore, (item['Qty_Returned'], item['Batch_ID']))
+
+                        # تسجيل حركة تصحيحية (Ajustement أو Annulation Retour)
+                        self.movement_manager.create_movement_log(
+                            product_id=item['Product_ID'],
+                            movement_type='Adjustment', # أو نوع مخصص Cancellation
+                            qty_change=item['Qty_Returned'], # بالموجب لأننا أعدناها
+                            unit_used='Unit',
+                            batch_id=item['Batch_ID'],
+                            user_id=user_id,
+                            notes=f"Annulation Avoir #{credit_note_id}",
+                            external_cursor=cursor
+                        )
+
+            # 3. حذف التفاصيل والرأس
+            cursor.execute("DELETE FROM Credit_Note_Details WHERE Credit_Note_ID = %s", (credit_note_id,))
+            cursor.execute("DELETE FROM Supplier_Credit_Notes WHERE Credit_Note_ID = %s", (credit_note_id,))
+
+            conn.commit()
+            return True, "Avoir supprimé avec succès (Stock restauré)."
+
+        except Exception as e:
+            if conn: conn.rollback()
+            logging.error(f"Delete Error: {e}")
+            return False, str(e)
+        finally:
+            if conn: conn.close()
+
+    def _restore_stock(self, cursor, batch_id, qty, user_id, reason):
+        """إعادة كمية للمخزون وتسجيلها كحركة موجبة"""
+        cursor.execute("""
+            UPDATE Inventory_Batches 
+            SET Quantity_Current = Quantity_Current + %s,
+                Status = CASE WHEN Status = 'Depleted' THEN 'Available' ELSE Status END
+            WHERE Batch_ID = %s
+        """, (qty, batch_id))
+        
+        # نسجل الحركة كـ +Return_To_Supplier لتظهر كتصحيح موجب
+        self.movement_manager.create_movement_log(
+            product_id=None, # سيجلبه تلقائياً
+            movement_type='Return_To_Supplier', 
+            qty_change=qty, # كمية موجبة
+            unit_used='Unit', batch_id=batch_id, user_id=user_id,
+            notes=reason, external_cursor=cursor
+        )
+
+    def _apply_stock_difference(self, cursor, product_id, batch_id, diff, user_id, ref):
+        """
+        معالجة الفرق (Delta) في المخزون:
+        - إذا كان diff موجباً (+): يعني زدنا الكمية المرجعة -> نخصم المزيد من المخزون.
+        - إذا كان diff سالباً (-): يعني أنقصنا الكمية المرجعة -> نعيد الفرق للمخزون.
+        """
+        if not batch_id: return 
+
+        if diff > 0:
+            # زيادة في الإرجاع (خصم إضافي من المخزون)
+            # يجب التأكد من توفر الرصيد
+            cursor.execute("SELECT Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s", (batch_id,))
+            curr = cursor.fetchone()
+            if not curr or curr['Quantity_Current'] < diff:
+                raise ValueError(f"Stock insuffisant pour augmenter le retour de {diff}")
+            
+            new_stock = curr['Quantity_Current'] - diff
+            cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = %s, Status = IF(%s=0, 'Depleted', Status) WHERE Batch_ID = %s", 
+                           (new_stock, new_stock, batch_id))
+            
+            # تسجيل الفرق بالسالب (خروج إضافي)
+            self.movement_manager.create_movement_log(
+                product_id=product_id, movement_type='Return_To_Supplier', qty_change=-diff,
+                unit_used='Unit', batch_id=batch_id, user_id=user_id,
+                notes=f"Modif Avoir #{ref} (Ajout)", external_cursor=cursor
+            )
+
+        elif diff < 0:
+            # نقص في الإرجاع (إعادة للمخزون)
+            restore_qty = abs(diff) 
+            self._restore_stock(cursor, batch_id, restore_qty, user_id, f"Modif Avoir #{ref} (Réduction)")
+
+    def _deduct_stock_initial(self, cursor, product_id, qty, lot_number, user_id, ref):
+        """خصم أولي (عند الإنشاء لأول مرة)"""
+        cursor.execute("""
+            SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
+            WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s 
+            LIMIT 1
+        """, (product_id, lot_number, qty))
+        batch = cursor.fetchone()
+        
+        if batch:
+            batch_id = batch['Batch_ID']
+            new_qty = batch['Quantity_Current'] - qty
+            cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = %s, Status = IF(%s=0, 'Depleted', Status) WHERE Batch_ID = %s", 
+                           (new_qty, new_qty, batch_id))
+            
+            self.movement_manager.create_movement_log(
+                product_id=product_id, movement_type='Return_To_Supplier', qty_change=-qty,
+                unit_used='Unit', batch_id=batch_id, user_id=user_id,
+                notes=f"Retour Avoir #{ref}", external_cursor=cursor
+            )
+            return batch_id
+        else:
+            raise ValueError(f"Stock insuffisant (Lot: {lot_number})")
+
+    def _insert_detail_row(self, cursor, cn_id, item):
+        """مساعد لإدخال سطر التفاصيل فقط"""
+        query = """
+            INSERT INTO Credit_Note_Details 
+            (Credit_Note_ID, Product_ID, Batch_ID, Lot_Number, Expiry_Date, 
+             Qty_Returned, Unit_Price, Line_Total)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        qty = Decimal(str(item.get('Qty_Returned', 0)))
+        price = Decimal(str(item.get('Unit_Price', 0)))
+        cursor.execute(query, (
+            cn_id, item['Product_ID'], item.get('Batch_ID'), item.get('Lot_Number'),
+            item.get('Expiry_Date'), qty, price, qty * price
+        ))
+
+    def _insert_credit_note_item(self, cursor, cn_id, item, note_type, user_id, ref):
+        """مساعد لإدخال سطر جديد تماماً مع خصم المخزون"""
+        batch_id = None
+        qty = Decimal(str(item.get('Qty_Returned', 0)))
+        
+        if note_type == 'Return_Goods' and qty > 0:
+            batch_id = self._deduct_stock_initial(cursor, item['Product_ID'], qty, item.get('Lot_Number'), user_id, ref)
+        
+        item['Batch_ID'] = batch_id
+        self._insert_detail_row(cursor, cn_id, item)
+
+    def update_credit_note(self, credit_note_id, header_data, new_items, user_id):
+        """
+        تحديث ذكي يحسب الفرق (Delta) بدلاً من الحذف الكامل وإعادة الإدخال.
+        يضمن عدم تضخيم سجل الحركات.
+        """
+        conn = None
+        try:
+            conn = self.db.get_raw_connection()
+            conn.start_transaction()
+            cursor = conn.cursor(dictionary=True)
+
+            # 1. جلب النوع القديم للتحقق
+            cursor.execute("SELECT Type, Credit_Note_Ref FROM Supplier_Credit_Notes WHERE Credit_Note_ID = %s", (credit_note_id,))
+            old_header = cursor.fetchone()
+            if not old_header:
+                raise ValueError("Avoir introuvable.")
+            
+            note_type = header_data.get('Type', 'Return_Goods')
+            ref = header_data['Credit_Note_Ref']
+
+            # 2. جلب التفاصيل القديمة لمقارنتها
+            cursor.execute("SELECT * FROM Credit_Note_Details WHERE Credit_Note_ID = %s", (credit_note_id,))
+            old_items_list = cursor.fetchall()
+            
+            # خريطة للمقارنة: Key = (Product_ID, Lot_Number)
+            old_items_map = {}
+            for it in old_items_list:
+                key = (it['Product_ID'], it['Lot_Number'])
+                old_items_map[key] = it
+
+            # 3. حذف التفاصيل من الجدول (سنعيد إدخالها لاحقاً، لكن المخزون نعالجه بالفروقات)
+            cursor.execute("DELETE FROM Credit_Note_Details WHERE Credit_Note_ID = %s", (credit_note_id,))
+
+            # 4. تحديث رأس الوثيقة (Header)
+            sql_update_header = """
+                UPDATE Supplier_Credit_Notes 
+                SET Supplier_ID=%s, Credit_Note_Ref=%s, Credit_Date=%s, Type=%s, 
+                    Total_Amount_HT=%s, Total_Amount_TTC=%s, Notes=%s
+                WHERE Credit_Note_ID=%s
+            """
+            cursor.execute(sql_update_header, (
+                header_data['Supplier_ID'], ref, header_data['Credit_Date'],
+                note_type, header_data['Total_Amount_HT'], header_data['Total_Amount_TTC'],
+                header_data.get('Notes', ''), credit_note_id
+            ))
+
+            # 5. معالجة العناصر الجديدة وحساب الفروقات
+            processed_keys = set()
+
+            for new_item in new_items:
+                p_id = new_item['Product_ID']
+                lot = new_item.get('Lot_Number')
+                new_qty = Decimal(str(new_item.get('Qty_Returned', 0)))
+                
+                key = (p_id, lot)
+                processed_keys.add(key)
+                
+                # أ) هل هذا السطر (نفس المنتج واللوت) كان موجوداً؟
+                if key in old_items_map and note_type == 'Return_Goods':
+                    old_item = old_items_map[key]
+                    old_qty = Decimal(str(old_item['Qty_Returned']))
+                    batch_id = old_item['Batch_ID'] # نستخدم نفس الباتش القديم
+                    
+                    diff = new_qty - old_qty # الفرق: (الجديد - القديم)
+                    
+                    if diff != 0:
+                        # تطبيق الفرق فقط على المخزون
+                        self._apply_stock_difference(cursor, p_id, batch_id, diff, user_id, ref)
+                    
+                    # إدخال السطر الجديد في قاعدة البيانات
+                    new_item['Batch_ID'] = batch_id 
+                    self._insert_detail_row(cursor, credit_note_id, new_item)
+
+                # ب) سطر جديد كلياً (أو لوت مختلف)
+                else:
+                    self._insert_credit_note_item(cursor, credit_note_id, new_item, note_type, user_id, ref)
+
+            # 6. معالجة العناصر المحذوفة (كانت موجودة ولم تعد موجودة)
+            for key, old_item in old_items_map.items():
+                if key not in processed_keys and note_type == 'Return_Goods':
+                    # إعادة الكمية كاملة للمخزون
+                    qty_to_restore = Decimal(str(old_item['Qty_Returned']))
+                    if qty_to_restore > 0 and old_item['Batch_ID']:
+                        self._restore_stock(cursor, old_item['Batch_ID'], qty_to_restore, user_id, f"Suppression ligne Avoir #{ref}")
+
+            conn.commit()
+            return True, "Avoir modifié avec succès (Mouvements ajustés)."
+
+        except Exception as e:
+            if conn: conn.rollback()
+            logging.error(f"Update Error: {e}")
+            return False, str(e)
+        finally:
+            if conn: conn.close()
