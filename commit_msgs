@@ -31,3 +31,28 @@ Statistics & Reporting:
 UI/UX:
 - Improve Logout confirmation dialog to default to "No" for safety.
 - Refactor `base.py` logging configuration to reduce console noise.
+-----
+
+feat: add Reclamation module, fix Reception workflow and report units
+
+Reclamation (Claims) Module:
+- Implement `ReclamationTab` to list receptions with variance notes or product issues.
+- Add `ReclamationDialog` for detailed management of claims.
+- Allow editing of global reception notes (Header) via `update_variance_note`.
+- Allow editing of specific product notes (Batch) via `update_batch_note`.
+- Implement multi-select functionality to remove product notes in bulk.
+- Disable direct table editing (`NoEditTriggers`) to prevent double-click conflicts.
+
+Reception Workflow Fixes:
+- Fix `ReceptionDialog` initialization order to prevent `AttributeError` on startup.
+- Fix input locking logic: Product fields now correctly enable *immediately* after Invoice/BL validation without requiring a session restart.
+- Ensure Purchase Order status updates to 'Completed' automatically upon header validation.
+
+Statistics & Reporting:
+- Fix unit display in Consumption Reports and KPIs:
+  - Logic updated to multiply stock quantities by `Usage_Qty_Per_Stock_Unit`.
+  - Reports now display Usage Units (e.g., "1 Test") instead of fractional Stock Units (e.g., "0.01 Box").
+
+Database Managers:
+- Update `ReceptionManager` with methods to fetch problematic receptions and update notes.
+- Update `StatisticsManager` queries to support unit conversion.

@@ -1003,3 +1003,55 @@ class ReceptionLogManager:
         except Exception as e:
             logging.error(f"Error fetching last barcode: {e}")
             return None
+    def get_receptions_with_issues(self):
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                query = """
+                    SELECT 
+                        rl.*, 
+                        s.Supplier_Name,
+                        (SELECT COUNT(*) FROM Inventory_Batches ib 
+                         WHERE ib.BR_ID = rl.BR_ID AND ib.Reception_Note IS NOT NULL AND ib.Reception_Note != '') as Product_Issues_Count
+                    FROM Reception_Log rl
+                    JOIN Suppliers s ON rl.Supplier_ID = s.Supplier_ID
+                    WHERE 
+                        (rl.Variance_Notes IS NOT NULL AND rl.Variance_Notes != '')
+                        OR 
+                        EXISTS (SELECT 1 FROM Inventory_Batches ib 
+                                WHERE ib.BR_ID = rl.BR_ID AND ib.Reception_Note IS NOT NULL AND ib.Reception_Note != '')
+                    ORDER BY rl.Reception_Date DESC
+                """
+                cursor.execute(query)
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error fetching receptions with issues: {e}")
+            return []
+    def update_variance_note(self, br_id, note):
+        """تحديث ملاحظة الشكوى (Variance Note) في رأس الاستلام."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE Reception_Log SET Variance_Notes = %s WHERE BR_ID = %s",
+                    (note, br_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error updating variance note: {e}")
+            return False
+    def update_batch_note(self, batch_id, note):
+        """تحديث ملاحظة منتج محدد (Reception_Note) في جدول الدفعات."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE Inventory_Batches SET Reception_Note = %s WHERE Batch_ID = %s",
+                    (note, batch_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error updating batch note: {e}")
+            return False

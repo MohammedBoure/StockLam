@@ -21,6 +21,8 @@ from .dialogs import PurchaseOrderDialog
 from .reception_tab import ReceptionTab
 from .reception_history_tab import ReceptionHistoryTab
 from .credit_note_tab import CreditNoteTab 
+# [NEW] استيراد تبويب الشكاوى
+from .reclamation_tab import ReclamationTab 
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
 
 
@@ -52,21 +54,23 @@ class ProcurementTab(QWidget):
         self.po_tab = PurchaseOrdersTab(self.data_manager)
         self.rec_tab = ReceptionTab(self.data_manager) 
         self.history_tab = ReceptionHistoryTab(self.data_manager)
-        # [2] تهيئة تبويب الـ Avoir
         self.credit_tab = CreditNoteTab(self.data_manager)
+        # [NEW] تهيئة تبويب الشكاوى
+        self.reclamation_tab = ReclamationTab(self.data_manager)
         
         # إضافة التبويبات
         self.tabs.addTab(self.po_tab, "📦 Bons de Commandes")
         self.tabs.addTab(self.rec_tab, "📥 Réception de Commandes")
         self.tabs.addTab(self.history_tab, "📜 Historique Réceptions")
-        # [3] إضافة التبويب للقائمة
         self.tabs.addTab(self.credit_tab, "↩️ Avoirs / Retours")
+        # [NEW] إضافة التبويب للقائمة
+        self.tabs.addTab(self.reclamation_tab, "⚠️ Réclamations")
         
         # الاتصالات (Signals)
         self.po_tab.data_changed.connect(self.rec_tab.load_pending_pos)
         self.tabs.currentChanged.connect(self.on_tab_change)
         
-        # [4] ربط الإشارة بالدالة (الآن الدالة موجودة في الأسفل)
+        # ربط إشارة طلب الـ Avoir
         self.history_tab.request_create_avoir.connect(self.open_credit_note_tab)
         
         layout.addWidget(self.tabs)
@@ -83,18 +87,20 @@ class ProcurementTab(QWidget):
         elif index == 2:
             self.history_tab.load_data()
         elif index == 3:
-            # تحديث الهيستوري عند الدخول لتبويب الـ Avoir
             if hasattr(self.credit_tab, 'refresh_history'):
                 self.credit_tab.refresh_history()
+        elif index == 4:
+            # [NEW] تحديث بيانات الشكاوى عند فتح التبويب
+            if hasattr(self.reclamation_tab, 'load_data'):
+                self.reclamation_tab.load_data()
 
-    # [5] هذه هي الدالة التي كانت مفقودة وتسبب الخطأ
     def open_credit_note_tab(self, reception_data):
         """تنتقل إلى تبويب الـ Credit Note وتملؤه ببيانات الاستلام"""
         self.tabs.setCurrentWidget(self.credit_tab)
         if hasattr(self.credit_tab, 'populate_from_reception'):
             self.credit_tab.populate_from_reception(reception_data)
 
-# --- PurchaseOrdersTab يبقى كما هو في ملفك الأصلي ---
+# --- PurchaseOrdersTab يبقى كما هو ---
 class PurchaseOrdersTab(QWidget):
     data_changed = Signal() 
     def __init__(self, manager):
