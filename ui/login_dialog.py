@@ -89,24 +89,44 @@ class LoginDialog(QDialog):
         self.btn_login.clicked.connect(self.handle_login)
         layout.addWidget(self.btn_login)
 
+        # --- التعديلات المطلوبة ---
+
+        # 1. عند الضغط على Enter في اسم المستخدم -> ينتقل المؤشر إلى كلمة المرور
+        self.username_input.returnPressed.connect(self.password_input.setFocus)
+        
+        # 2. عند الضغط على Enter في كلمة المرور -> يحاول تسجيل الدخول (سيتم التحقق من الخانات داخل الدالة)
+        self.password_input.returnPressed.connect(self.handle_login)
+        
+        # 3. وضع المؤشر في الخانة الأولى عند البدء
+        self.username_input.setFocus()
+
     def handle_login(self):
         user = self.username_input.text().strip()
         pwd = self.password_input.text().strip()
         
-        # 1. محاولة المصادقة مع قاعدة البيانات
+        # --- التحقق من الخانات قبل المحاولة ---
+        
+        # إذا كان اسم المستخدم فارغاً، نضع المؤشر عليه ولا نفعل شيئاً
+        if not user:
+            self.username_input.setFocus()
+            return
+
+        if not pwd:
+            self.password_input.setFocus()
+            return
+
         result = self.data_manager.users.authenticate(user, pwd)
         
         if result:
             self.user_data = result
             
-            # 2. منطق "تذكرني"
             if self.remember_me.isChecked():
-                # حفظ البيانات للمرة القادمة
                 SessionManager.save_session(user, pwd)
             else:
-                # إذا ألغى الاختيار، نمسح أي جلسة قديمة
                 SessionManager.clear_session()
                 
             self.accept()
         else:
             QMessageBox.warning(self, "Échec", "Nom d'utilisateur ou mot de passe incorrect.")
+            self.password_input.clear()
+            self.password_input.setFocus()

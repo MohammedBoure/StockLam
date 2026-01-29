@@ -9,11 +9,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate, QTimer, QLocale
 from PySide6.QtGui import QFont, QColor, QGuiApplication
 from ui.widgets.master_data.dialogs import BaseDialog
+from PySide6.QtCore import Qt, QDate, QTimer, QLocale
 import qtawesome as qta
 
 from .location_tree_combo import LocationTreeComboBox
-from PySide6.QtCore import Qt, QDate, QTimer, QLocale
-
+from .bulk_barcode_selection_dialog import BulkBarcodeSelectionDialog
 
 
 class AutoSelectSpinBox(QSpinBox):
@@ -363,6 +363,11 @@ class ReceptionDialog(BaseDialog):
         self.btn_delete = QPushButton(qta.icon('fa5s.trash-alt', color='white'), " Supprimer")
         self.btn_print = QPushButton(qta.icon('fa5s.print', color='white'), " Imprimer")
 
+
+        self.btn_print_all = QPushButton(qta.icon('fa5s.copy', color='white'), " Imprimer Tout")
+        self.btn_print_all.setToolTip("Imprimer les étiquettes pour tous les articles de la liste")
+        self.btn_print_all.setStyleSheet("background-color: #8e44ad; color: white; font-weight: bold;")
+
         # إعدادات الجدول
         self.table_items = QTableWidget(0, 14)
         headers = [
@@ -621,6 +626,51 @@ class ReceptionDialog(BaseDialog):
             self.btn_validate_ref.setEnabled(True)
             QMessageBox.critical(self, "Erreur Système", str(e))
             return False
+        
+
+    def open_bulk_print_dialog(self):
+        """Ouvre la fenêtre de sélection et lance l'impression en masse."""
+        if self.table_items.rowCount() == 0:
+            QMessageBox.information(self, "Info", "La liste est vide.")
+            return
+
+        # 1. Collecter les données du tableau
+        items_to_process = []
+        for row in range(self.table_items.rowCount()):
+            item_0 = self.table_items.item(row, 0)
+            if not item_0: continue
+            meta = item_0.data(Qt.UserRole)
+            if meta:
+                # On ajoute le nom du produit manquant dans meta parfois
+                meta['Product_Name'] = item_0.text() 
+                items_to_process.append(meta)
+
+        # 2. Ouvrir la fenêtre de dialogue
+        dlg = BulkBarcodeSelectionDialog(items_to_process, self)
+        if dlg.exec():
+            selected = dlg.get_items_to_print()
+            
+            # 3. Boucle d'impression
+            total_labels = 0
+            for index, item in enumerate(selected):
+                qty = int(item.get('Qty_Received', 1))
+                name = item.get('Product_Name', 'Inconnu')
+                barcode = item.get('Internal_Barcode', '')
+                lot = item.get('Lot_Number', '')
+                expiry = str(item.get('Expiry_Date', ''))
+                
+                # Impression des étiquettes produits
+                if qty > 0:
+                    self.printer.print_label(name, barcode, lot, expiry, qty)
+                    total_labels += qty
+                
+                # 4. Impression du séparateur (Sauf après le dernier produit)
+                if index < len(selected) - 1:
+                    # On imprime une étiquette "Vide" ou avec un trait
+                    # Astuce : On envoie des chaines vides ou des tirets
+                    self.printer.print_label("----------------", "   ", "---", "---", 1)
+
+            QMessageBox.information(self, "Terminé", f"Ordre d'impression envoyé pour {total_labels} étiquettes.")
 
     def setup_connections(self):
         self.cb_product.currentIndexChanged.connect(self.on_product_selected)
@@ -637,6 +687,9 @@ class ReceptionDialog(BaseDialog):
         self.btn_modify.clicked.connect(self.load_item_for_edit)
         self.btn_delete.clicked.connect(self.delete_selected_row)
         self.btn_print.clicked.connect(self.print_selected_labels)
+        self.btn_print_all.clicked.connect(self.open_bulk_print_dialog)
+
+        self.table_items.cellDoubleClicked.connect(self.load_item_for_edit)
 
     def select_location_id(self, location_id):
         try:
@@ -797,6 +850,7 @@ class ReceptionDialog(BaseDialog):
         ctrl_bar.addWidget(self.btn_modify)
         ctrl_bar.addWidget(self.btn_delete)
         ctrl_bar.addWidget(self.btn_print)
+        ctrl_bar.addWidget(self.btn_print_all)
         main_layout.addLayout(ctrl_bar)
 
         main_layout.addWidget(self.table_items, 1)

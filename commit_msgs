@@ -81,3 +81,18 @@ Summary of changes:
 
 4. Versioning:
    - Bumped version to 1.6.0.
+-----
+
+feat(release): v1.6.1 - enhance login UX and add bulk barcode printing
+
+Authentication (Keyboard Navigation):
+- Smart Navigation: Pressing Enter on 'Username' now moves focus to 'Password'.
+- Enter-to-Login: Pressing Enter triggers login only if fields are valid.
+- Initial Focus: Cursor automatically targets the 'Username' field on startup.
+- Validation: Prevent login attempts if fields are empty.
+
+Reception & Barcodes:
+- Implemented 'Print All' button in ReceptionDialog for mass generation.
+- Added `BulkBarcodeSelectionDialog` to select/deselect items before printing.
+- Added separator label logic to distinguish between product batches.
+- Connected table double-click event to trigger item modification mode.
