@@ -218,7 +218,7 @@ class CreditNoteForm(QWidget):
         self.lbl_total = QLabel("Total TTC: 0.00 DA")
         self.lbl_total.setStyleSheet("font-size: 18px; font-weight: 900; color: #c0392b;")
         
-        self.btn_save = QPushButton("💾 Valider l'Avoir")
+        self.btn_save = QPushButton(" Valider l'Avoir")
         self.btn_save.setIcon(qta.icon("fa5s.save", color="white"))
         self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-size: 14px; font-weight: bold;")
         self.btn_save.clicked.connect(self.save_credit_note)
@@ -623,7 +623,7 @@ class CreditNoteForm(QWidget):
     def cancel_edit_mode(self):
         """إلغاء وضع التعديل"""
         self.current_edit_id = None
-        self.btn_save.setText("💾 Valider l'Avoir")
+        self.btn_save.setText("Valider l'Avoir")
         self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-weight: bold;")
         self.btn_cancel_edit.hide()
 
@@ -688,11 +688,8 @@ class CreditNoteForm(QWidget):
             QMessageBox.critical(self, "Erreur", str(e))
 
 
-# ==============================================================================
-# 3. القائمة والسجل (List)
-# ==============================================================================
 class CreditNoteList(QWidget):
-    request_edit = Signal(int) # إشارة لطلب التعديل
+    request_edit = Signal(int) 
 
     def __init__(self, data_manager):
         super().__init__()
@@ -701,16 +698,38 @@ class CreditNoteList(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        hbox = QHBoxLayout()
-        btn_refresh = QPushButton("Actualiser")
-        btn_refresh.setIcon(qta.icon("fa5s.sync-alt"))
-        btn_refresh.clicked.connect(self.load_data)
-        hbox.addStretch()
-        hbox.addWidget(btn_refresh)
-        layout.addLayout(hbox)
+        
+        # --- شريط الفلترة العلوي (جديد) ---
+        filter_group = QGroupBox("🔍 Recherche et Filtres")
+        filter_group.setStyleSheet("QGroupBox { font-weight: bold; border: 1px solid #ccc; border-radius: 5px; margin-top: 5px; }")
+        filter_layout = QHBoxLayout(filter_group)
+        
+        # تاريخ البداية
+        self.date_from = QDateEdit(QDate.currentDate().addMonths(-1)) # افتراضياً يعرض آخر شهر
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDisplayFormat("yyyy-MM-dd")
+        
+        # تاريخ النهاية
+        self.date_to = QDateEdit(QDate.currentDate())
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDisplayFormat("yyyy-MM-dd")
+        
+        btn_search = QPushButton("Rechercher")
+        btn_search.setIcon(qta.icon("fa5s.search"))
+        btn_search.setStyleSheet("background-color: #2980b9; color: white; padding: 5px 15px;")
+        btn_search.clicked.connect(self.load_data)
+
+        filter_layout.addWidget(QLabel("Du:"))
+        filter_layout.addWidget(self.date_from)
+        filter_layout.addWidget(QLabel("Au:"))
+        filter_layout.addWidget(self.date_to)
+        filter_layout.addWidget(btn_search)
+        filter_layout.addStretch() # فراغ
+        
+        layout.addWidget(filter_group)
+        # -----------------------------------
 
         self.table = QTableWidget()
-        # [تعديل] إزالة "Statut" من الأعمدة
         cols = ["ID", "Réf. Avoir", "Fournisseur", "Date", "Type", "Montant TTC"]
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
@@ -720,14 +739,13 @@ class CreditNoteList(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setColumnHidden(0, True) 
         
-        # تفعيل القائمة المنبثقة (Right Click)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
-        
-        # تفعيل النقر المزدوج للتعديل
         self.table.doubleClicked.connect(self.trigger_edit)
         
         layout.addWidget(self.table)
+        
+        # تحميل البيانات الأولية
         self.load_data()
 
     def show_context_menu(self, pos):
@@ -735,12 +753,11 @@ class CreditNoteList(QWidget):
         if not index.isValid(): return
 
         menu = QMenu(self)
-        
-        action_edit = QAction("✏️ Modifier", self)
+        action_edit = QAction("Modifier", self)
         action_edit.triggered.connect(self.trigger_edit)
         menu.addAction(action_edit)
 
-        action_delete = QAction("🗑️ Supprimer", self)
+        action_delete = QAction(" Supprimer", self)
         action_delete.triggered.connect(self.trigger_delete)
         menu.addAction(action_delete)
 
@@ -776,30 +793,52 @@ class CreditNoteList(QWidget):
                     self.load_data()
                 else:
                     QMessageBox.critical(self, "Erreur", msg)
-            else:
-                QMessageBox.warning(self, "Erreur", "La fonction de suppression n'est pas implémentée dans le Manager.")
 
     def load_data(self):
         try:
-            if not hasattr(self.manager.credit_notes, 'get_all_credit_notes'):
-                return
-            notes = self.manager.credit_notes.get_all_credit_notes()
+            # تنظيف الجدول قبل التحميل
             self.table.setRowCount(0)
+
+            # جلب التواريخ من الواجهة
+            d_start = self.date_from.date().toString("yyyy-MM-dd")
+            d_end = self.date_to.date().toString("yyyy-MM-dd")
+
+            # ملاحظة: هنا سنحتاج لتعديل في "المانجر" ليقبل التواريخ
+            # سأفترض أننا سنسمي الدالة الجديدة get_credit_notes_by_date
+            # إذا لم تكن موجودة بعد، سنستخدم القديمة مؤقتاً
+            
+            notes = []
+            if hasattr(self.manager.credit_notes, 'get_credit_notes_by_date'):
+                notes = self.manager.credit_notes.get_credit_notes_by_date(d_start, d_end)
+            elif hasattr(self.manager.credit_notes, 'get_all_credit_notes'):
+                # هذا الحل المؤقت (السيء) حتى نعدل المانجر
+                all_notes = self.manager.credit_notes.get_all_credit_notes()
+                # فلترة يدوية في بايثون (لا تحل مشكلة الأداء تماماً لكنها مؤقتة)
+                for n in all_notes:
+                    if d_start <= str(n['Credit_Date']) <= d_end:
+                        notes.append(n)
+            
+            # تعبئة الجدول
             for row, note in enumerate(notes):
                 self.table.insertRow(row)
                 self.table.setItem(row, 0, QTableWidgetItem(str(note['Credit_Note_ID'])))
                 self.table.setItem(row, 1, QTableWidgetItem(str(note['Credit_Note_Ref'])))
                 self.table.setItem(row, 2, QTableWidgetItem(str(note.get('Supplier_Name', '---'))))
                 self.table.setItem(row, 3, QTableWidgetItem(str(note['Credit_Date'])))
-                type_display = "Retour Marchandise" if note['Type'] == 'Return_Goods' else "Correction Prix"
+                
+                type_map = {"Return_Goods": "Retour Marchandise", "Price_Correction": "Correction Prix"}
+                type_display = type_map.get(note['Type'], note['Type'])
+                
                 self.table.setItem(row, 4, QTableWidgetItem(type_display))
+                
                 amt = float(note.get('Total_Amount_TTC') or 0)
                 amt_item = QTableWidgetItem(f"{amt:,.2f} DA")
                 amt_item.setForeground(QBrush(QColor("#c0392b")))
                 self.table.setItem(row, 5, amt_item)
-                # [تعديل] تم إزالة عمود الحالة
+
         except Exception as e:
             logging.error(f"Error loading credit notes: {e}")
+            QMessageBox.warning(self, "Erreur", f"Erreur de chargement: {e}")
 
 # ==============================================================================
 # 4. الواجهة الرئيسية للتبويب (Main Tab)

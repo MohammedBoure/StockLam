@@ -31,20 +31,23 @@ class InventoryTab(QWidget):
 
     def apply_role_permissions(self, role):
         """
-        تخصيص المخزن بناءً على الدور:
-        - التقني والمستهلك: لا يريان السجل (History).
-        - المستهلك فقط: لا يمكنه إضافة سلع (Read-only).
+        تخصيص المخزن بناءً على الدور.
         """
         is_technician = (role == 'Technician')
         is_consumer = (role == 'Manager') # المستهلك
         
-        # 1. إخفاء تبويب السجل (Index 2) عن التقني والمستهلك
-        if is_technician or is_consumer:
-            # نبحث عن التبويب الذي يحتوي نص "Historique" ونحذفه
-            for i in range(self.tabs.count()):
-                if "Historique" in self.tabs.tabText(i):
-                    self.tabs.removeTab(i)
-                    break
+        # -----------------------------------------------------------
+        # [تعديل] قمنا بإيقاف إخفاء السجل لكي تتمكن من تجربته
+        # -----------------------------------------------------------
+        
+        # كان الكود القديم يحذف التبويب هنا:
+        # if is_technician or is_consumer:
+        #     for i in range(self.tabs.count()):
+        #         if "Historique" in self.tabs.tabText(i):
+        #             self.tabs.removeTab(i)
+        #             break
+        
+        # -----------------------------------------------------------
 
         # 2. وضع القراءة فقط للمستهلك (إخفاء أزرار الإضافة في BatchesTab)
         if is_consumer:
@@ -53,11 +56,7 @@ class InventoryTab(QWidget):
             if hasattr(self.batches_tab, 'btn_import'):
                 self.batches_tab.btn_import.setVisible(False)
         
-        # التقني يرى الأزرار بشكل طبيعي لأنه يمكنه "إدخال وإخراج السلع"
+        # التقني يرى الأزرار بشكل طبيعي
         elif is_technician:
             if hasattr(self.batches_tab, 'btn_add_batch'):
                 self.batches_tab.btn_add_batch.setVisible(True)
-            if hasattr(self.batches_tab, 'btn_import'):
-                self.batches_tab.btn_import.setVisible(True)
-
-        logging.info(f"InventoryTab permissions applied for role: {role}")

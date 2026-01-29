@@ -239,6 +239,20 @@ CREATE TABLE IF NOT EXISTS Credit_Note_Details (
     FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS Supplier_Payments (
+                Payment_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                Supplier_ID INT UNSIGNED NOT NULL,
+                Payment_Date DATE NOT NULL,
+                Amount DECIMAL(15, 2) NOT NULL,
+                Payment_Method ENUM('Espèce', 'Chèque', 'Virement', 'Versement', 'Autre') DEFAULT 'Espèce',
+                Reference VARCHAR(100) NULL, 
+                Notes TEXT NULL,
+                Created_By INT UNSIGNED NULL,
+                Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (Supplier_ID) REFERENCES Suppliers(Supplier_ID) ON UPDATE CASCADE,
+                FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
+            );
+
 
 ALTER TABLE Stock_Movement_Log 
 MODIFY COLUMN Movement_Type ENUM(
@@ -248,3 +262,5 @@ MODIFY COLUMN Movement_Type ENUM(
 ) NOT NULL;
 
 
+
+ALTER TABLE PO_Details ADD COLUMN Ordering_Unit VARCHAR(50) DEFAULT NULL AFTER Qty_Ordered;

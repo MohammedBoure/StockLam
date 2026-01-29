@@ -3,14 +3,18 @@
 import logging
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                                QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
-                               QComboBox, QHeaderView, QMessageBox, QFrame)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+                               QComboBox, QHeaderView, QMessageBox, QFrame, QMenu)
+from PySide6.QtGui import QAction, QColor, QFont
+from PySide6.QtCore import Qt, Signal # [إضافة Signal]
 
 # استيراد نوافذ الحوار
 from ui.widgets.procurement.dialogs import PurchaseOrderDialog
+from ui.widgets.procurement.reception_dialog import ReceptionDialog
 
 class PurchaseOrderListView(QWidget):
+    # [جديد] إشارة لإرسال رقم الطلب عند الرغبة في عرض الأرشيف
+    view_receptions_requested = Signal(int)
+
     def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.manager = manager
@@ -20,22 +24,35 @@ class PurchaseOrderListView(QWidget):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
+        # --- شريط الفلاتر ---
         filter_layout = QHBoxLayout()
         
+        # 1. البحث النصي
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Rechercher (Fournisseur, ID)...")
+        self.search_input.setPlaceholderText("🔍 Rechercher (ID)...")
         self.search_input.textChanged.connect(self.refresh_data)
         
+        # 2. فلتر الموردين
+        filter_layout.addWidget(QLabel("Fournisseur:"))
+        self.supplier_filter = QComboBox()
+        self.supplier_filter.setMinimumWidth(150)
+        self.supplier_filter.addItem("Tous")
+        self.load_suppliers() 
+        self.supplier_filter.currentTextChanged.connect(self.refresh_data)
+
+        # 3. فلتر الحالة
         self.status_filter = QComboBox()
         self.status_filter.addItems(["Tous", "Brouillon", "Envoyée", "Complétée"])
         self.status_filter.currentTextChanged.connect(self.refresh_data)
         
         filter_layout.addWidget(self.search_input)
+        filter_layout.addWidget(self.supplier_filter) 
         filter_layout.addWidget(QLabel("Statut:"))
         filter_layout.addWidget(self.status_filter)
         
         layout.addLayout(filter_layout)
 
+        # --- الجدول ---
         self.table = QTableWidget()
         
         columns = ["N°", "Fournisseur", "Date Commande", "Livraison Prévue", "Statut"]
@@ -53,12 +70,27 @@ class PurchaseOrderListView(QWidget):
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
+        
+        # تفعيل القائمة عند النقر بالزر الأيمن
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        
         self.table.doubleClicked.connect(self.on_table_double_click)
         
         layout.addWidget(self.table)
 
-        # --- 3. Boutons d'actions ---
+        # --- أزرار الإجراءات ---
         actions_layout = QHBoxLayout()
+        
+        self.btn_receive = QPushButton("📥 Réceptionner")
+        self.btn_receive.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+        self.btn_receive.clicked.connect(self.create_reception_for_selected)
+
+        # [جديد] زر عرض الأرشيف
+        self.btn_history = QPushButton("📜 Voir Historique")
+        self.btn_history.setStyleSheet("background-color: #3498db; color: white; font-weight: bold;")
+        self.btn_history.clicked.connect(self.trigger_view_history)
+
         self.btn_edit = QPushButton("✏️ Modifier la Commande")
         self.btn_edit.clicked.connect(self.edit_selected_po)
         
@@ -66,28 +98,117 @@ class PurchaseOrderListView(QWidget):
         self.btn_delete.setStyleSheet("color: #c0392b;")
         self.btn_delete.clicked.connect(self.delete_selected_po)
         
+        actions_layout.addWidget(self.btn_receive)
+        actions_layout.addWidget(self.btn_history) # إضافة الزر الجديد هنا
         actions_layout.addStretch()
         actions_layout.addWidget(self.btn_edit)
         actions_layout.addWidget(self.btn_delete)
         layout.addLayout(actions_layout)
 
+    def load_suppliers(self):
+        """تحميل قائمة الموردين في القائمة المنسدلة"""
+        try:
+            suppliers = self.manager.suppliers.get_all_suppliers()
+            for s in suppliers:
+                self.supplier_filter.addItem(s['Supplier_Name'], s['Supplier_ID'])
+        except Exception as e:
+            logging.error(f"Error loading suppliers filter: {e}")
+
+    def show_context_menu(self, pos):
+        """عرض القائمة عند النقر بالزر الأيمن"""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+
+        menu = QMenu(self)
+        
+        # 1. خيار إنشاء استلام
+        action_receive = QAction("📥 Créer Bon de Réception", self)
+        action_receive.triggered.connect(self.create_reception_for_selected)
+        menu.addAction(action_receive)
+        
+        # [جديد] خيار عرض الأرشيف في القائمة
+        action_history = QAction("📜 Voir les Réceptions associées", self)
+        action_history.triggered.connect(self.trigger_view_history)
+        menu.addAction(action_history)
+
+        menu.addSeparator()
+
+        # 2. خيار التعديل
+        action_edit = QAction("✏️ Modifier", self)
+        action_edit.triggered.connect(self.edit_selected_po)
+        menu.addAction(action_edit)
+
+        # 3. خيار الحذف
+        action_delete = QAction("🗑️ Supprimer", self)
+        action_delete.triggered.connect(self.delete_selected_po)
+        menu.addAction(action_delete)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def trigger_view_history(self):
+        """[جديد] دالة إرسال الإشارة لفتح الأرشيف"""
+        po_data = self.get_selected_order()
+        if not po_data:
+            QMessageBox.warning(self, "Attention", "Veuillez sélectionner une commande.")
+            return
+        
+        # إرسال ID الطلب ليتم التقاطه في procurement_tabs.py
+        self.view_receptions_requested.emit(po_data['PO_ID'])
+
+    def create_reception_for_selected(self):
+        """فتح نافذة الاستلام للطلب المحدد"""
+        po_data = self.get_selected_order()
+        if not po_data:
+            QMessageBox.warning(self, "Attention", "Veuillez sélectionner une commande.")
+            return
+        
+        po_id = po_data['PO_ID']
+        status = po_data.get('Status')
+
+        # التحقق من الحالة
+        if status in ['Draft', 'Cancelled']:
+             reply = QMessageBox.question(self, "Confirmation", 
+                 f"Cette commande est '{status}'. Voulez-vous quand même créer une réception ?",
+                 QMessageBox.Yes | QMessageBox.No)
+             if reply == QMessageBox.No:
+                 return
+
+        try:
+            full_po_data = self.manager.po.get_full_order_details(po_id)
+            if not full_po_data:
+                QMessageBox.warning(self, "Erreur", f"Impossible de charger les détails de la commande #{po_id}.")
+                return
+
+            locations = self.manager.locations.get_all_locations_flat()
+
+            dialog = ReceptionDialog(
+                po_data=full_po_data,
+                locations_list=locations,
+                location_manager=self.manager.locations,
+                manager=self.manager.reception,
+                printer_manager=self.manager.printer,
+                parent=self
+            )
+            
+            dialog.exec()
+            self.refresh_data()
+
+        except Exception as e:
+            logging.error(f"Erreur lors de l'ouverture de la réception: {e}")
+            QMessageBox.critical(self, "Erreur", f"Une erreur s'est produite: {e}")
+
     def refresh_data(self, start_date=None, end_date=None):
-        """
-        تحديث البيانات مع دعم فلترة التاريخ.
-        """
+        """تحديث البيانات مع دعم فلترة التاريخ والموردين."""
         try:
             self.table.setSortingEnabled(False)
             
-            # --- [FIX] التصحيح هنا: تحديد أسماء المتغيرات بدقة ---
-            # نرسل months=None لنخبر المدير أننا نريد استخدام التواريخ بدلاً من الأشهر
             all_pos = self.manager.po.get_all_purchase_orders(
                 months=None, 
                 start_date=start_date, 
                 end_date=end_date
             )
-            # -----------------------------------------------------
             
-            # Mapping Statut → Français
             status_map = {
                 'Draft': 'Brouillon',
                 'Sent': 'Envoyée',
@@ -96,30 +217,31 @@ class PurchaseOrderListView(QWidget):
                 'Cancelled': 'Annulée'
             }
             
-            # Mapping couleur
             colors_map = {
-                'Draft': 'gray',
-                'Sent': 'blue',
-                'Partial': 'orange',
-                'Completed': 'green',
-                'Cancelled': 'red'
+                'Draft': 'gray', 'Sent': 'blue', 'Partial': 'orange',
+                'Completed': 'green', 'Cancelled': 'red'
             }
             
             search_txt = self.search_input.text().lower()
             status_sel = self.status_filter.currentText()
+            supplier_sel = self.supplier_filter.currentText() 
             
             filtered = []
             for po in all_pos:
                 raw_status = po.get('Status', 'Draft')
                 display_status = status_map.get(raw_status, raw_status)
-                
+                po_supplier = po.get('Supplier_Name', '')
+
                 if status_sel != "Tous" and display_status != status_sel:
                     continue
-                    
-                s_name = str(po.get('Supplier_Name', '')).lower()
-                po_id = str(po.get('PO_ID', ''))
-                if search_txt and (search_txt not in s_name and search_txt not in po_id):
+                
+                if supplier_sel != "Tous" and po_supplier != supplier_sel:
                     continue
+                    
+                po_id = str(po.get('PO_ID', ''))
+                if search_txt and (search_txt not in po_id.lower()):
+                    continue
+
                 filtered.append((po, raw_status, display_status))
             
             self.table.setRowCount(0)
@@ -131,22 +253,16 @@ class PurchaseOrderListView(QWidget):
                     item.setTextAlignment(Qt.AlignCenter)
                     return item
 
-                # 0. N°
                 id_item = create_centered_item(po.get('PO_ID'))
                 id_item.setData(Qt.UserRole, po)
                 self.table.setItem(row, 0, id_item)
                 
-                # 1. Fournisseur
                 self.table.setItem(row, 1, create_centered_item(po.get('Supplier_Name')))
-                
-                # 2. Date Commande
                 self.table.setItem(row, 2, create_centered_item(po.get('Order_Date')))
                 
-                # 3. Livraison Prévue
                 del_date = po.get('Expected_Delivery_Date') or '---'
                 self.table.setItem(row, 3, create_centered_item(del_date))
                 
-                # 4. Statut (بالفرنسية)
                 status_item = create_centered_item(display_status)
                 font = QFont()
                 font.setBold(True)
@@ -154,7 +270,6 @@ class PurchaseOrderListView(QWidget):
                 status_item.setForeground(QColor(colors_map.get(raw_status, 'black')))
                 self.table.setItem(row, 4, status_item)
                 
-                # 5. Montant TTC
                 amt = float(po.get('Total_Amount_TTC') or 0)
                 self.table.setItem(row, 5, create_centered_item(f"{amt:,.2f} DA"))
 
@@ -164,15 +279,12 @@ class PurchaseOrderListView(QWidget):
             logging.error(f"Error loading PO list: {e}")
 
     def get_selected_order(self):
-        """جلب البيانات من العمود 0 (عمود ID الجديد) لأنه هو من يحمل الـ UserRole حالياً."""
         row = self.table.currentRow()
         if row < 0:
             return None
-        # تأكدنا هنا أننا نقرأ من العمود 0 حيث خزنّا البيانات في دالة refresh_data
         item = self.table.item(row, 0)
         return item.data(Qt.UserRole) if item else None
 
-    # باقي الدوال (on_table_double_click, edit_selected_po, delete_selected_po) تبقى كما هي.
     def on_table_double_click(self, index):
         self.edit_selected_po()
 

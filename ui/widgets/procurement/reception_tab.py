@@ -9,7 +9,6 @@ from .reception_dialog import ReceptionDialog
 class ReceptionTab(QWidget):
     """
     Onglet 'Réception' dans la section Achats.
-    Affiche les bons de commande envoyés (Sent/Partial) et permet d'ouvrir la fenêtre de réception pour ceux-ci.
     """
     def __init__(self, manager):
         super().__init__()
@@ -30,11 +29,20 @@ class ReceptionTab(QWidget):
         lbl_title = QLabel("📥 Réception des Commandes")
         lbl_title.setStyleSheet("border: none; font-size: 14px; font-weight: bold; color: #2c3e50;")
         
+        # مربع البحث
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Rechercher (ID, Fournisseur)...")
+        self.search_input.setPlaceholderText("🔍 ID...")
         self.search_input.setStyleSheet("background: white; border: 1px solid #ccc; padding: 5px; border-radius: 4px;")
-        self.search_input.setFixedWidth(250)
+        self.search_input.setFixedWidth(150)
         self.search_input.textChanged.connect(self.load_pending_pos)
+
+        # فلتر الموردين (موجود ومفعل)
+        self.supplier_filter = QComboBox()
+        self.supplier_filter.setStyleSheet("background: white; border: 1px solid #ccc; padding: 5px; border-radius: 4px;")
+        self.supplier_filter.setFixedWidth(200)
+        self.supplier_filter.addItem("Tous les fournisseurs")
+        self.load_suppliers() # تعبئة القائمة
+        self.supplier_filter.currentTextChanged.connect(self.load_pending_pos)
 
         btn_refresh = QPushButton("🔄 Actualiser")
         btn_refresh.setStyleSheet("QPushButton { background-color: #ecf0f1; border: 1px solid #bdc3c7; border-radius: 4px; padding: 6px 12px; } QPushButton:hover { background-color: #dfe6e9; }")
@@ -47,6 +55,7 @@ class ReceptionTab(QWidget):
         top_layout.addWidget(lbl_title)
         top_layout.addSpacing(20)
         top_layout.addWidget(self.search_input)
+        top_layout.addWidget(self.supplier_filter) # الفلتر مضاف هنا
         top_layout.addStretch()
         top_layout.addWidget(btn_refresh)
         top_layout.addWidget(btn_receive)
@@ -67,10 +76,18 @@ class ReceptionTab(QWidget):
         
         layout.addWidget(self.table)
 
+    def load_suppliers(self):
+        """تحميل الموردين من المدير وتعبئة القائمة المنسدلة."""
+        try:
+            if hasattr(self.manager, 'suppliers'):
+                suppliers = self.manager.suppliers.get_all_suppliers()
+                for s in suppliers:
+                    self.supplier_filter.addItem(s['Supplier_Name'], s['Supplier_ID'])
+        except Exception as e:
+            logging.error(f"Erreur chargement fournisseurs: {e}")
+
     def force_close_po(self):
-        """
-        إغلاق الطلب يدوياً (تحويله إلى Completed) حتى لو لم تكتمل الكمية.
-        """
+        """إغلاق الطلب يدوياً"""
         row = self.table.currentRow()
         if row < 0:
             QMessageBox.warning(self, "Attention", "Veuillez sélectionner une commande à clôturer.")
@@ -80,7 +97,6 @@ class ReceptionTab(QWidget):
         po_id = po_header['PO_ID']
         supplier = po_header.get('Supplier_Name', 'Inconnu')
 
-        # رسالة تأكيد
         reply = QMessageBox.question(
             self, 
             "Confirmation de clôture",
@@ -92,23 +108,17 @@ class ReceptionTab(QWidget):
 
         if reply == QMessageBox.Yes:
             try:
-                # استخدام مدير الطلبات لتحديث الحالة
                 success = self.manager.po.update_status(po_id, 'Completed')
-                
                 if success:
                     QMessageBox.information(self, "Succès", f"La commande #{po_id} a été clôturée avec succès.")
-                    self.load_pending_pos() # تحديث الجدول لإخفاء الطلب المكتمل
-                    
-                    # تحديث التبويبات الأخرى إذا لزم الأمر
+                    self.load_pending_pos() 
                     if hasattr(self.parent(), 'on_tab_change'):
                         self.parent().on_tab_change(2)
                 else:
                     QMessageBox.critical(self, "Erreur", "Échec de la mise à jour du statut.")
-            
             except Exception as e:
                 logging.error(f"Erreur lors de la clôture manuelle du BC {po_id}: {e}")
                 QMessageBox.critical(self, "Erreur", f"Une erreur s'est produite: {e}")
-
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -137,7 +147,9 @@ class ReceptionTab(QWidget):
         try:
             all_pos = self.manager.po.get_all_purchase_orders()
             allowed_statuses = ['Sent', 'Partial', 'Approved']
+            
             search_txt = self.search_input.text().lower().strip()
+            supplier_sel = self.supplier_filter.currentText() # المورد المختار
 
             pending_pos = []
             for po in all_pos:
@@ -147,16 +159,23 @@ class ReceptionTab(QWidget):
                 
                 po_id_str = str(po.get('PO_ID', '')).lower()
                 supp_name = str(po.get('Supplier_Name', '')).lower()
-                if search_txt and (search_txt not in po_id_str and search_txt not in supp_name):
+                
+                # 1. فلتر المورد
+                if supplier_sel != "Tous les fournisseurs" and po.get('Supplier_Name') != supplier_sel:
+                    continue
+
+                # 2. البحث النصي (ID فقط)
+                if search_txt and (search_txt not in po_id_str):
                     continue
                 
+                # تم إلغاء استخدام هذا المتغير في التنسيق، لكن أبقيناه للمنطق
                 has_notes = self._has_variance_notes(po['PO_ID'])
                 pending_pos.append({'po_data': po, 'has_notes': has_notes})
             
             self.table.setRowCount(0)
             for row, item in enumerate(pending_pos):
                 po = item['po_data']
-                has_notes = item['has_notes']
+                # has_notes = item['has_notes'] # لم نعد نحتاج هذا للتنسيق
                 self.table.insertRow(row)
                 
                 def centered_item(text):
@@ -169,13 +188,15 @@ class ReceptionTab(QWidget):
                 self.table.setItem(row, 2, centered_item(po.get('Order_Date')))
                 self.table.setItem(row, 3, centered_item(po.get('Expected_Delivery_Date') or '---'))
                 
-                if has_notes:
-                    for col in range(self.table.columnCount()):
-                        it = self.table.item(row, col)
-                        if it:
-                            it.setForeground(QColor("white"))
-                            it.setBackground(QColor("#e74c3c"))
-                            it.setFont(QFont("Arial", 9, QFont.Bold))
+                # --- تم إزالة كود التنسيق بالخط العريض والأحمر بناءً على طلبك ---
+                # if has_notes:
+                #     for col in range(self.table.columnCount()):
+                #         it = self.table.item(row, col)
+                #         if it:
+                #             it.setForeground(QColor("white"))
+                #             it.setBackground(QColor("#e74c3c"))
+                #             it.setFont(QFont("Arial", 9, QFont.Bold))
+                # -------------------------------------------------------------
                 
                 self.table.item(row, 0).setData(Qt.UserRole, po)
         except Exception as e:
@@ -207,16 +228,11 @@ class ReceptionTab(QWidget):
                 parent=self
             )
             
-            # --- التعديل هنا ---
-            dialog.exec()  # تشغيل النافذة وانتظار إغلاقها
-            
-            # التحديث يتم دائماً بعد الإغلاق، لأن التعديلات تُحفظ في قاعدة البيانات فوراً
+            dialog.exec()
             self.load_pending_pos() 
             
-            # تحديث التبويبات الأخرى (مثل الأرشيف)
             if hasattr(self.parent(), 'on_tab_change'):
                 self.parent().on_tab_change(2)
-            # -------------------
 
         except Exception as e:
             logging.error(f"Erreur inattendue : {e}", exc_info=True)

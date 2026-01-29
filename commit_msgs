@@ -56,3 +56,28 @@ Statistics & Reporting:
 Database Managers:
 - Update `ReceptionManager` with methods to fetch problematic receptions and update notes.
 - Update `StatisticsManager` queries to support unit conversion.
+-----
+
+feat: release v1.6.0 - enhance alerts, fix KPIs and improve navigation
+
+Summary of changes:
+
+1. Alerts & Notifications (UI/Logic):
+   - Implemented `ColorDelegate` in AlertsSection to force background coloring (Red/Orange/Green) based on expiry proximity, resolving QSS conflicts.
+   - Fixed sorting logic to prioritize critical expirations (nearest dates first).
+   - Handled 'N/A' values for `DaysRemaining` to prevent sorting errors.
+
+2. Statistics & KPIs (Backend):
+   - Refactored `get_kpi_summary` in StatisticsManager to correctly calculate Consumption and Waste using `Stock_Movement_Log`.
+   - Changed KPI unit displays to Integers (removing unnecessary decimals).
+   - Fixed SQL queries by removing references to non-existent columns (e.g., `Quantity_Consumed`) and using `Quantity` directly.
+
+3. Inventory Navigation (Batches & Dispatch):
+   - Implemented "View History" context menu action in both Batches and Dispatch tabs.
+   - Added logic to navigate directly to the History Page (Page ID 6) and auto-fill the search with the product's Internal Barcode.
+   - Added missing Context Menu policy to `DispatchTab`.
+   - Fixed `NameError` by importing `BarcodeLineEdit` in `tabs_batches.py`.
+   - Fixed `AttributeError` by correcting the refresh method call to `load_data`.
+
+4. Versioning:
+   - Bumped version to 1.6.0.

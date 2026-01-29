@@ -36,6 +36,7 @@ from ui.widgets.procurement.reception_dialog import ReceptionDialog
 class BatchesTab(QWidget):
     data_changed = Signal()
     request_open_reception = Signal(int) 
+    request_product_history = Signal(str) 
 
     def __init__(self, manager):
         super().__init__()
@@ -924,32 +925,31 @@ class BatchesTab(QWidget):
             from .dialogs import BatchDetailsDialog
             dialog = BatchDetailsDialog(batch_data, self)
             dialog.exec()
+
+
+    def open_history_via_barcode(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Sélection", "Veuillez sélectionner un produit.")
+            return
+            
+        item = self.table.item(row, 0)
+        if not item: return
+
+        batch_data = item.data(Qt.UserRole)
+        if not batch_data: return
+
+        search_term = batch_data.get('Internal_Barcode') or batch_data.get('Barcode') or batch_data.get('Product_Name')
+        
+        if search_term:
+            self.request_product_history.emit(str(search_term))
+        else:
+            QMessageBox.warning(self, "Erreur", "Aucune donnée (Code/Nom) trouvée pour la recherche.")
             
 
     def go_to_history(self, product_name):
-        """الانتقال من تبويب الدفعات إلى صفحة السجل الرئيسية"""
-        if not product_name: 
-            return
-        
-        # الوصول للنافذة الرئيسية (MainWindow)
-        main_win = self.window()
-        
-        # التأكد أننا وصلنا للنافذة الصحيحة وأن التبويب موجود
-        if hasattr(main_win, 'history_tab') and hasattr(main_win, 'switch_page'):
-            # 1. تحديث نص البحث في صفحة السجل
-            main_win.history_tab.filter_by_product(product_name)
-            
-            # 2. الانتقال إلى الصفحة رقم 7 (صفحة Traçabilité حسب main_window.py)
-            main_win.switch_page(7)
-            
-            # 3. تحديث زر القائمة الجانبية ليظهر كأنه محدد (اختياري للجمالية)
-            if hasattr(main_win, 'nav_group'):
-                btn = main_win.nav_group.button(7)
-                if btn: 
-                    btn.setChecked(True)
-        else:
-            # في حال فشل الوصول للنافذة الرئيسية لسبب ما
-            QMessageBox.warning(self, "Erreur", "Impossible de trouver la page d'historique.")
+        if product_name:
+            self.request_product_history.emit(str(product_name))
 
     def show_context_menu(self, pos):
         index = self.table.indexAt(pos)
@@ -959,6 +959,10 @@ class BatchesTab(QWidget):
         if not batch_data: return
         
         menu = QMenu(self)
+
+        action_history = QAction("📜 Voir Historique (Barcode)", self)
+        action_history.triggered.connect(self.open_history_via_barcode)
+        menu.addAction(action_history)
         
         # الخيار الجديد
         action_history = QAction("📜 Voir Historique du produit", self)

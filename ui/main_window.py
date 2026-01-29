@@ -1,4 +1,4 @@
-# ui/main_window.py
+# ui\main_window.py
 
 import os
 import sys
@@ -10,12 +10,12 @@ from PySide6.QtCore import Qt, QSize, QFile, QTextStream, QPropertyAnimation, QE
 from PySide6.QtGui import QPixmap, QIcon
 import qtawesome as qta
 
-# Import your widgets
-# ملاحظة: الاستيرادات ستبقى، لكن لن نستخدمها إلا عند الحاجة داخل التابع
 from .widgets.master_data.suppliers_tab import SuppliersTab
 from .widgets.master_data.products_tab import ProductsTab
 from .widgets.dashboard.dashboard_view import DashboardTab
 from .widgets.procurement.procurement_tabs import ProcurementTab
+from .widgets.supplier.supplier_stats_tab import SupplierStatsTab
+from .widgets.supplier.supplier_financial_view import SupplierFinancialView 
 from .widgets.inventory.inventory_tabs import InventoryTab
 from .widgets.master_data.manufacturers_tab import ManufacturersTab
 from .widgets.master_data.locations_tab import LocationsTab
@@ -91,6 +91,33 @@ class MainWindow(QMainWindow):
             else:
                 self.switch_page(3) # Stock
                 if self.nav_group.button(3): self.nav_group.button(3).setChecked(True)
+
+
+    def open_product_history(self, search_text):
+        """تستقبل طلب البحث من صفحة المخزون وتفتح السجل"""
+        # 1. الانتقال لصفحة السجل (رقم 7)
+        self.switch_page(7)
+        
+        # 2. تحديث الزر الجانبي ليظهر كمحدد
+        if self.nav_group.button(7):
+            self.nav_group.button(7).setChecked(True)
+
+        # 3. الوصول للكائن الخاص بصفحة السجل
+        history_widget = self.loaded_pages.get(7)
+        
+        if history_widget:
+            # 4. وضع النص في مربع البحث (نفترض أن اسمه search_input)
+            if hasattr(history_widget, 'search_input'):
+                history_widget.search_input.setText(search_text)
+                
+                # 5. تشغيل عملية البحث/الفلترة
+                # نحاول استدعاء دوال التحديث المعتادة
+                if hasattr(history_widget, 'filter_data'):
+                    history_widget.filter_data()
+                elif hasattr(history_widget, 'load_data'):
+                    history_widget.load_data()
+                elif hasattr(history_widget, 'on_search_changed'): # احتمال آخر
+                     history_widget.on_search_changed(search_text)
 
     def load_stylesheet(self):
         try:
@@ -212,6 +239,7 @@ class MainWindow(QMainWindow):
             (1, "Données de Base", "fa5s.layer-group"),
             (2, "Achats & Entrées", "fa5s.shopping-cart"), 
             (3, "Stock & Magasin",  "fa5s.boxes"),
+            (8, "États Fournisseurs", "fa5s.file-invoice-dollar"), 
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
             (7, "Traçabilité",      "fa5s.history"), 
             (5, "Utilisateurs",    "fa5s.users"),
@@ -321,6 +349,7 @@ class MainWindow(QMainWindow):
         if self.nav_group.button(2): self.nav_group.button(2).setVisible(is_admin or is_manager)
         if self.nav_group.button(3): self.nav_group.button(3).setVisible(True)
         if self.nav_group.button(6): self.nav_group.button(6).setVisible(True)
+        if self.nav_group.button(8): self.nav_group.button(8).setVisible(is_admin) 
         if self.nav_group.button(7): self.nav_group.button(7).setVisible(is_admin)
         if self.nav_group.button(5): self.nav_group.button(5).setVisible(is_admin)
         if self.nav_group.button(4): self.nav_group.button(4).setVisible(is_admin)
@@ -364,6 +393,8 @@ class MainWindow(QMainWindow):
                 widget.current_user = self.current_user
             role = self.current_user.get('Role', 'Technician') if self.current_user else 'Technician'
             widget.apply_role_permissions(role)
+            if hasattr(widget, 'batches_tab'):
+                widget.batches_tab.request_product_history.connect(self.open_product_history)
         elif page_id == 4:
             widget = SettingsTab(self.data_manager)
         elif page_id == 5:
@@ -373,6 +404,8 @@ class MainWindow(QMainWindow):
                 widget = BillingTab(self.data_manager)
             except:
                 widget = QLabel("Module Facturation non chargé")
+        elif page_id == 8: 
+            widget = SupplierFinancialView(self.data_manager)
         elif page_id == 7:
             try:
                 widget = MovementHistoryTab(self.data_manager)

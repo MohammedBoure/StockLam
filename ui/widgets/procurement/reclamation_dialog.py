@@ -58,7 +58,7 @@ class ReclamationDialog(QDialog):
         self.txt_note.setPlainText(self.header.get('Variance_Notes', ''))
         self.txt_note.setMaximumHeight(60)
         
-        btn_save_note = QPushButton("💾 Enregistrer Note Générale")
+        btn_save_note = QPushButton("Enregistrer Note Générale")
         btn_save_note.setFixedWidth(200)
         btn_save_note.clicked.connect(self.save_general_note)
         
@@ -75,13 +75,13 @@ class ReclamationDialog(QDialog):
         prod_layout.addStretch()
         
         # زر تعديل ملاحظة المنتج
-        btn_edit_prod_note = QPushButton("✏️ Modifier Note")
+        btn_edit_prod_note = QPushButton("Modifier Note")
         btn_edit_prod_note.setIcon(qta.icon('fa5s.edit', color='white'))
         btn_edit_prod_note.setStyleSheet("background-color: #f39c12; color: white; font-weight: bold; padding: 5px 10px;")
         btn_edit_prod_note.clicked.connect(self.edit_product_note)
         
         # زر حذف الملاحظة (جديد)
-        btn_remove_note = QPushButton("🗑️ Supprimer Note(s)")
+        btn_remove_note = QPushButton("Supprimer Note(s)")
         btn_remove_note.setIcon(qta.icon('fa5s.trash', color='white'))
         btn_remove_note.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 5px 10px;")
         btn_remove_note.clicked.connect(self.remove_selected_notes)

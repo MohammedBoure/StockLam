@@ -3,12 +3,12 @@
 import logging
 from datetime import datetime, date
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QAbstractItemView,
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QAbstractItemView,QMenu,
     QTableWidgetItem, QPushButton, QHeaderView, QGroupBox, QFrame, 
     QLabel, QMessageBox, QLineEdit, QSpinBox, QComboBox, QCompleter, QDialog
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QStringListModel
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont,QAction
 
 try:
     from .location_tree_combo import LocationTreeComboBox
@@ -92,6 +92,10 @@ class FEFOSelectionDialog(QDialog):
 
         # 2. Table
         self.table = QTableWidget()
+
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+
         cols = [
             "État", "Produit", "N° Lot", "Date Exp.", "Qté Dispo", 
             "Emplacement", "Marque", "Date Réception"
@@ -127,6 +131,85 @@ class FEFOSelectionDialog(QDialog):
         btn_box.addWidget(btn_cancel)
         btn_box.addWidget(btn_confirm)
         layout.addLayout(btn_box)
+
+
+    def show_context_menu(self, pos):
+        """إظهار القائمة عند النقر بالزر الأيمن"""
+        index = self.table.indexAt(pos)
+        if not index.isValid(): return
+
+        menu = QMenu(self)
+        
+        action_history = QAction("📜 Voir Historique du Produit", self)
+        action_history.triggered.connect(self.open_history_via_barcode)
+        menu.addAction(action_history)
+        
+        # خيار حذف من السلة (مفيد أيضاً)
+        action_remove = QAction("🗑️ Retirer de la liste", self)
+        action_remove.triggered.connect(self.remove_selected_row)
+        menu.addAction(action_remove)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def remove_selected_row(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+
+    def open_history_via_barcode(self):
+        """الانتقال المباشر لصفحة السجل (ID = 6)."""
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Sélection", "Veuillez sélectionner un produit.")
+            return
+
+        item = self.table.item(row, 0)
+        if not item: return
+        
+        batch_data = item.data(Qt.UserRole)
+        if not batch_data: return
+
+        # 1. تحديد ما سنبحث عنه (الباركود هو الأفضل)
+        search_term = batch_data.get('Internal_Barcode') or batch_data.get('Barcode') or batch_data.get('Product_Name')
+
+        # 2. الوصول للنافذة الرئيسية
+        main_win = self.window()
+        
+        # التأكد من أننا في النافذة الرئيسية الصحيحة
+        if hasattr(main_win, 'switch_page') and hasattr(main_win, 'nav_group'):
+            
+            # رقم صفحة السجل هو 6 (بناءً على ملف main_window.py)
+            HISTORY_PAGE_ID = 6
+            
+            # تفعيل الزر في القائمة الجانبية (للمظهر)
+            btn = main_win.nav_group.button(HISTORY_PAGE_ID)
+            if btn:
+                btn.setChecked(True)
+                
+            # الانتقال الفعلي للصفحة (سيقوم بتحميلها إذا لم تكن مفتوحة)
+            main_win.switch_page(HISTORY_PAGE_ID)
+            
+            # 3. وضع النص في خانة البحث (نستخدم Timer بسيط لضمان اكتمال تحميل الصفحة)
+            from PySide6.QtCore import QTimer
+            
+            def apply_search_filter():
+                # الصفحة تخزن في main_win.pages بعد تحميلها
+                if hasattr(main_win, 'pages') and HISTORY_PAGE_ID in main_win.pages:
+                    history_page = main_win.pages[HISTORY_PAGE_ID]
+                    
+                    # البحث عن خانة الإدخال ووضع النص
+                    if hasattr(history_page, 'search_input'):
+                        history_page.search_input.setText(str(search_term))
+                        
+                        # تشغيل الفلتر تلقائياً
+                        if hasattr(history_page, 'filter_data'):
+                            history_page.filter_data()
+            
+            # تنفيذ البحث بعد 50 ميلي ثانية (لضمان أن الواجهة جاهزة)
+            QTimer.singleShot(50, apply_search_filter)
+            
+        else:
+            QMessageBox.warning(self, "Erreur", "Impossible de localiser la fenêtre principale (MainWindow).")
 
     def populate_table(self):
         self.table.setRowCount(0)

@@ -59,6 +59,14 @@ class ReceptionHistoryTab(QWidget):
         self.search_input.setPlaceholderText("🔍 Rechercher...")
         self.search_input.textChanged.connect(self.load_data)
         
+        # --- [جديد] فلتر الموردين ---
+        self.supplier_filter = QComboBox()
+        self.supplier_filter.setFixedWidth(200)
+        self.supplier_filter.addItem("Tous les fournisseurs")
+        self.load_suppliers() # تعبئة القائمة
+        self.supplier_filter.currentTextChanged.connect(self.load_data)
+        # -----------------------------
+
         self.status_filter = QComboBox()
         self.status_filter.addItems(["Tous", "Terminée", "Variance détectée", "Pending Audit", "Avec notes"])
         self.status_filter.currentTextChanged.connect(self.load_data)
@@ -80,6 +88,7 @@ class ReceptionHistoryTab(QWidget):
         toolbar.addWidget(self.date_to)
         toolbar.addSpacing(10)
         toolbar.addWidget(self.search_input)
+        toolbar.addWidget(self.supplier_filter) # إضافة الفلتر هنا
         toolbar.addWidget(self.status_filter)
         toolbar.addWidget(btn_refresh)
         toolbar.addWidget(btn_edit)
@@ -109,6 +118,16 @@ class ReceptionHistoryTab(QWidget):
         layout.addWidget(self.table)
         self.load_data()
 
+    def load_suppliers(self):
+        """[جديد] تحميل قائمة الموردين في الفلتر"""
+        try:
+            # نتأكد من وجود مدير الموردين
+            if hasattr(self.manager, 'suppliers'):
+                suppliers = self.manager.suppliers.get_all_suppliers()
+                for s in suppliers:
+                    self.supplier_filter.addItem(s['Supplier_Name'], s['Supplier_ID'])
+        except Exception as e:
+            logging.error(f"Erreur chargement fournisseurs history: {e}")
 
     def show_context_menu(self, pos):
         index = self.table.indexAt(pos)
@@ -129,7 +148,6 @@ class ReceptionHistoryTab(QWidget):
         menu.addSeparator()
 
         # خيار الـ Avoir
-        # ملاحظة: تم حذف setStyleSheet لأنها تسبب الخطأ
         action_avoir = QAction("↩️ Créer un Avoir (Retour)", self)
         action_avoir.triggered.connect(self.trigger_create_avoir)
         menu.addAction(action_avoir)
@@ -204,56 +222,53 @@ class ReceptionHistoryTab(QWidget):
             receptions = self.manager.reception.get_all_receptions()
             self.table.setRowCount(0)
             
-            # 1. إعداد متغيرات الفلترة (لتجنب الحساب داخل الحلقة)
-            # تحويل QDate إلى datetime للمقارنة الدقيقة
+            # 1. إعداد متغيرات الفلترة
             from_date = datetime.combine(self.date_from.date().toPyDate(), datetime.min.time())
             to_date = datetime.combine(self.date_to.date().toPyDate(), datetime.max.time())
             
             search_txt = self.search_input.text().lower().strip()
             filter_status = self.status_filter.currentText()
+            
+            # [جديد] الحصول على المورد المختار
+            supplier_sel = self.supplier_filter.currentText()
 
-            # 2. مجموعة لتتبع المعرفات المضافة (الحل الجذري لمشكلة التكرار في العرض)
+            # 2. مجموعة لتتبع المعرفات المضافة (منع التكرار)
             added_ids = set()
 
             for reception in receptions:
-                # --- [FIX] التحقق من التكرار فوراً ---
                 br_id = reception.get('BR_ID')
                 if not br_id or br_id in added_ids:
-                    continue  # تخطي هذا السطر إذا تمت إضافته سابقاً
-                # -------------------------------------
+                    continue  
 
                 # 3. التحقق من التاريخ
                 r_date = reception.get('Reception_Date')
-                
-                # معالجة أنواع التواريخ المختلفة (String, Date, Datetime)
                 try:
                     current_r_date = None
                     if isinstance(r_date, str):
-                        # محاولة قراءة التاريخ من النص (yyyy-mm-dd)
                         current_r_date = datetime.strptime(r_date[:10], '%Y-%m-%d')
-                    elif hasattr(r_date, 'year'): # date or datetime object
-                        # تحويل إلى datetime للمقارنة الموحدة
+                    elif hasattr(r_date, 'year'): 
                         current_r_date = datetime(r_date.year, r_date.month, r_date.day)
                     
-                    # تطبيق فلتر التاريخ
                     if current_r_date and not (from_date <= current_r_date <= to_date):
                         continue
                 except Exception:
-                    pass # في حال فشل تحليل التاريخ، نعرضه لكن لا نستبعده (أو يمكن استبعاده حسب الرغبة)
+                    pass 
 
-                # 4. البحث النصي (يشمل اسم المورد، الفاتورة، رقم الطلب)
-                full_search_str = f"{br_id} {reception.get('Supplier_Name', '')} {reception.get('Supplier_Invoice_Ref', '')} {reception.get('PO_ID', '')}".lower()
+                # 4. فلترة المورد (جديد)
+                if supplier_sel != "Tous les fournisseurs" and reception.get('Supplier_Name') != supplier_sel:
+                    continue
+
+                # 5. البحث النصي
+                full_search_str = f"{br_id} {reception.get('Supplier_Name', '')} {reception.get('Supplier_Invoice_Ref', '')} {reception.get('Supplier_BL_Ref', '')} {reception.get('PO_ID', '')}".lower()
                 if search_txt and search_txt not in full_search_str:
                     continue
                 
-                # 5. فلترة الحالة والملاحظات
-                # ملاحظة: هذا الفحص قد يؤثر على الأداء إذا كانت البيانات ضخمة جداً
+                # 6. فلترة الحالة
                 po_id = reception.get('PO_ID')
                 has_notes = False
                 if po_id:
                     has_notes = (self._has_variance_notes(po_id) or self._has_po_notes(po_id))
                 
-                # منطق القائمة المنسدلة
                 status_match = True
                 db_status = reception.get('Status', 'Completed')
 
@@ -267,7 +282,7 @@ class ReceptionHistoryTab(QWidget):
                 if not status_match:
                     continue
 
-                # 6. إضافة السطر للجدول
+                # 7. إضافة السطر للجدول
                 row = self.table.rowCount()
                 self.table.insertRow(row)
                 
@@ -276,18 +291,22 @@ class ReceptionHistoryTab(QWidget):
                 total_tva = float(reception.get('Invoice_Total_TVA') or 0)
                 total_ttc = float(reception.get('Invoice_Total_TTC') or 0)
                 
-                # محاولة جلب الخصم، أو حسابه
                 remise = float(reception.get('Total_Discount') or 0)
                 if remise == 0 and total_ttc > 0:
-                    # حساب تقريبي إذا لم يكن مخزناً
                     remise = max(0.0, (total_ht + total_tva) - total_ttc)
 
-                # تنسيق التاريخ للعرض
                 display_date = current_r_date.strftime('%Y-%m-%d') if current_r_date else str(r_date)
 
-                # تعبئة الخلايا
+                ref_invoice = reception.get('Supplier_Invoice_Ref')
+                ref_bl = reception.get('Supplier_BL_Ref')
+                
+                ref_invoice = str(ref_invoice).strip() if ref_invoice else None
+                ref_bl = str(ref_bl).strip() if ref_bl else None
+
+                display_ref = ref_invoice if ref_invoice else (ref_bl if ref_bl else '---')
+
                 self.table.setItem(row, 0, self._create_centered_item(br_id))
-                self.table.setItem(row, 1, self._create_centered_item(reception.get('Supplier_Invoice_Ref') or '---'))
+                self.table.setItem(row, 1, self._create_centered_item(display_ref)) 
                 self.table.setItem(row, 2, self._create_centered_item(reception.get('Supplier_Name', 'N/A')))
                 self.table.setItem(row, 3, self._create_centered_item(display_date))
                 self.table.setItem(row, 4, self._create_centered_item(f"{total_ht:,.2f} DA", is_numeric=True))
@@ -296,14 +315,13 @@ class ReceptionHistoryTab(QWidget):
                 self.table.setItem(row, 7, self._create_centered_item(f"{total_ttc:,.2f} DA", is_numeric=True))
                 self.table.setItem(row, 8, self._create_centered_item(po_id or '---'))
                 
-                # تخزين البيانات الوصفية الكاملة
                 self.table.item(row, 0).setData(Qt.UserRole, reception)
                 
-                # تلوين السطر عند وجود ملاحظات
-                if has_notes:
-                    self._apply_row_style(row, "#e74c3c", "white")
+                # --- [تم إلغاء التنسيق الخاص بالملاحظات] ---
+                # if has_notes:
+                #    self._apply_row_style(row, "#e74c3c", "white")
+                # ----------------------------------------
 
-                # [FIX] تسجيل الـ ID في المجموعة لمنع إضافته مرة أخرى
                 added_ids.add(br_id)
 
             logging.info(f"Terminé : {self.table.rowCount()} réceptions affichées.")
@@ -312,7 +330,6 @@ class ReceptionHistoryTab(QWidget):
             logging.error(f"Error loading receptions: {e}\n{traceback.format_exc()}")
         
         finally:
-            # إعادة تفعيل الفرز دائماً (حتى في حالة الخطأ)
             self.table.setSortingEnabled(True)
 
     def _apply_row_style(self, row, bg_color, fg_color):
@@ -352,13 +369,23 @@ class ReceptionHistoryTab(QWidget):
 
             full_po_data = self.manager.po.get_full_order_details(po_id)
             if not full_po_data:
-                raise ValueError(f"Impossible de charger les détails du PO #{po_id}")
+                # محاولة تحميل جزئي إذا لم نجد PO (لأنه قد يكون PO وهمي أو محذوف)
+                # لكن الأفضل هنا افتراض وجود بيانات
+                pass
 
             locations = self.manager.locations.get_all_locations_flat()
             reception_data = self.manager.reception.get_reception_summary(br_id)
             
             if not reception_data:
                 raise ValueError(f"Impossible de charger le résumé de la réception #{br_id}")
+            
+            # إذا لم يوجد PO linked، نصنع واحداً وهمياً للعرض
+            if not full_po_data:
+                full_po_data = {
+                    'PO_ID': po_id, 
+                    'Supplier_Name': reception.get('Supplier_Name'), 
+                    'Supplier_ID': reception.get('Supplier_ID')
+                }
 
             dialog = ReceptionDialog(
                 po_data=full_po_data,
@@ -413,7 +440,7 @@ class ReceptionHistoryTab(QWidget):
             elements = []
             styles = getSampleStyleSheet()
             
-            # نمط مخصص للنصوص داخل الجدول (صغير قليلاً للسماح بالتفاف النص)
+            # نمط مخصص للنصوص داخل الجدول
             cell_style = ParagraphStyle(
                 'CellStyle',
                 parent=styles['Normal'],
@@ -457,24 +484,16 @@ class ReceptionHistoryTab(QWidget):
             elements.append(Spacer(1, 1 * cm))
 
             # --- جدول المنتجات ---
-            # الأعمدة: المنتج (يشمل الباركود) | اللوت | الصلاحية | الكمية | السعر | المجموع
             table_headers = ["Désignation / Code", "Lot", "Exp.", "Qté", "Prix U.", "Total TTC"]
-            
-            # تحويل العناوين إلى Paragraph لتنسيق أفضل
             headers_formatted = [Paragraph(f"<b>{h}</b>", cell_style) for h in table_headers]
             table_data = [headers_formatted]
             
             for b in batches:
-                # 1. تجهيز اسم المنتج والباركود في خلية واحدة
                 product_name = b.get('Product_Name', 'N/A')
-                # جلب الباركود (الداخلي أو الخاص بالمصنع)
                 barcode = b.get('Internal_Barcode') or b.get('Barcode') or '---'
-                
-                # نستخدم HTML لدمج الاسم والباركود (الاسم Bold، الباركود رمادي وصغير)
                 prod_cell_text = f"<b>{product_name}</b><br/><font color='grey' size='7'>Code: {barcode}</font>"
                 prod_paragraph = Paragraph(prod_cell_text, product_style)
 
-                # 2. الأرقام
                 try:
                     q = int(float(b.get('Quantity_Initial') or 0))
                 except:
@@ -485,9 +504,8 @@ class ReceptionHistoryTab(QWidget):
                 tax = float(b.get('Tax_Rate_Percent', 0))
                 line_ttc = q * p * (1 - discount/100) * (1 + tax/100)
                 
-                # 3. إضافة الصف (نستخدم Paragraph للنصوص، و String للأرقام البسيطة)
                 table_data.append([
-                    prod_paragraph,                               # المنتج + الباركود (يلتف تلقائياً)
+                    prod_paragraph,                               
                     Paragraph(str(b.get('Lot_Number')), cell_style),
                     str(b.get('Expiry_Date')),
                     f"{q}",
@@ -495,17 +513,15 @@ class ReceptionHistoryTab(QWidget):
                     f"{line_ttc:,.2f}"
                 ])
 
-            # تحديد عرض الأعمدة (تم توسيع عمود المنتج)
-            # المجموع التقريبي لعرض A4 هو 19-20 سم (مع الهوامش)
             col_widths = [7.5*cm, 2.5*cm, 2.5*cm, 1.5*cm, 2.5*cm, 3*cm]
 
             main_t = Table(table_data, colWidths=col_widths)
             main_t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2c3e50")), # لون الهيدر
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2c3e50")), 
                 ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),       # توسيط عام
-                ('ALIGN', (0,1), (0,-1), 'LEFT'),          # محاذاة المنتج لليسار
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),      # توسيط عمودي
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),       
+                ('ALIGN', (0,1), (0,-1), 'LEFT'),          
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),      
                 ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
                 ('LEFTPADDING', (0,0), (-1,-1), 4),
                 ('RIGHTPADDING', (0,0), (-1,-1), 4),
@@ -528,3 +544,23 @@ class ReceptionHistoryTab(QWidget):
         except Exception as e:
             logging.error(f"PDF Error: {e}")
             QMessageBox.critical(self, "Erreur", f"Échec PDF : {e}")
+
+    def show_history_for_po(self, po_id):
+        """تصفية السجل لعرض استلامات طلب محدد فقط"""
+        logging.info(f"Filtering history for PO #{po_id}")
+        
+        # 1. توسيع مجال البحث في التاريخ ليشمل كل الفترات
+        # (نضع تاريخاً قديماً جداً وتاريخاً مستقبلياً لضمان عدم إخفاء أي سجل)
+        self.date_from.setDate(QDate(2020, 1, 1))
+        self.date_to.setDate(QDate.currentDate().addYears(1))
+        
+        # 2. تصفير فلاتر الحالة والموردين (لأننا نبحث عن طلب محدد بغض النظر عن حالته)
+        self.status_filter.setCurrentIndex(0) # Tous
+        if hasattr(self, 'supplier_filter'):
+            self.supplier_filter.setCurrentIndex(0) # Tous
+            
+        # 3. وضع رقم الطلب في مربع البحث (هذا سيقوم بتفعيل الفلترة تلقائياً في load_data)
+        self.search_input.setText(str(po_id))
+        
+        # 4. تنفيذ التحميل
+        self.load_data()

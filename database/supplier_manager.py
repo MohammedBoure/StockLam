@@ -194,3 +194,106 @@ class SupplierManager:
         except mysql.connector.Error as e:
             logging.error(f"Error fetching supplier purchase stats: {e}")
             raise
+
+    # database/managers/supplier_manager.py
+
+    def add_payment(self, payment_data):
+        """تسجيل دفعة جديدة مع إمكانية الربط بـ BR"""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO Supplier_Payments 
+                    (Supplier_ID, Payment_Date, Amount, Payment_Method, Reference, Notes, Created_By, BR_ID) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                params = (
+                    payment_data['Supplier_ID'],
+                    payment_data['Payment_Date'],
+                    payment_data['Amount'],
+                    payment_data['Payment_Method'],
+                    payment_data.get('Reference'),
+                    payment_data.get('Notes'),
+                    payment_data.get('Created_By'),
+                    payment_data.get('BR_ID')  # <--- الحقل الجديد
+                )
+                cursor.execute(query, params)
+                conn.commit()
+                return True, "Paiement enregistré avec succès."
+        except Exception as e:
+            logging.error(f"Error adding payment: {e}")
+            return False, str(e)
+
+    def get_supplier_receptions_for_linking(self, supplier_id):
+        """جلب قائمة الاستلامات (BR) الخاصة بمورد معين لربطها بالدفع"""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                query = """
+                    SELECT BR_ID, Supplier_Invoice_Ref, Invoice_Total_TTC, Reception_Date
+                    FROM Reception_Log 
+                    WHERE Supplier_ID = %s 
+                    ORDER BY Reception_Date DESC
+                    LIMIT 50
+                """
+                cursor.execute(query, (supplier_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error fetching supplier receptions: {e}")
+            return []
+
+    def get_supplier_account_statement(self, supplier_id, start_date=None, end_date=None):
+        """تحديث دالة كشف الحساب لإظهار تفاصيل الربط"""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                # 1. Receptions
+                query_receptions = """
+                    SELECT 
+                        Reception_Date as Date_Op,
+                        'Facture' as Type_Op,
+                        Invoice_Total_TTC as Montant_Achat,
+                        0 as Montant_Versement,
+                        COALESCE(Supplier_Invoice_Ref, Supplier_BL_Ref, CONCAT('BR #', BR_ID)) as Observation
+                    FROM Reception_Log
+                    WHERE Supplier_ID = %s AND Status != 'Pending Audit'
+                """
+                params = [supplier_id]
+                if start_date:
+                    query_receptions += " AND Reception_Date >= %s"
+                    params.append(start_date)
+                if end_date:
+                    query_receptions += " AND Reception_Date <= %s"
+                    params.append(end_date)
+
+                # 2. Payments (تم التحديث لإظهار الربط)
+                query_payments = """
+                    SELECT 
+                        sp.Payment_Date as Date_Op,
+                        'Paiement' as Type_Op,
+                        0 as Montant_Achat,
+                        sp.Amount as Montant_Versement,
+                        CONCAT(
+                            sp.Payment_Method, 
+                            IF(sp.Reference IS NOT NULL AND sp.Reference != '', CONCAT(' - ', sp.Reference), ''),
+                            IF(rl.Supplier_Invoice_Ref IS NOT NULL, CONCAT(' (Lien: ', rl.Supplier_Invoice_Ref, ')'), '')
+                        ) as Observation
+                    FROM Supplier_Payments sp
+                    LEFT JOIN Reception_Log rl ON sp.BR_ID = rl.BR_ID
+                    WHERE sp.Supplier_ID = %s
+                """
+                params_pay = [supplier_id]
+                if start_date:
+                    query_payments += " AND Payment_Date >= %s"
+                    params_pay.append(start_date)
+                if end_date:
+                    query_payments += " AND Payment_Date <= %s"
+                    params_pay.append(end_date)
+
+                full_query = f"({query_receptions}) UNION ALL ({query_payments}) ORDER BY Date_Op ASC"
+                cursor.execute(full_query, tuple(params + params_pay))
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error statement: {e}")
+            return []

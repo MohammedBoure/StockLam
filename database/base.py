@@ -56,7 +56,7 @@ TABLE_IMPORT_ORDER = [
     'Products_Master', 'Product_Documents', 'Purchase_Orders', 'PO_Details', 
     'Reception_Log', 'Reception_Details', 'Inventory_Batches', 
     'Active_Containers', 'External_Transfer_Log', 'External_Transfer_Details', 'Stock_Movement_Log',
-    'Supplier_Credit_Notes','Credit_Note_Details'
+    'Supplier_Credit_Notes','Credit_Note_Details','Supplier_Payments'
 ]
 
 ARCHIVE_VIEW_FLAG_FILE = 'archive_view.flag'
@@ -351,6 +351,7 @@ class Database:
                 PO_ID BIGINT UNSIGNED NOT NULL, 
                 Product_ID INT UNSIGNED NOT NULL,
                 Qty_Ordered INT UNSIGNED NOT NULL,
+                Ordering_Unit VARCHAR(50) DEFAULT NULL,
                 Unit_Price_HT DECIMAL(10, 2) DEFAULT 0.00,
                 Discount_Percent DECIMAL(5, 2) DEFAULT 0.00,
                 Tax_Rate_Percent DECIMAL(5, 2) DEFAULT 0.00,
@@ -359,7 +360,7 @@ class Database:
                 Item_Note VARCHAR(255) NULL, 
                 FOREIGN KEY (PO_ID) REFERENCES Purchase_Orders(PO_ID) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE
-            );""",
+            );"""
             
             # --- 4. INVENTORY & RECEPTION ---
             # تم التحديث بناءً على Dump (إضافة Status, Variance_Notes, Total_Discount)
@@ -539,6 +540,20 @@ class Database:
                 FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON DELETE SET NULL
             );""",
 
+            """CREATE TABLE IF NOT EXISTS Supplier_Payments (
+                Payment_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                Supplier_ID INT UNSIGNED NOT NULL,
+                Payment_Date DATE NOT NULL,
+                Amount DECIMAL(15, 2) NOT NULL,
+                Payment_Method ENUM('Espèce', 'Chèque', 'Virement', 'Versement', 'Autre') DEFAULT 'Espèce',
+                Reference VARCHAR(100) NULL, 
+                Notes TEXT NULL,
+                Created_By INT UNSIGNED NULL,
+                Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (Supplier_ID) REFERENCES Suppliers(Supplier_ID) ON UPDATE CASCADE,
+                FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
+            );""",
+
 
         ]
         
@@ -605,10 +620,22 @@ class Database:
                         while cursor.nextset(): pass
                     except mysql.connector.Error:
                         continue 
+
+                try:
+                    cursor.execute("SHOW COLUMNS FROM Supplier_Payments LIKE 'BR_ID'")
+                    if not cursor.fetchone():
+                        logging.info("Migration: Adding BR_ID to Supplier_Payments...")
+                        cursor.execute("ALTER TABLE Supplier_Payments ADD COLUMN BR_ID INT UNSIGNED NULL;")
+                        cursor.execute("ALTER TABLE Supplier_Payments ADD CONSTRAINT fk_payment_br FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL;")
+                except Exception as e:
+                    logging.warning(f"Migration error (Supplier_Payments): {e}")
                 
-                # إعادة تفعيل فحص القيود
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
                 logging.info("✅ Schema initialized successfully.")
+
+
+                
+
 
         except mysql.connector.Error as err:
             logging.error(f"❌ Failed to initialize schema: {err}")

@@ -748,10 +748,11 @@ class ReceptionLogManager:
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                # التعديل هنا: إضافة 'Pending Audit' للقائمة
                 query = """
-                    SELECT rl.BR_ID, rl.Supplier_Invoice_Ref, s.Supplier_Name, rl.Reception_Date,
-                           rl.Invoice_Total_HT, rl.Invoice_Total_TVA, rl.Invoice_Total_TTC, rl.Status, rl.PO_ID
+                    SELECT rl.BR_ID, rl.Supplier_Invoice_Ref, rl.Supplier_BL_Ref, 
+                           s.Supplier_Name, rl.Reception_Date,
+                           rl.Invoice_Total_HT, rl.Invoice_Total_TVA, rl.Invoice_Total_TTC, 
+                           rl.Status, rl.PO_ID
                     FROM Reception_Log rl
                     JOIN Suppliers s ON rl.Supplier_ID = s.Supplier_ID
                     WHERE rl.Status IN ('Completed', 'Variance Detected', 'Pending Audit') 

@@ -497,7 +497,7 @@ class ReceptionDialog(BaseDialog):
             if po_id:
                 with mgr.db.get_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (po_id,))
+                    cursor.execute("UPDATE Purchase_Orders SET Status = 'Partial' WHERE PO_ID = %s", (po_id,))
                     conn.commit()
 
             # 4. تحديث الواجهة (المنطقة الحرجة)

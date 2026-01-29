@@ -205,17 +205,23 @@ class CreditNoteManager:
         else:
             return None # سيرفع خطأ في الدالة الرئيسية
 
-    def get_all_credit_notes(self):
+    def get_all_credit_notes(self, limit=100):
+        """
+        تم التعديل: جلب آخر 100 إشعار فقط بشكل افتراضي لتسريع التحميل الأولي.
+        إذا أراد المستخدم المزيد، يجب عليه استخدام البحث بالتاريخ.
+        """
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
+                # تم إضافة LIMIT %s لمنع جلب قاعدة البيانات بالكامل
                 query = """
                     SELECT cn.*, s.Supplier_Name 
                     FROM Supplier_Credit_Notes cn
                     JOIN Suppliers s ON cn.Supplier_ID = s.Supplier_ID
-                    ORDER BY cn.Credit_Date DESC
+                    ORDER BY cn.Credit_Date DESC, cn.Credit_Note_ID DESC
+                    LIMIT %s
                 """
-                cursor.execute(query)
+                cursor.execute(query, (limit,))
                 return cursor.fetchall()
         except Exception as e:
             logging.error(f"Error fetching credit notes: {e}")
@@ -474,3 +480,24 @@ class CreditNoteManager:
             return False, str(e)
         finally:
             if conn: conn.close()
+
+    def get_credit_notes_by_date(self, start_date, end_date):
+        """
+        جلب الإشعارات (Avoirs) ضمن نطاق زمني محدد فقط.
+        هذا يمنع تحميل آلاف السجلات دفعة واحدة ويسرع البرنامج.
+        """
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                query = """
+                    SELECT cn.*, s.Supplier_Name 
+                    FROM Supplier_Credit_Notes cn
+                    JOIN Suppliers s ON cn.Supplier_ID = s.Supplier_ID
+                    WHERE cn.Credit_Date BETWEEN %s AND %s
+                    ORDER BY cn.Credit_Date DESC, cn.Credit_Note_ID DESC
+                """
+                cursor.execute(query, (start_date, end_date))
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error fetching credit notes by date: {e}")
+            return []

@@ -10,8 +10,6 @@ from PySide6.QtGui import QFont
 
 from ui.widgets.master_data.dialogs import BaseDialog
 
-# ui/widgets/procurement/dialogs.py
-
 class PurchaseOrderDialog(BaseDialog):
     def __init__(self, suppliers_list, products_list, parent=None, data=None, read_only=False):
         self.read_only = read_only
@@ -86,9 +84,9 @@ class PurchaseOrderDialog(BaseDialog):
         self.delivery_date.setMinimumHeight(38)
         top_grid.addWidget(self.delivery_date, 1, 3)
 
-        main_layout.addWidget(top_section, stretch=0) # stretch=0 ليبقى الحجم ثابتاً ولا يتمدد
+        main_layout.addWidget(top_section, stretch=0)
 
-        # === 2. Section Ajout / Modification (تخطيط أفقي واحد لتوفير المساحة) ===
+        # === 2. Section Ajout / Modification ===
         add_group = QGroupBox("Ajout d'un Article")
         add_group.setStyleSheet("""
             QGroupBox { font-weight: bold; font-size: 13px; border: 1px solid #dcdcdc; border-radius: 8px; margin-top: 5px; padding-top: 5px; }
@@ -132,9 +130,9 @@ class PurchaseOrderDialog(BaseDialog):
             row1.addWidget(btn)
 
         add_layout.addLayout(row1)
-        main_layout.addWidget(add_group, stretch=0) # يبقى الحجم ثابتاً
+        main_layout.addWidget(add_group, stretch=0)
 
-        # === 3. Tableau des Articles (تمدد كامل) ===
+        # === 3. Tableau des Articles ===
         table_group = QGroupBox("Liste des Articles Commandés")
         table_group.setStyleSheet("QGroupBox { font-weight: bold; border: 1px solid #dcdcdc; border-radius: 8px; }")
         table_layout = QVBoxLayout(table_group)
@@ -144,13 +142,12 @@ class PurchaseOrderDialog(BaseDialog):
         self.lines_table.setColumnCount(len(cols))
         self.lines_table.setHorizontalHeaderLabels(cols)
 
-        # جعل الأعمدة تأخذ كامل العرض المتاح
         header = self.lines_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)      # اسم المنتج يتمدد
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents) # الماركة حسب المحتوى
-        header.setSectionResizeMode(2, QHeaderView.Fixed)       # الوحدة ثابتة
-        header.setSectionResizeMode(3, QHeaderView.Fixed)       # الكمية ثابتة
-        header.setSectionResizeMode(4, QHeaderView.Stretch)     # الملاحظات تتمدد
+        header.setSectionResizeMode(0, QHeaderView.Stretch)      
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)       
+        header.setSectionResizeMode(3, QHeaderView.Fixed)       
+        header.setSectionResizeMode(4, QHeaderView.Stretch)     
         
         self.lines_table.setColumnWidth(2, 120)
         self.lines_table.setColumnWidth(3, 100)
@@ -161,7 +158,6 @@ class PurchaseOrderDialog(BaseDialog):
         
         table_layout.addWidget(self.lines_table)
         
-        # --- الإجراء الأهم: تعيين stretch عالي للجدول ---
         main_layout.addWidget(table_group, stretch=10) 
 
         self.completer = QCompleter()
@@ -202,10 +198,13 @@ class PurchaseOrderDialog(BaseDialog):
         product_data = self.product_data_map.get(text)
         if product_data:
             self.unit_combo.clear()
-            units = {product_data.get('Ordering_Unit'), product_data.get('Stock_Unit'), product_data.get('Usage_Unit')}
-            units = [u for u in units if u]
+            # تجميع الوحدات المتاحة مع ضمان وجودها
+            raw_units = [product_data.get('Ordering_Unit'), product_data.get('Stock_Unit'), product_data.get('Usage_Unit')]
+            units = sorted(list(set([u for u in raw_units if u]))) # استخدام sorted لتوحيد الترتيب
+            
             if not units:
                 units = ['U']
+                
             self.unit_combo.addItems(units)
             self.unit_combo.setCurrentIndex(0)
             self.unit_combo.setEnabled(True)
@@ -230,8 +229,10 @@ class PurchaseOrderDialog(BaseDialog):
             return
 
         qty = self.qty_spin.value()
-        unit = self.unit_combo.currentText()
-        note = self.item_note_input.text()
+        
+        # [FIX] قراءة الوحدة الحالية والتأكد من أنها نص صالح
+        unit = self.unit_combo.currentText().strip()
+        note = self.item_note_input.text().strip()
 
         if self.editing_row == -1:
             self.add_line(product_data, qty, unit, note)
@@ -250,6 +251,7 @@ class PurchaseOrderDialog(BaseDialog):
         self.editing_row = -1
 
     def add_line(self, product_data, qty=1, unit='', item_note=""):
+        # التحقق من التكرار
         for r in range(self.lines_table.rowCount()):
             if self.lines_table.item(r, 0) and self.lines_table.item(r, 0).data(Qt.UserRole) == product_data['Product_ID']:
                 QMessageBox.information(self, "Information", "Cet article est déjà ajouté.")
@@ -265,8 +267,18 @@ class PurchaseOrderDialog(BaseDialog):
         brand_text = product_data.get('Manuf_Name') or "---"
         self.lines_table.setItem(row, 1, QTableWidgetItem(brand_text))
 
-        unit_text = unit or product_data.get('Ordering_Unit', 'U')
-        self.lines_table.setItem(row, 2, QTableWidgetItem(unit_text))
+        # --- [FIX CORE] منطق صارم لاختيار الوحدة ---
+        final_unit_text = "U" # قيمة افتراضية للطوارئ
+        
+        # 1. إذا اختار المستخدم وحدة (تم تمريرها للدالة)، نستخدمها فوراً
+        if unit and str(unit).strip():
+            final_unit_text = str(unit).strip()
+        # 2. إذا لم يختار (فارغة)، نستخدم الافتراضي من قاعدة البيانات
+        elif product_data:
+            final_unit_text = product_data.get('Ordering_Unit', 'U')
+        # ---------------------------------------------------
+        
+        self.lines_table.setItem(row, 2, QTableWidgetItem(final_unit_text))
 
         qty_item = QTableWidgetItem(str(qty))
         qty_item.setTextAlignment(Qt.AlignCenter)
@@ -312,14 +324,18 @@ class PurchaseOrderDialog(BaseDialog):
         self.product_search.setText(f"{product_data['Product_Name']} ({brand})")
 
         self.unit_combo.clear()
-        units = {product_data.get('Ordering_Unit'), product_data.get('Stock_Unit'), product_data.get('Usage_Unit')}
-        units = [u for u in units if u]
-        if not units:
-            units = ['U']
+        raw_units = [product_data.get('Ordering_Unit'), product_data.get('Stock_Unit'), product_data.get('Usage_Unit')]
+        units = sorted(list(set([u for u in raw_units if u])))
+        if not units: units = ['U']
         self.unit_combo.addItems(units)
+        
+        # استرجاع الوحدة الحالية من الجدول
         current_unit = self.lines_table.item(row, 2).text()
-        if current_unit in units:
+        if current_unit:
+            if self.unit_combo.findText(current_unit) == -1:
+                self.unit_combo.addItem(current_unit)
             self.unit_combo.setCurrentText(current_unit)
+            
         self.unit_combo.setEnabled(True)
 
         self.qty_spin.setValue(int(self.lines_table.item(row, 3).text() or 1))
@@ -329,7 +345,8 @@ class PurchaseOrderDialog(BaseDialog):
         self.editing_row = row
 
     def update_line(self, row, qty, unit, note):
-        self.lines_table.item(row, 2).setText(unit)
+        # التحديث المباشر للجدول يضمن ظهور ما اختاره المستخدم
+        self.lines_table.item(row, 2).setText(str(unit).strip())
         self.lines_table.item(row, 3).setText(str(qty))
         self.lines_table.item(row, 4).setText(note)
 

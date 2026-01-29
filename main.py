@@ -4,7 +4,8 @@ import sys
 import os
 import logging
 from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
-from PySide6.QtCore import Qt, QSettings
+# 1. إضافة QLockFile و QDir للاستيراد
+from PySide6.QtCore import Qt, QSettings, QLockFile, QDir 
 from database.base import Database
 from database import LabDataManager
 from ui.main_window import MainWindow
@@ -34,6 +35,26 @@ def main():
 
     app = QApplication(sys.argv)
     
+    # =========================================================================
+    # [بداية التعديل] : منع تشغيل البرنامج مرتين (Single Instance)
+    # =========================================================================
+    # تحديد مسار ملف القفل في المجلد المؤقت للنظام
+    lock_file_path = os.path.join(QDir.tempPath(), 'modernlam_stockmanager.lock')
+    lock_file = QLockFile(lock_file_path)
+    
+    # نحاول قفل الملف، إذا فشل (رجع False) فهذا يعني أن البرنامج مفتوح مسبقاً
+    # نستخدم مهلة 100 ميلي ثانية للتأكد
+    if not lock_file.tryLock(100):
+        QMessageBox.warning(
+            None, 
+            "Déjà ouvert", 
+            "Le programme est déjà en cours d'exécution !\n(Impossible d'ouvrir une seconde instance)"
+        )
+        sys.exit(1) # إغلاق النسخة الثانية فوراً
+    # =========================================================================
+    # [نهاية التعديل] : سيظل lock_file محجوزاً طالما البرنامج يعمل
+    # =========================================================================
+
     # إعدادات لحفظ الجلسة (اسم المستخدم وكلمة المرور)
     settings = QSettings("ModernLam", "StockManager")
     
@@ -57,15 +78,13 @@ def main():
         if data_manager and saved_user and saved_pass:
             try:
                 # [هام] نستخدم دالة authenticate وليس select مباشرة
-                # لكي نتأكد أن كلمة المرور لم تتغير في قاعدة البيانات
                 user_found = data_manager.users.authenticate(saved_user, saved_pass)
                 
                 if user_found:
                     logging.info(f"Auto-login successful for user: {saved_user}")
                     current_user = user_found
                 else:
-                    # إذا فشل الدخول (كلمة المرور تغيرت أو المستخدم محظور)
-                    logging.warning("Auto-login failed (Password changed or User inactive). Clearing session.")
+                    logging.warning("Auto-login failed. Clearing session.")
                     settings.remove("saved_username")
                     settings.remove("saved_password")
                     current_user = None
@@ -79,16 +98,13 @@ def main():
             if login_dlg.exec() == QDialog.Accepted:
                 current_user = login_dlg.user_data
                 
-                # منطق حفظ الجلسة "Remember Me"
                 if login_dlg.remember_me.isChecked():
                     settings.setValue("saved_username", current_user['Username'])
-                    # نحفظ كلمة المرور المدخلة في الحقل للتحقق منها لاحقاً
                     settings.setValue("saved_password", login_dlg.password_input.text().strip())
                 else:
                     settings.remove("saved_username")
                     settings.remove("saved_password")
             else:
-                # إذا أغلق المستخدم نافذة الدخول، نغلق التطبيق
                 return 
 
         # نمرر connection_error لكي تظهر رسالة خطأ داخل النافذة إذا لم تنجح قاعدة البيانات

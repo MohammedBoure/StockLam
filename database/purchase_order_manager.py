@@ -35,19 +35,15 @@ class PurchaseOrderManager:
                 else:
                     new_serial = 1
                 
-                # 5. دمج السنة مع الرقم التسلسلي الجديد بدون أصفار فاصلة
-                final_id = int(f"{current_year_prefix}{new_serial}")
-                return final_id
+                return int(f"{current_year_prefix}{new_serial}")
                 
         except Exception as e:
             logging.error(f"Erreur lors de la génération du PO_ID annuel: {e}")
-            # في حالة الخطأ، نستخدم السنة مع رقم عشوائي كخطة بديلة لتجنب توقف النظام
             import random
             return int(f"{current_year_prefix}{random.randint(100, 999)}")
 
     def create_purchase_order(self, supplier_id: int, order_date: Any, expected_delivery_date: Optional[Any] = None, notes: Optional[str] = None) -> Optional[int]:
-        """إصلاح الاستدعاء بإزالة المعامل الزائد لتفادي خطأ Argument."""
-        new_po_id = self.generate_custom_po_id() # تم إزالة order_date من هنا
+        new_po_id = self.generate_custom_po_id()
         if not new_po_id: return None
         try:
             with self.db.get_db_connection() as conn:
@@ -110,7 +106,7 @@ class PurchaseOrderManager:
         
         
     def get_full_order_details(self, po_id: int) -> Optional[Dict]:
-        """جلب بيانات الطلب والمنتجات والماركات والملاحظات (اللازمة للـ PDF)."""
+        """جلب بيانات الطلب والمنتجات والماركات والملاحظات (تم التعديل لجلب الوحدة المحفوظة)."""
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -127,11 +123,17 @@ class PurchaseOrderManager:
                 if not header: return None
 
                 # 2. جلب التفاصيل مع دمج الماركة (Brand) وملاحظة السطر (Item_Note)
+                # [FIX] نستخدم COALESCE لإعطاء الأولوية للوحدة المحفوظة في السطر (pd.Ordering_Unit)
+                # فإذا كانت NULL (للطلبات القديمة) نعود للوحدة الافتراضية للمنتج (p.Ordering_Unit)
                 query_details = """
                     SELECT 
-                        pd.*, 
+                        pd.ID, pd.PO_ID, pd.Product_ID, pd.Qty_Ordered, 
+                        pd.Unit_Price_HT, pd.Discount_Percent, pd.Tax_Rate_Percent, 
+                        pd.Line_Total_HT, pd.Line_Total_TTC, pd.Item_Note,
+                        
+                        COALESCE(pd.Ordering_Unit, p.Ordering_Unit) as Ordering_Unit,
+                        
                         p.Product_Name, 
-                        p.Ordering_Unit,
                         m.Manuf_Name
                     FROM PO_Details pd
                     JOIN Products_Master p ON pd.Product_ID = p.Product_ID
@@ -147,7 +149,7 @@ class PurchaseOrderManager:
             return None
 
     def update_full_order(self, po_id: int, data: Dict) -> bool:
-        """تحديث شامل للرأس والأسطر (دعم Item_Note)."""
+        """تحديث شامل للرأس والأسطر (تم التعديل لحفظ Ordering_Unit)."""
         try:
             with self.db.get_db_connection() as conn:
                 conn.start_transaction()
@@ -173,14 +175,16 @@ class PurchaseOrderManager:
                     line_ht = qty * price * (1 - discount/100)
                     line_ttc = line_ht * (1 + tax/100)
 
+                    # [FIX] إضافة Ordering_Unit لجملة الإدخال
                     insert_detail = """
                         INSERT INTO PO_Details 
-                        (PO_ID, Product_ID, Qty_Ordered, Item_Note, 
+                        (PO_ID, Product_ID, Qty_Ordered, Item_Note, Ordering_Unit,
                          Unit_Price_HT, Discount_Percent, Tax_Rate_Percent, Line_Total_HT, Line_Total_TTC)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(insert_detail, (
                         po_id, item['Product_ID'], qty, item.get('Item_Note', ''),
+                        item.get('Ordering_Unit', 'U'), # <--- حفظ الوحدة المختارة
                         price, discount, tax, line_ht, line_ttc
                     ))
 

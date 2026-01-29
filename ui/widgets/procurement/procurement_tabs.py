@@ -21,7 +21,6 @@ from .dialogs import PurchaseOrderDialog
 from .reception_tab import ReceptionTab
 from .reception_history_tab import ReceptionHistoryTab
 from .credit_note_tab import CreditNoteTab 
-# [NEW] استيراد تبويب الشكاوى
 from .reclamation_tab import ReclamationTab 
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
 
@@ -55,7 +54,6 @@ class ProcurementTab(QWidget):
         self.rec_tab = ReceptionTab(self.data_manager) 
         self.history_tab = ReceptionHistoryTab(self.data_manager)
         self.credit_tab = CreditNoteTab(self.data_manager)
-        # [NEW] تهيئة تبويب الشكاوى
         self.reclamation_tab = ReclamationTab(self.data_manager)
         
         # إضافة التبويبات
@@ -63,7 +61,6 @@ class ProcurementTab(QWidget):
         self.tabs.addTab(self.rec_tab, "📥 Réception de Commandes")
         self.tabs.addTab(self.history_tab, "📜 Historique Réceptions")
         self.tabs.addTab(self.credit_tab, "↩️ Avoirs / Retours")
-        # [NEW] إضافة التبويب للقائمة
         self.tabs.addTab(self.reclamation_tab, "⚠️ Réclamations")
         
         # الاتصالات (Signals)
@@ -72,6 +69,12 @@ class ProcurementTab(QWidget):
         
         # ربط إشارة طلب الـ Avoir
         self.history_tab.request_create_avoir.connect(self.open_credit_note_tab)
+
+        # -----------------------------------------------------------
+        # [مهم جداً] ربط زر "عرض الأرشيف" في قائمة الطلبات بتبويب الأرشيف
+        # -----------------------------------------------------------
+        # نحن نصل إلى po_view الموجود داخل po_tab ونربط إشارته
+        self.po_tab.po_view.view_receptions_requested.connect(self.on_view_receptions_requested)
         
         layout.addWidget(self.tabs)
 
@@ -90,17 +93,23 @@ class ProcurementTab(QWidget):
             if hasattr(self.credit_tab, 'refresh_history'):
                 self.credit_tab.refresh_history()
         elif index == 4:
-            # [NEW] تحديث بيانات الشكاوى عند فتح التبويب
             if hasattr(self.reclamation_tab, 'load_data'):
                 self.reclamation_tab.load_data()
 
     def open_credit_note_tab(self, reception_data):
-        """تنتقل إلى تبويب الـ Credit Note وتملؤه ببيانات الاستلام"""
         self.tabs.setCurrentWidget(self.credit_tab)
         if hasattr(self.credit_tab, 'populate_from_reception'):
             self.credit_tab.populate_from_reception(reception_data)
 
-# --- PurchaseOrdersTab يبقى كما هو ---
+    # [دالة جديدة] للاستجابة لطلب عرض الأرشيف
+    def on_view_receptions_requested(self, po_id):
+        # 1. الانتقال لتبويب الأرشيف (رقم 2)
+        self.tabs.setCurrentWidget(self.history_tab)
+        # 2. استدعاء دالة الفلترة التي أضفناها في الملف الآخر
+        self.history_tab.show_history_for_po(po_id)
+
+
+# --- الكلاس PurchaseOrdersTab يبقى كما هو (لا يحتاج تعديل) ---
 class PurchaseOrdersTab(QWidget):
     data_changed = Signal() 
     def __init__(self, manager):
@@ -183,6 +192,8 @@ class PurchaseOrdersTab(QWidget):
         controls.addWidget(btn_refresh)
         
         layout.addWidget(toolbar_frame)
+        
+        # هنا يتم إنشاء po_view الذي يحتوي على الإشارة الجديدة
         self.po_view = PurchaseOrderListView(self.manager)
         layout.addWidget(self.po_view)
 
