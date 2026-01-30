@@ -1,13 +1,32 @@
-feat(release): v1.6.1 - enhance login UX and add bulk barcode printing
+feat(v1.7.0): Enhanced Dashboard Charts, FEFO Logic, and Inventory Pagination
 
-Authentication (Keyboard Navigation):
-- Smart Navigation: Pressing Enter on 'Username' now moves focus to 'Password'.
-- Enter-to-Login: Pressing Enter triggers login only if fields are valid.
-- Initial Focus: Cursor automatically targets the 'Username' field on startup.
-- Validation: Prevent login attempts if fields are empty.
+MAJOR CHANGES:
 
-Reception & Barcodes:
-- Implemented 'Print All' button in ReceptionDialog for mass generation.
-- Added `BulkBarcodeSelectionDialog` to select/deselect items before printing.
-- Added separator label logic to distinguish between product batches.
-- Connected table double-click event to trigger item modification mode.
+1. Dashboard & Charts Overhaul:
+   - Added dual-curve visualization: "Entrées" (Purchases) vs "Sorties" (Consumption).
+   - Implemented date alignment and zero-padding logic to ensure continuous, non-jagged chart lines.
+   - Added smart scatter labels for chart values with collision detection to prevent text overlap.
+   - Improved tooltip and legend styling.
+
+2. Inventory Performance Optimization:
+   - Implemented Pagination in `BatchesTab` (50 rows per page) to handle large datasets efficiently.
+   - Replaced heavy UI rendering with optimized table handling.
+   - Added styling to the search/scan area ("Zone de Scan").
+
+3. FEFO (First Expired, First Out) Implementation:
+   - Enforced FEFO logic in Consumption and Dispatch tabs.
+   - Added `FEFOSelectionDialog` to warn users when selecting a newer batch while an older one exists.
+   - Smart sorting by Expiry Date then Reception Date.
+
+4. Quick Actions & UX:
+   - Added "Quick Consume" and "Quick Transfer" dialogs via context menu (Right-Click).
+   - Added "View History by Barcode" shortcut for Admins.
+
+5. Role-Based Access Control (RBAC):
+   - Restricted "History" view to Admins only.
+   - Hidden "Bon de Réception" option from Technicians in the context menu.
+   - Hidden financial columns and totals for Technicians.
+
+Fixed:
+   - `setUniformRowHeights` attribute error in PySide6.
+   - Chart animation crashes by handling series cleanup properly.

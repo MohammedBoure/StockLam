@@ -166,13 +166,20 @@ class PurchaseOrderListView(QWidget):
         po_id = po_data['PO_ID']
         status = po_data.get('Status')
 
-        # التحقق من الحالة
-        if status in ['Draft', 'Cancelled']:
-             reply = QMessageBox.question(self, "Confirmation", 
-                 f"Cette commande est '{status}'. Voulez-vous quand même créer une réception ?",
-                 QMessageBox.Yes | QMessageBox.No)
-             if reply == QMessageBox.No:
-                 return
+        # ---------------------------------------------------------
+        # [تعديل] منع إنشاء استلام إذا كانت الحالة Draft أو Cancelled
+        # ---------------------------------------------------------
+        if status == 'Draft':
+            QMessageBox.warning(self, "Action impossible", 
+                                "Impossible de créer une réception pour une commande 'Brouillon'.\n"
+                                "Veuillez d'abord valider la commande (Statut: Envoyée).")
+            return
+
+        if status == 'Cancelled':
+            QMessageBox.warning(self, "Action impossible", 
+                                "Impossible de créer une réception pour une commande 'Annulée'.")
+            return
+        # ---------------------------------------------------------
 
         try:
             full_po_data = self.manager.po.get_full_order_details(po_id)

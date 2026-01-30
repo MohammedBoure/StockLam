@@ -1,5 +1,3 @@
-# ui/widgets/procurement/dialogs.py
-
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
                                QLineEdit, QComboBox, QDialogButtonBox, QDateEdit, 
                                QTableWidget, QTableWidgetItem, QWidget, QLabel, 
@@ -35,6 +33,11 @@ class PurchaseOrderDialog(BaseDialog):
         
         if self.data:
             self.populate_form()
+            # En mode modification, on suppose que l'en-tête est valide, donc on le verrouille
+            self.validate_header()
+        else:
+            # En mode création, on verrouille la partie détails au début
+            self.toggle_inputs_state(False)
             
         if self.read_only:
             self.set_read_only_mode()
@@ -47,6 +50,7 @@ class PurchaseOrderDialog(BaseDialog):
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(15, 15, 15, 15)
 
+        # === 1. Informations Générales (En-tête) ===
         top_section = QGroupBox("Informations Générales")
         top_section.setStyleSheet("""
             QGroupBox { font-weight: bold; font-size: 13px; border: 1px solid #dcdcdc; border-radius: 8px; margin-top: 10px; padding-top: 5px; }
@@ -84,14 +88,37 @@ class PurchaseOrderDialog(BaseDialog):
         self.delivery_date.setMinimumHeight(38)
         top_grid.addWidget(self.delivery_date, 1, 3)
 
+        # السطر الثالث: أزرار التحكم في الرأس (Validation / Unlock)
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 10, 0, 0)
+        
+        self.btn_validate_header = QPushButton("Valider & Verrouiller")
+        self.btn_validate_header.setCursor(Qt.PointingHandCursor)
+        self.btn_validate_header.setMinimumHeight(38)
+        self.btn_validate_header.setStyleSheet("background-color: #2ecc71; color: white; font-weight: bold; border-radius: 4px; padding: 0 15px;")
+        self.btn_validate_header.clicked.connect(self.validate_header)
+        
+        self.btn_unlock_header = QPushButton("✏️ Modifier l'en-tête")
+        self.btn_unlock_header.setCursor(Qt.PointingHandCursor)
+        self.btn_unlock_header.setMinimumHeight(38)
+        self.btn_unlock_header.setStyleSheet("background-color: #f39c12; color: white; font-weight: bold; border-radius: 4px; padding: 0 15px;")
+        self.btn_unlock_header.setVisible(False)
+        self.btn_unlock_header.clicked.connect(self.unlock_header)
+
+        btn_layout.addWidget(self.btn_validate_header)
+        btn_layout.addWidget(self.btn_unlock_header)
+        btn_layout.addStretch() # لدفع الأزرار لليسار
+        
+        top_grid.addLayout(btn_layout, 2, 0, 1, 4)
+
         main_layout.addWidget(top_section, stretch=0)
 
-        # === 2. Section Ajout / Modification ===
-        add_group = QGroupBox("Ajout d'un Article")
-        add_group.setStyleSheet("""
+        # === 2. Section Ajout / Modification (Groupée) ===
+        self.add_group = QGroupBox("Ajout d'un Article")
+        self.add_group.setStyleSheet("""
             QGroupBox { font-weight: bold; font-size: 13px; border: 1px solid #dcdcdc; border-radius: 8px; margin-top: 5px; padding-top: 5px; }
         """)
-        add_layout = QVBoxLayout(add_group)
+        add_layout = QVBoxLayout(self.add_group)
         
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("Produit :"))
@@ -130,12 +157,12 @@ class PurchaseOrderDialog(BaseDialog):
             row1.addWidget(btn)
 
         add_layout.addLayout(row1)
-        main_layout.addWidget(add_group, stretch=0)
+        main_layout.addWidget(self.add_group, stretch=0)
 
-        # === 3. Tableau des Articles ===
-        table_group = QGroupBox("Liste des Articles Commandés")
-        table_group.setStyleSheet("QGroupBox { font-weight: bold; border: 1px solid #dcdcdc; border-radius: 8px; }")
-        table_layout = QVBoxLayout(table_group)
+        # === 3. Tableau des Articles (Groupé) ===
+        self.table_group = QGroupBox("Liste des Articles Commandés")
+        self.table_group.setStyleSheet("QGroupBox { font-weight: bold; border: 1px solid #dcdcdc; border-radius: 8px; }")
+        table_layout = QVBoxLayout(self.table_group)
 
         self.lines_table = QTableWidget()
         cols = ["Désignation", "Marque", "Unité", "Qté", "Observation"]
@@ -158,7 +185,7 @@ class PurchaseOrderDialog(BaseDialog):
         
         table_layout.addWidget(self.lines_table)
         
-        main_layout.addWidget(table_group, stretch=10) 
+        main_layout.addWidget(self.table_group, stretch=10) 
 
         self.completer = QCompleter()
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -172,6 +199,45 @@ class PurchaseOrderDialog(BaseDialog):
         self.lines_table.selectionModel().selectionChanged.connect(self.update_action_buttons_state)
         
         self.update_action_buttons_state()
+
+    def toggle_inputs_state(self, enabled):
+        """Active ou désactive la zone de saisie des produits"""
+        self.add_group.setEnabled(enabled)
+        self.table_group.setEnabled(enabled)
+
+    def validate_header(self):
+        """Valide les informations de l'en-tête et déverrouille la saisie des produits"""
+        if not self.supplier_combo.currentData():
+            QMessageBox.warning(self, "Attention", "Veuillez sélectionner un fournisseur.")
+            return
+
+        # Verrouiller l'en-tête
+        self.supplier_combo.setEnabled(False)
+        self.notes_input.setReadOnly(True)
+        self.order_date.setReadOnly(True)
+        self.delivery_date.setReadOnly(True)
+        
+        # Changer les boutons
+        self.btn_validate_header.setVisible(False)
+        self.btn_unlock_header.setVisible(True)
+        
+        # Déverrouiller la partie détails
+        self.toggle_inputs_state(True)
+
+    def unlock_header(self):
+        """Déverrouille l'en-tête pour modification et verrouille la saisie des produits"""
+        # Déverrouiller l'en-tête
+        self.supplier_combo.setEnabled(True)
+        self.notes_input.setReadOnly(False)
+        self.order_date.setReadOnly(False)
+        self.delivery_date.setReadOnly(False)
+        
+        # Changer les boutons
+        self.btn_validate_header.setVisible(True)
+        self.btn_unlock_header.setVisible(False)
+        
+        # Verrouiller la partie détails pour forcer la revalidation
+        self.toggle_inputs_state(False)
 
     def update_search_data(self, products_list):
         self.product_data_map = {}
@@ -360,6 +426,11 @@ class PurchaseOrderDialog(BaseDialog):
         self.order_date.setReadOnly(True)
         self.delivery_date.setReadOnly(True)
         self.notes_input.setReadOnly(True)
+        
+        # Masquer les boutons de validation/modification en lecture seule
+        self.btn_validate_header.setVisible(False)
+        self.btn_unlock_header.setVisible(False)
+        
         self.product_search.setEnabled(False)
         self.unit_combo.setEnabled(False)
         self.qty_spin.setEnabled(False)
@@ -408,9 +479,16 @@ class PurchaseOrderDialog(BaseDialog):
         if self.read_only: 
             return None
 
-        if not self.supplier_combo.currentData():
-            QMessageBox.warning(self, "Attention", "Veuillez sélectionner un fournisseur.")
-            return None
+        # Pas besoin de vérifier le fournisseur ici car c'est déjà fait dans validate_header
+        # Mais on vérifie si l'utilisateur a déverrouillé sans revalider ?
+        # Logiquement, s'il a déverrouillé, la partie "détails" est désactivée,
+        # donc il ne peut pas cliquer sur "Sauvegarder" si le bouton Sauvegarder est en dehors...
+        # Le BaseDialog a ses boutons en bas.
+        
+        # Vérifions si l'en-tête est verrouillé (donc validé)
+        if self.supplier_combo.isEnabled():
+             QMessageBox.warning(self, "Attention", "Veuillez valider les informations de l'en-tête avant de sauvegarder.")
+             return None
 
         items = []
         for row in range(self.lines_table.rowCount()):

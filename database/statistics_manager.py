@@ -463,3 +463,30 @@ class StatisticsManager:
         except Exception as e:
             logging.error(f"Error fetching reception matrix: {e}")
             return []
+        
+    def get_reception_trend(self, start_date, end_date):
+        """
+        Données pour le graphique de tendance (Valeur des Entrées/Achats TTC vs Temps).
+        """
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                query = """
+                    SELECT 
+                        DATE(rl.Reception_Date) as date,
+                        COUNT(ib.Batch_ID) as transaction_count,
+                        -- Valeur Totale Reçue TTC
+                        SUM(
+                            ib.Quantity_Initial * ib.Unit_Price_Received * (1 - COALESCE(ib.Discount_Percent, 0) / 100.0) * (1 + COALESCE(ib.Tax_Rate_Percent, 0) / 100.0)
+                        ) as daily_value
+                    FROM Inventory_Batches ib
+                    JOIN Reception_Log rl ON ib.BR_ID = rl.BR_ID
+                    WHERE DATE(rl.Reception_Date) BETWEEN %s AND %s
+                    GROUP BY DATE(rl.Reception_Date)
+                    ORDER BY date ASC
+                """
+                cursor.execute(query, (start_date, end_date))
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Erreur Reception Trend: {e}")
+            return []

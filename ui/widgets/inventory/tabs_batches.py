@@ -33,6 +33,8 @@ from .dialogs import AdjustmentDialog, WasteDialog, BatchDetailsDialog
 from .location_tree_combo import LocationTreeComboBox
 from ui.widgets.procurement.reception_dialog import ReceptionDialog
 
+from .quick_actions import QuickTransferDialog, QuickConsumeDialog
+
 class BatchesTab(QWidget):
     data_changed = Signal()
     request_open_reception = Signal(int) 
@@ -42,6 +44,11 @@ class BatchesTab(QWidget):
         super().__init__()
         self.manager = manager
         self.all_data = [] 
+        
+        self.current_page = 0      
+        self.rows_per_page = 50    
+        self.filtered_data = []   
+        
         self.init_ui()
 
     def init_ui(self):
@@ -187,12 +194,15 @@ class BatchesTab(QWidget):
 
         # --- 2. الجدول الرئيسي ---
         self.table = QTableWidget()
+        self.table.verticalHeader().setDefaultSectionSize(30) 
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
         cols = [
             "Désignation Produit", "Famille", "Marque", "Automate", 
             "Fournisseur", "Stock (Actuel)", "Date Entrée", "N° Lot", 
             "Date Exp.", "Qté Init.", "Code-Barres", "Prix U.", 
             "Valeur (DA)", "Ref PO", "Emplacement"
         ]
+        
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
         
@@ -232,6 +242,40 @@ class BatchesTab(QWidget):
         """)
         self.lbl_total_value = QLabel("Valeur Totale : 0.00 DA")
         bottom_bar.addWidget(self.lbl_total_value)
+
+        # --- بداية جزء التنقل (Pagination) ---
+        pagination_layout = QHBoxLayout()
+        pagination_layout.setSpacing(10) # مسافة مريحة بين الأزرار
+        pagination_layout.setContentsMargins(0, 0, 0, 0) # إزالة الهوامش الداخلية للحاوية
+
+        self.btn_prev_page = QPushButton("◀ Précédent")
+        self.btn_prev_page.setMinimumWidth(110) # عرض مرن لضمان ظهور الكلمة
+        self.btn_prev_page.setCursor(Qt.PointingHandCursor)
+        self.btn_prev_page.clicked.connect(self.prev_page)
+        
+        self.lbl_page_info = QLabel("Page 1 / 1")
+        # تصميم النص بدون هوامش خارجية مزعجة
+        self.lbl_page_info.setStyleSheet("font-weight: bold; color: #2c3e50;")
+        self.lbl_page_info.setAlignment(Qt.AlignCenter)
+        self.lbl_page_info.setMinimumWidth(140)
+
+        self.btn_next_page = QPushButton("Suivant ▶")
+        self.btn_next_page.setMinimumWidth(110) # عرض مرن
+        self.btn_next_page.setCursor(Qt.PointingHandCursor)
+        self.btn_next_page.clicked.connect(self.next_page)
+        
+        pagination_layout.addWidget(self.btn_prev_page)
+        pagination_layout.addWidget(self.lbl_page_info)
+        pagination_layout.addWidget(self.btn_next_page)
+        
+        # وضع العناصر داخل حاوية (QWidget) بدلاً من GroupBox لإخفاء الإطار تماماً
+        page_group = QWidget() 
+        # تأكيد عدم وجود حدود أو خلفية
+        page_group.setStyleSheet("background: transparent; border: none;") 
+        page_group.setLayout(pagination_layout)
+        
+        bottom_bar.addWidget(page_group)
+        # --- نهاية جزء التنقل ---
         
         bottom_bar.addStretch() # مسافة مرنة بين التوتال والأزرار
 
@@ -300,24 +344,74 @@ class BatchesTab(QWidget):
         
         self.load_data()
 
+
+    def update_pagination_controls(self):
+        """تحديث النصوص وحالة الأزرار بناءً على الصفحة الحالية"""
+        total_rows = len(self.filtered_data)
+        if total_rows == 0:
+            self.lbl_page_info.setText("Aucun résultat")
+            self.btn_prev_page.setEnabled(False)
+            self.btn_next_page.setEnabled(False)
+            return
+
+        total_pages = (total_rows + self.rows_per_page - 1) // self.rows_per_page
+        
+        # تصحيح الصفحة الحالية لضمان عدم الخروج عن النطاق
+        self.current_page = max(0, min(self.current_page, total_pages - 1))
+        
+        display_page = self.current_page + 1
+        self.lbl_page_info.setText(f"Page {display_page} / {total_pages} (Total: {total_rows})")
+        
+        self.btn_prev_page.setEnabled(self.current_page > 0)
+        self.btn_next_page.setEnabled(self.current_page < total_pages - 1)
+
+    def next_page(self):
+        self.current_page += 1
+        self._render_current_page()
+
+    def prev_page(self):
+        self.current_page -= 1
+        self._render_current_page()
+
+    def _render_current_page(self):
+        """تقطيع البيانات وعرض الجزء المطلوب فقط"""
+        start_idx = self.current_page * self.rows_per_page
+        end_idx = start_idx + self.rows_per_page
+        
+        # أخذ شريحة (Slice) من البيانات
+        page_data = self.filtered_data[start_idx:end_idx]
+        
+        self.update_pagination_controls()
+        self._populate_table(page_data)
+
     def showEvent(self, event):
         super().showEvent(event)
         self.load_data()
 
     def _populate_table(self, data):
-        """تعبئة الجدول مع ضمان إخفاء العناصر المالية للتقني في كل دورة تحديث"""
+        """عرض البيانات في الجدول (يستقبل شريحة صغيرة فقط 50 صف)"""
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        current_date = date.today()
-        total_value_filtered = 0.0
-
-        # التحقق من دور المستخدم الحالي
+        
+        # 1. التحقق من الصلاحيات لحساب الإجمالي
         try:
             role = self.window().current_user.get('Role', 'Technician')
-        except:
-            role = 'Technician'
-        
+        except: role = 'Technician'
         is_tech = (role == 'Technician')
+
+        # [جديد] حساب المجموع الكلي من القائمة الكاملة (filtered_data) وليس المعروضة فقط
+        total_value_filtered = 0.0
+        if not is_tech:
+            for b in self.filtered_data: # لاحظ استخدام filtered_data هنا
+                try:
+                    qty = float(b.get('Quantity_Current', 0))
+                    if qty > 0:
+                        price_u = float(b.get('Unit_Price_Received', 0))
+                        discount = float(b.get('Discount_Percent', 0)) / 100.0
+                        tax = float(b.get('Tax_Rate_Percent', 0)) / 100.0
+                        line_val = qty * price_u * (1 - discount) * (1 + tax)
+                        total_value_filtered += line_val
+                except: pass
 
         def make_item(val, align=Qt.AlignCenter, color=None, font=None):
             s_val = str(val) if val is not None else ""
@@ -328,6 +422,7 @@ class BatchesTab(QWidget):
             it.setFlags(it.flags() & ~Qt.ItemIsEditable)
             return it
 
+        # 2. رسم الصفوف (للبيانات المعروضة فقط - data)
         for r, b in enumerate(data):
             self.table.insertRow(r)
             qty = float(b.get('Quantity_Current', 0))
@@ -347,34 +442,32 @@ class BatchesTab(QWidget):
             self.table.setItem(r, 9, make_item(f"{float(b.get('Quantity_Initial',0)):g}"))
             self.table.setItem(r, 10, make_item(b.get('Internal_Barcode') or b.get('Barcode')))
             
-            # 11-12: البيانات المالية
+            # 11-12: البيانات المالية (حساب للصف المعروض)
             if not is_tech:
                 price_u = float(b.get('Unit_Price_Received', 0))
                 discount = float(b.get('Discount_Percent', 0)) / 100.0
                 tax = float(b.get('Tax_Rate_Percent', 0)) / 100.0
                 line_val = qty * price_u * (1 - discount) * (1 + tax)
-                if qty > 0: total_value_filtered += line_val
                 
                 self.table.setItem(r, 11, make_item(f"{price_u:,.2f}"))
                 self.table.setItem(r, 12, make_item(f"{line_val:,.2f}"))
             else:
-                # نتركها فارغة للتقني (سيتم إخفاؤها في نهاية الدالة)
                 self.table.setItem(r, 11, QTableWidgetItem(""))
                 self.table.setItem(r, 12, QTableWidgetItem(""))
 
             self.table.setItem(r, 13, make_item(b.get('PO_ID')))
             self.table.setItem(r, 14, make_item(b.get('Location_Name')))
 
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         
-        # --- الإخفاء القسري (Force) لضمان عدم الظهور بعد التحديث ---
+        # الإخفاء والتحكم في الليبل السفلي
         self.table.setColumnHidden(11, is_tech)
         self.table.setColumnHidden(12, is_tech)
 
         if is_tech:
-            self.lbl_total_value.hide() # إخفاء المربع السفلي تماماً
+            self.lbl_total_value.hide()
         else:
-            self.lbl_total_value.show() # إظهاره وتحديث القيمة
+            self.lbl_total_value.show()
             self.lbl_total_value.setText(f"💰 Total Filtré : {total_value_filtered:,.2f} DA")
 
     def print_batch_label(self):
@@ -728,7 +821,9 @@ class BatchesTab(QWidget):
             logging.error(f"Erreur load_data: {e}")
 
     def apply_filters_local(self):
+        """تطبيق الفلترة وحفظ النتائج في الذاكرة بدلاً من العرض المباشر"""
         try:
+            # 1. جلب قيم الفلاتر
             search_txt = self.search_input.text().lower().strip()
             loc_id = self.loc_filter.get_current_location_id()
             family_id = self.combo_family.currentData()
@@ -745,23 +840,20 @@ class BatchesTab(QWidget):
             ent_to = self.date_in_to.date().toPython()
 
             current_date = date.today()
-            filtered = []
+            
+            # قائمة مؤقتة لتخزين النتائج
+            temp_filtered = []
             
             for row in self.all_data:
                 qty = float(row.get('Quantity_Current', 0))
                 
-                # --- [تصحيح] منطق فلتر الحالة والكمية الصفرية ---
-                # إذا كان الخيار هو "عرض الكل (>0)" أو "في المخزن" أو "ضعيف" أو "قرب الانتهاء"
-                # يجب دائماً إخفاء الصفر حتى لو كان هناك بحث، إلا إذا كان المستخدم يبحث بباركود محدد
+                # --- شروط الفلترة ---
                 if status_idx in [0, 1, 2, 3, 4]:
-                    if qty <= 0:
-                        continue # تخطي أي منتج فارغ فوراً في هذه الحالات
-                
-                elif status_idx == 5: # حالة "Épuisé" فقط هي التي تطلب qty == 0
-                    if qty > 0:
-                        continue
+                    if qty <= 0: continue 
+                elif status_idx == 5: # Épuisé
+                    if qty > 0: continue
 
-                # 1. البحث النصي
+                # البحث النصي
                 bc_internal = str(row.get('Internal_Barcode', '')).lower()
                 bc_manuf = str(row.get('Barcode', '')).lower()
                 is_search_match = True
@@ -769,17 +861,15 @@ class BatchesTab(QWidget):
                     full_text = f"{row.get('Product_Name','')} {row.get('Lot_Number','')} {bc_internal} {bc_manuf} {row.get('PO_ID','')}".lower()
                     if search_txt not in full_text:
                         is_search_match = False
-                
-                if not is_search_match: 
-                    continue
+                if not is_search_match: continue
 
-                # 2. القوائم المنسدلة (العائلة، الماركة، الجهاز، الموقع)
+                # القوائم المنسدلة
                 if loc_id and row.get('Location_ID') != loc_id: continue
                 if family_id and row.get('Family_ID') != family_id: continue
                 if manuf_id and row.get('Manuf_ID') != manuf_id: continue
                 if automate_id and row.get('Preferred_Automate_ID') != automate_id: continue
 
-                # 3. منطق التواريخ والحالات الخاصة
+                # التواريخ
                 min_threshold = float(row.get('Minimum_Stock_Level') or 5) 
                 alert_days = int(row.get('Alert_Before_Expiry_Days') or 30)
                 
@@ -792,7 +882,6 @@ class BatchesTab(QWidget):
                         try: exp_date_obj = datetime.strptime(raw_exp[:10], "%Y-%m-%d").date()
                         except: pass
 
-                # تفاصيل الحالات (بعد التأكد من شرط الكمية في الأعلى)
                 if status_idx == 2: # Stock Faible
                     if qty > min_threshold: continue
                 elif status_idx == 3: # Périmés
@@ -802,7 +891,6 @@ class BatchesTab(QWidget):
                     days_left = (exp_date_obj - current_date).days
                     if not (0 <= days_left <= alert_days): continue
                 
-                # 4. تصفية تواريخ الصلاحية والدخول
                 if use_exp_date:
                     if not exp_date_obj or not (exp_from <= exp_date_obj <= exp_to): continue
 
@@ -816,9 +904,13 @@ class BatchesTab(QWidget):
                         except: pass
                     if not e_date_obj or not (ent_from <= e_date_obj <= ent_to): continue
 
-                filtered.append(row)
-                
-            self._populate_table(filtered)
+                # إذا اجتاز كل الشروط، أضفه للقائمة
+                temp_filtered.append(row)
+            
+            # [تعديل] حفظ النتائج وإعادة تعيين الصفحة إلى 0
+            self.filtered_data = temp_filtered
+            self.current_page = 0
+            self._render_current_page()
 
         except Exception as e:
             logging.error(f"Erreur filters: {e}", exc_info=True)
@@ -951,36 +1043,122 @@ class BatchesTab(QWidget):
         if product_name:
             self.request_product_history.emit(str(product_name))
 
+    
+    def open_quick_transfer(self, batch_data):
+        """فتح نافذة التحويل الصغيرة وتنفيذ العملية"""
+        # نمرر مدير المواقع (self.manager.locations) لتعبئة القائمة
+        dialog = QuickTransferDialog(batch_data, self.manager.locations, self)
+        
+        if dialog.exec():
+            data = dialog.get_data()
+            dest_id = data['dest_id']
+            qty = data['qty']
+
+            # تحققات بسيطة
+            if not dest_id:
+                QMessageBox.warning(self, "Erreur", "Veuillez sélectionner une destination.")
+                return
+            if str(dest_id) == str(batch_data.get('Location_ID')):
+                QMessageBox.warning(self, "Erreur", "La destination est la même que l'emplacement actuel.")
+                return
+
+            # التنفيذ عبر المدير (Manager)
+            try:
+                # نستخدم user_id إذا كان متاحاً
+                u_id = self.get_current_user_id()
+                success = self.manager.batches.transfer_batch_location(
+                    batch_data['Batch_ID'], dest_id, qty, user_id=u_id
+                )
+                
+                if success:
+                    QMessageBox.information(self, "Succès", "Transfert effectué avec succès.")
+                    self.load_data() # تحديث الجدول
+                    self.data_changed.emit() # إشعار باقي التبويبات
+                else:
+                    QMessageBox.critical(self, "Erreur", "Échec de l'opération dans la base de données.")
+            except Exception as e:
+                logging.error(f"Quick Transfer Error: {e}")
+                QMessageBox.critical(self, "Erreur", f"Erreur technique : {e}")
+
+    def open_quick_consume(self, batch_data):
+        """فتح نافذة الاستهلاك الصغيرة وتنفيذ العملية"""
+        dialog = QuickConsumeDialog(batch_data, self)
+        
+        if dialog.exec():
+            qty = dialog.get_qty()
+            
+            try:
+                # تحقق من FEFO (اختياري، إذا كنت تريد تطبيقه هنا أيضاً)
+                if not self.check_fefo_compliance(batch_data):
+                    return
+
+                u_id = self.get_current_user_id()
+                success = self.manager.batches.direct_consume_batch_unit(
+                    batch_data['Batch_ID'], qty, user_id=u_id
+                )
+                
+                if success:
+                    QMessageBox.information(self, "Succès", "Sortie de stock enregistrée.")
+                    self.load_data()
+                    self.data_changed.emit()
+                else:
+                    QMessageBox.critical(self, "Erreur", "Échec de l'opération.")
+            except Exception as e:
+                logging.error(f"Quick Consume Error: {e}")
+                QMessageBox.critical(self, "Erreur", f"Erreur technique : {e}")
+
     def show_context_menu(self, pos):
         index = self.table.indexAt(pos)
         if not index.isValid(): return
+        
         item = self.table.item(index.row(), 0)
         batch_data = item.data(Qt.UserRole)
         if not batch_data: return
         
         menu = QMenu(self)
 
-        action_history = QAction("📜 Voir Historique (Barcode)", self)
-        action_history.triggered.connect(self.open_history_via_barcode)
-        menu.addAction(action_history)
-        
-        # الخيار الجديد
-        action_history = QAction("📜 Voir Historique du produit", self)
-        action_history.triggered.connect(lambda: self.go_to_history(batch_data.get('Product_Name')))
-        menu.addAction(action_history)
+        # 1. خيارات الاستهلاك والتحويل (متاحة للجميع)
+        action_consume = QAction("📉 Consommation Rapide", self)
+        action_consume.triggered.connect(lambda: self.open_quick_consume(batch_data))
+        menu.addAction(action_consume)
+
+        action_transfer = QAction("🚚 Transfert vers...", self)
+        action_transfer.triggered.connect(lambda: self.open_quick_transfer(batch_data))
+        menu.addAction(action_transfer)
         
         menu.addSeparator()
+
+        # --- تحديد دور المستخدم ---
+        role = 'Technician' # الافتراضي
+        try:
+            main_win = self.window()
+            if hasattr(main_win, 'current_user') and main_win.current_user:
+                role = main_win.current_user.get('Role', 'Technician')
+        except Exception: 
+            pass
+
+        # 2. خيار السجل (للـ Admin فقط)
+        if role == 'Admin':
+            search_term = batch_data.get('Internal_Barcode') or batch_data.get('Barcode') or batch_data.get('Product_Name')
+            action_history = QAction("📜 Voir Historique (Code-Barres)", self)
+            action_history.triggered.connect(lambda: self.go_to_history(search_term))
+            menu.addAction(action_history)
         
+        # 3. خيار التفاصيل (للجميع)
         action_details = QAction("🔍 Détails du lot", self)
         action_details.triggered.connect(self.show_batch_details)
         menu.addAction(action_details)
         
-        if batch_data.get('BR_ID'):
+        # 4. خيار وصل الاستلام (إخفاؤه عن التقني)
+        # [تعديل] الشرط: أن يوجد رقم وصل (BR_ID) وأن لا يكون المستخدم 'Technician'
+        if batch_data.get('BR_ID') and role != 'Technician':
             action_goto_br = QAction("📄 Voir Bon de Réception", self)
             action_goto_br.triggered.connect(lambda: self.go_to_reception(batch_data['BR_ID'], batch_data.get('Batch_ID')))
             menu.addAction(action_goto_br)
             
         menu.addSeparator()
+        
+        # 5. الطباعة (للجميع)
         action_print = QAction("🖨️ Imprimer Étiquette", self)
         action_print.triggered.connect(self.print_batch_label)
         menu.addAction(action_print)

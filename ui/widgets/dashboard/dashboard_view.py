@@ -133,8 +133,12 @@ class DashboardTab(QWidget):
             # نصل إلى الأقسام الداخلية عبر page_overview
             self.page_overview.kpi_section.update_data(stats_summary, total_qty, total_val)
             
-            trend_data = self.data_manager.stats.get_consumption_trend(d1_str, d2_str)
-            self.page_overview.charts_section.update_charts(trend_data)
+            # [تعديل] جلب بيانات المصاريف (Consommation) والمداخيل (Réception)
+            cons_trend = self.data_manager.stats.get_consumption_trend(d1_str, d2_str)
+            rec_trend = self.data_manager.stats.get_reception_trend(d1_str, d2_str)
+            
+            # [تعديل] تمرير البيانات (المصاريف + المداخيل) للمبيان
+            self.page_overview.charts_section.update_charts(cons_trend, rec_trend)
             
             # 2. التبويبات الأخرى
             self.page_valuation.refresh(self.data_manager.stats)
@@ -154,7 +158,6 @@ class DashboardTab(QWidget):
             else:
                 self.tabs.setTabText(idx_alerts, "✅ Alertes (0)")
                 self.tabs.tabBar().setTabTextColor(idx_alerts, QColor("#27ae60"))
-
         except Exception as e:
             logging.error(f"Dashboard Refresh Error: {e}", exc_info=True)
             from PySide6.QtWidgets import QMessageBox
