@@ -5,7 +5,7 @@ import logging
 import traceback
 from datetime import datetime
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QFrame,QMenu,
-                               QTableWidgetItem, QHeaderView, QPushButton, QLineEdit, 
+                               QTableWidgetItem, QHeaderView, QPushButton, QLineEdit,QInputDialog,
                                QMessageBox, QDialog, QLabel, QFormLayout, QFileDialog,
                                QDateEdit, QComboBox)
 from PySide6.QtGui import QColor, QFont,QAction
@@ -129,6 +129,39 @@ class ReceptionHistoryTab(QWidget):
         except Exception as e:
             logging.error(f"Erreur chargement fournisseurs history: {e}")
 
+    def open_reclamation_dialog(self):
+        """فتح نافذة صغيرة لإضافة ملاحظة عامة على الاستلام"""
+        row = self.table.currentRow()
+        if row < 0: return
+        
+        item = self.table.item(row, 0)
+        if not item: return
+        
+        # استرجاع البيانات المخزنة (التي تحتوي الآن على Variance_Notes بفضل تعديل المدير)
+        reception_data = item.data(Qt.UserRole)
+        br_id = reception_data.get('BR_ID')
+        current_note = reception_data.get('Variance_Notes', '')
+        
+        # فتح مربع حوار للنصوص المتعددة الأسطر
+        text, ok = QInputDialog.getMultiLineText(
+            self, 
+            "Réclamation / Note Générale", 
+            f"Saisir une note pour le Bon #{br_id} :", 
+            current_note
+        )
+        
+        if ok:
+            # استدعاء دالة التحديث الموجودة بالفعل في المدير
+            if hasattr(self.manager.reception, 'update_variance_note'):
+                success = self.manager.reception.update_variance_note(br_id, text.strip())
+                if success:
+                    QMessageBox.information(self, "Succès", "Note enregistrée avec succès.")
+                    self.load_data() # تحديث الجدول لإظهار التغييرات (الأيقونات أو الألوان)
+                else:
+                    QMessageBox.critical(self, "Erreur", "Échec de l'enregistrement.")
+            else:
+                QMessageBox.warning(self, "Erreur", "Fonction update_variance_note introuvable dans le Manager.")
+
     def show_context_menu(self, pos):
         index = self.table.indexAt(pos)
         if not index.isValid(): return
@@ -139,6 +172,13 @@ class ReceptionHistoryTab(QWidget):
         action_edit = QAction("✏️ Modifier la réception", self)
         action_edit.triggered.connect(self.edit_reception)
         menu.addAction(action_edit)
+
+        # [جديد] خيار إضافة/تعديل ملاحظة
+        action_note = QAction("📝 Ajouter une Réclamation / Note", self)
+        action_note.triggered.connect(self.open_reclamation_dialog)
+        menu.addAction(action_note)
+
+        menu.addSeparator()
 
         # خيار الـ PDF
         action_pdf = QAction("📄 Exporter PDF", self)
@@ -153,7 +193,6 @@ class ReceptionHistoryTab(QWidget):
         menu.addAction(action_avoir)
 
         menu.exec(self.table.viewport().mapToGlobal(pos))
-
 
     def trigger_create_avoir(self):
         row = self.table.currentRow()
@@ -538,7 +577,6 @@ class ReceptionHistoryTab(QWidget):
             elements.append(Table([["Réceptionné par :", "Signature Autorisée :"]], colWidths=[9*cm, 9*cm]))
 
             doc.build(elements)
-            QMessageBox.information(self, "Succès", f"PDF exporté avec succès.")
             os.startfile(path)
 
         except Exception as e:

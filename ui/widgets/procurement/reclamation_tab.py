@@ -3,8 +3,8 @@
 import logging
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QHeaderView, 
                                QTableWidgetItem, QMessageBox, QLabel, QHBoxLayout, QPushButton,
-                               QAbstractItemView) # <--- تأكد من استيراد QAbstractItemView
-from PySide6.QtCore import Qt
+                               QAbstractItemView, QDateEdit) # تمت إضافة QDateEdit
+from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QBrush, QFont
 import qtawesome as qta
 
@@ -24,12 +24,32 @@ class ReclamationTab(QWidget):
         lbl_title = QLabel("⚠️ Suivi des Réclamations & Anomalies")
         lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #c0392b;")
         
+        # --- [جديد] إضافة حقول النطاق التاريخي ---
+        self.date_from = QDateEdit(QDate.currentDate().addMonths(-3)) # الافتراضي: آخر 3 أشهر
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDisplayFormat("yyyy-MM-dd")
+        self.date_from.dateChanged.connect(self.load_data)
+
+        self.date_to = QDateEdit(QDate.currentDate())
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDisplayFormat("yyyy-MM-dd")
+        self.date_to.dateChanged.connect(self.load_data)
+        # -----------------------------------------
+
         btn_refresh = QPushButton("Actualiser")
         btn_refresh.setIcon(qta.icon("fa5s.sync-alt"))
         btn_refresh.clicked.connect(self.load_data)
         
         top_layout.addWidget(lbl_title)
         top_layout.addStretch()
+        
+        # إضافة الفلاتر للتخطيط
+        top_layout.addWidget(QLabel("Du:"))
+        top_layout.addWidget(self.date_from)
+        top_layout.addWidget(QLabel("Au:"))
+        top_layout.addWidget(self.date_to)
+        top_layout.addSpacing(10)
+        
         top_layout.addWidget(btn_refresh)
         layout.addLayout(top_layout)
 
@@ -42,9 +62,8 @@ class ReclamationTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
         
-        # --- [إصلاح] منع التعديل المباشر عند النقر المزدوج ---
+        # منع التعديل المباشر عند النقر المزدوج
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers) 
-        # ---------------------------------------------------
         
         self.table.doubleClicked.connect(self.open_details)
         
@@ -53,7 +72,7 @@ class ReclamationTab(QWidget):
 
     def load_data(self):
         try:
-            self.table.setSortingEnabled(False) # تعطيل الفرز أثناء التحديث لتجنب الأخطاء
+            self.table.setSortingEnabled(False) # تعطيل الفرز أثناء التحديث
             self.table.setRowCount(0)
             
             if hasattr(self.manager.reception, 'get_receptions_with_issues'):
@@ -61,7 +80,22 @@ class ReclamationTab(QWidget):
             else:
                 return 
 
-            for row, item in enumerate(data):
+            # [جديد] الحصول على تواريخ الفلترة كنصوص للمقارنة
+            start_date_str = self.date_from.date().toString("yyyy-MM-dd")
+            end_date_str = self.date_to.date().toString("yyyy-MM-dd")
+
+            for item in data:
+                # [جديد] معالجة التاريخ والفلترة
+                raw_date = str(item.get('Reception_Date', ''))
+                # نأخذ أول 10 أحرف فقط (YYYY-MM-DD) لإزالة الوقت
+                display_date = raw_date[:10] 
+                
+                # تخطي السجل إذا كان خارج النطاق الزمني
+                if not (start_date_str <= display_date <= end_date_str):
+                    continue
+
+                # إضافة سطر جديد (نستخدم rowCount لأننا قد نتخطى بعض السجلات في الفلترة)
+                row = self.table.rowCount()
                 self.table.insertRow(row)
                 
                 header_note = item.get('Variance_Notes', '')
@@ -74,10 +108,11 @@ class ReclamationTab(QWidget):
                 
                 final_issue = " + ".join(issue_desc)
 
-                # استخدام دالة مساعدة لإنشاء الخلايا (اختياري، للترتيب)
                 self.table.setItem(row, 0, QTableWidgetItem(str(item['BR_ID'])))
                 self.table.setItem(row, 1, QTableWidgetItem(item.get('Supplier_Name', '')))
-                self.table.setItem(row, 2, QTableWidgetItem(str(item.get('Reception_Date'))))
+                
+                # [معدل] عرض التاريخ بدون وقت
+                self.table.setItem(row, 2, QTableWidgetItem(display_date))
                 
                 item_issue = QTableWidgetItem(final_issue)
                 item_issue.setForeground(QBrush(QColor("#c0392b")))
@@ -109,7 +144,7 @@ class ReclamationTab(QWidget):
             dialog = ReclamationDialog(full_data, self.manager, self)
             dialog.exec()
             
-            # تحديث الجدول بعد الإغلاق (قد يكون النص تغير)
+            # تحديث الجدول بعد الإغلاق
             self.load_data()
             
         except Exception as e:

@@ -14,15 +14,26 @@ class StockMovementLogManager:
 
     def __init__(self, db_instance):
         self.db = db_instance
+        self._ensure_schema()
+
+
+    def _ensure_schema(self):
+        """تأكد من وجود عمود Stock_After لتسجيل القيم بشكل صحيح وجديد"""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SHOW COLUMNS FROM Stock_Movement_Log LIKE 'Stock_After'")
+                if not cursor.fetchone():
+                    logging.info("Adding Stock_After column to Stock_Movement_Log...")
+                    cursor.execute("ALTER TABLE Stock_Movement_Log ADD COLUMN Stock_After DECIMAL(15, 2) NULL;")
+        except Exception as e:
+            logging.error(f"Schema check error: {e}")
 
     def create_movement_log(self, product_id: int, movement_type: str, qty_change: Decimal, unit_used: str, 
                     batch_id: Optional[int] = None, container_id: Optional[int] = None, 
                     reason_id: Optional[int] = None, notes: Optional[str] = None, 
                     user_id: Optional[int] = None, 
                     external_cursor=None) -> Optional[int]:
-        """
-        إنشاء سجل حركة مخزون. تم تصحيحها لتدعم 'External_Transfer'.
-        """
         valid_movements = [
             'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run', 
             'Calibration', 'Adjustment', 'Waste', 'Transfer', 
@@ -33,7 +44,8 @@ class StockMovementLogManager:
             logging.error(f"⚠️ Type de mouvement invalide: {movement_type}")
             return None
 
-        query = """
+        # 1. إدخال الحركة أولاً
+        query_insert = """
             INSERT INTO Stock_Movement_Log 
             (Product_ID, Batch_ID, Container_ID, Movement_Type, Reason_ID, 
             Qty_Change, Unit_Used, Notes, User_ID, Transaction_Date) 
@@ -42,20 +54,52 @@ class StockMovementLogManager:
         params = (product_id, batch_id, container_id, movement_type, reason_id, 
                 qty_change, unit_used, notes, user_id)
         
+        conn = None
         try:
-            if external_cursor:
-                external_cursor.execute(query, params)
-                return external_cursor.lastrowid
+            # إذا كان هناك مؤشر خارجي (جزء من معاملة أكبر)
+            cursor_to_use = external_cursor
+            
+            if not cursor_to_use:
+                conn = self.db.get_raw_connection()
+                cursor_to_use = conn.cursor()
 
-            with self.db.get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(query, params)
-                movement_id = cursor.lastrowid
+            cursor_to_use.execute(query_insert, params)
+            movement_id = cursor_to_use.lastrowid
+
+            # 2. حساب وتثبيت المخزون المتبقي (Snapshot) في الخانة الخاصة
+            # --- التصحيح هنا: استخدام Alias ودعم النوعين (Dict/Tuple) ---
+            cursor_to_use.execute(
+                "SELECT SUM(Quantity_Current) AS Total_Stock FROM Inventory_Batches WHERE Product_ID = %s", 
+                (product_id,)
+            )
+            row = cursor_to_use.fetchone()
+            
+            current_stock = 0
+            if row:
+                # التحقق: هل النتيجة قاموس (Dict) أم صف عادي (Tuple)؟
+                if isinstance(row, dict):
+                    current_stock = row.get('Total_Stock') or 0
+                elif isinstance(row, (list, tuple)):
+                    current_stock = row[0] or 0
+            
+            # تحديث السجل بالقيمة الحقيقية
+            cursor_to_use.execute(
+                "UPDATE Stock_Movement_Log SET Stock_After = %s WHERE Movement_ID = %s",
+                (current_stock, movement_id)
+            )
+
+            if conn:
                 conn.commit()
-                return movement_id
+                conn.close()
+                
+            return movement_id
+
         except Exception as e:
-            logging.error(f"❌ Erreur Stock_Movement_Log: {e}")
+            # طباعة الخطأ كاملاً للتشخيص
+            logging.error(f"❌ Erreur Stock_Movement_Log: {e}", exc_info=True)
+            if conn: conn.rollback()
             return None
+        
     def get_log_by_batch_or_container(self, item_id: int, is_batch: bool = True) -> List[Dict]:
         """جلب حركات مخزون مادة معينة مع اسم المستخدم المسؤول."""
         try:
@@ -140,40 +184,44 @@ class StockMovementLogManager:
 
     def get_movements_log(self, limit=1000, product_id=None, movement_type=None) -> List[Dict]:
         """
-        جلب سجل الحركات مع كافة التفاصيل المطلوبة للعرض والنقر المزدوج.
+        جلب سجل الحركات مع حساب الرصيد التراكمي الخاص بكل (كود بار/لوت) بشكل مستقل.
         """
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
+                
+                # التغيير الجوهري هنا في الاستعلام الفرعي (Historical_Stock)
                 query = """
                     SELECT 
                         m.Movement_ID, 
-                        m.Movement_ID AS Log_ID,  -- مهم جداً لنافذة التفاصيل
+                        m.Movement_ID AS Log_ID,
                         m.Transaction_Date, 
                         m.Movement_Type, 
                         m.Qty_Change,
                         m.Unit_Used, 
                         m.Notes, 
-                        m.User_ID,                -- لإظهار معرف المستخدم
-                        m.Product_ID,             -- لإظهار معرف المنتج
-                        m.Batch_ID,               -- لإظهار معرف الدفعة
+                        m.User_ID,
+                        m.Product_ID,
+                        m.Batch_ID,
                         
-                        -- تفاصيل المنتج
                         p.Product_Name, 
-                        p.Barcode AS Product_Barcode, -- باركود المصنع
-                        
-                        -- تفاصيل الدفعة
+                        p.Barcode AS Product_Barcode,
                         b.Lot_Number, 
                         b.Internal_Barcode AS Batch_Barcode,
-                        b.Quantity_Current, 
                         
-                        -- الموقع
+                        -- (( الحساب الدقيق: التجميع حسب Batch_ID لضمان فصل الباركودات المختلفة ))
+                        (
+                            SELECT COALESCE(SUM(sub.Qty_Change), 0)
+                            FROM Stock_Movement_Log sub
+                            WHERE sub.Batch_ID = m.Batch_ID  -- <--- التغيير هنا: الربط بالباتش وليس المنتج العام
+                              AND (
+                                  sub.Transaction_Date < m.Transaction_Date 
+                                  OR (sub.Transaction_Date = m.Transaction_Date AND sub.Movement_ID <= m.Movement_ID)
+                              )
+                        ) as Batch_Historical_Stock,
+                        
                         COALESCE(l.Location_Name, '---') as Location_Name,
-                        
-                        -- سبب الحركة (Motif)
                         wr.Reason_Name,
-                        
-                        -- اسم المستخدم (يظهر 'Système' إذا كان NULL)
                         COALESCE(u.Full_Name, 'Système') as Operator_Name 
                         
                     FROM Stock_Movement_Log m
@@ -198,8 +246,7 @@ class StockMovementLogManager:
         except Exception as e:
             logging.error(f"Error fetching movement log: {e}")
             return []
-
-
+        
     def get_kpi_summary(self):
         """حساب KPIs المالية."""
         stats = {

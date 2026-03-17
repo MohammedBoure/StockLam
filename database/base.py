@@ -28,25 +28,6 @@ except (AttributeError, TypeError):
     except Exception as e:
         print(f"Warning: Could not force console to UTF-8. {e}")
 
-root_logger = logging.getLogger()
-if root_logger.hasHandlers():
-    for handler in root_logger.handlers:
-        root_logger.removeHandler(handler)
-
-
-log_file = os.path.join(os.path.dirname(sys.executable) if hasattr(sys, '_MEIPASS') else os.path.abspath("."), "app.log")
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(log_file, encoding='utf-8') 
-    ]
-)
-
-logging.getLogger("mysql.connector").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 logger = logging.getLogger("MODERNLAM")
 
@@ -114,7 +95,7 @@ class Database:
             try:
                 Database._pool = pooling.MySQLConnectionPool(
                     pool_name="modernlam_pool",
-                    pool_size=3,  
+                    pool_size=32, 
                     pool_reset_session=True,
                     use_pure=True,
                     auth_plugin='mysql_native_password',
@@ -370,7 +351,7 @@ class Database:
                 PO_ID BIGINT UNSIGNED DEFAULT NULL,
                 Supplier_Invoice_Ref VARCHAR(150) NULL,
                 Supplier_BL_Ref VARCHAR(150) NULL,
-                Document_Type ENUM('Facture', 'BL', 'Both', 'None') DEFAULT 'Facture',
+                Document_Type ENUM('Facture', 'BL', 'Both', 'None') NOT NULL DEFAULT 'Facture',
                 Reception_Date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 Supplier_ID INT UNSIGNED DEFAULT NULL,
                 Invoice_Total_HT DECIMAL(15, 2) DEFAULT 0.00,
@@ -381,6 +362,8 @@ class Database:
                 Receiver_User_ID INT UNSIGNED DEFAULT NULL, 
                 Received_By INT UNSIGNED DEFAULT NULL, 
                 Total_Discount DECIMAL(15, 2) DEFAULT 0.00,
+                UNIQUE KEY uq_supplier_bl (Supplier_ID, Supplier_BL_Ref),
+                UNIQUE KEY uq_supplier_invoice (Supplier_ID, Supplier_Invoice_Ref),
                 FOREIGN KEY (PO_ID) REFERENCES Purchase_Orders(PO_ID) ON DELETE SET NULL ON UPDATE CASCADE,
                 FOREIGN KEY (Supplier_ID) REFERENCES Suppliers(Supplier_ID) ON UPDATE CASCADE,
                 FOREIGN KEY (Received_By) REFERENCES Users(User_ID)
@@ -486,6 +469,7 @@ class Database:
                 Qty_Change DECIMAL(10, 2) NOT NULL,
                 Unit_Used VARCHAR(50) NOT NULL,
                 Notes TEXT NULL,
+                Stock_After DECIMAL(15, 2) DEFAULT NULL, -- [العمود المفقود تم إضافته هنا]
                 FOREIGN KEY (User_ID) REFERENCES Users(User_ID),
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE,
                 FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON UPDATE CASCADE,

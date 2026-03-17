@@ -33,7 +33,6 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 class ProcurementTab(QWidget):
-    """الواجهة الرئيسية لقسم المشتريات."""
     def __init__(self, data_manager):
         super().__init__()
         self.data_manager = data_manager
@@ -49,31 +48,22 @@ class ProcurementTab(QWidget):
             QTabBar::tab:selected { color: #1abc9c; border-bottom: 2px solid #1abc9c; background: #fff; }
         """)
         
-        # إنشاء التبويبات
         self.po_tab = PurchaseOrdersTab(self.data_manager)
         self.rec_tab = ReceptionTab(self.data_manager) 
         self.history_tab = ReceptionHistoryTab(self.data_manager)
         self.credit_tab = CreditNoteTab(self.data_manager)
         self.reclamation_tab = ReclamationTab(self.data_manager)
         
-        # إضافة التبويبات
         self.tabs.addTab(self.po_tab, "📦 Bons de Commandes")
-        self.tabs.addTab(self.rec_tab, "📥 Réception de Commandes")
-        self.tabs.addTab(self.history_tab, "📜 Historique Réceptions")
+        self.tabs.addTab(self.history_tab, "📜 Bons de Réceptions")
         self.tabs.addTab(self.credit_tab, "↩️ Avoirs / Retours")
         self.tabs.addTab(self.reclamation_tab, "⚠️ Réclamations")
         
-        # الاتصالات (Signals)
         self.po_tab.data_changed.connect(self.rec_tab.load_pending_pos)
         self.tabs.currentChanged.connect(self.on_tab_change)
         
-        # ربط إشارة طلب الـ Avoir
         self.history_tab.request_create_avoir.connect(self.open_credit_note_tab)
 
-        # -----------------------------------------------------------
-        # [مهم جداً] ربط زر "عرض الأرشيف" في قائمة الطلبات بتبويب الأرشيف
-        # -----------------------------------------------------------
-        # نحن نصل إلى po_view الموجود داخل po_tab ونربط إشارته
         self.po_tab.po_view.view_receptions_requested.connect(self.on_view_receptions_requested)
         
         layout.addWidget(self.tabs)
@@ -225,7 +215,6 @@ class PurchaseOrdersTab(QWidget):
                 if self.manager.po.update_status(order['PO_ID'], 'Sent'):
                     self.refresh_orders()
                     self.data_changed.emit()
-                    QMessageBox.information(self, "Succès", "Statut mis à jour.")
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Échec : {e}")
 

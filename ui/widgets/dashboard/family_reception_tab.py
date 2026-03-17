@@ -139,129 +139,137 @@ class FamilyReceptionTab(QWidget):
 
     def load_data(self):
         try:
-            # 1. تحضير المعطيات
+            # 1. إعداد الفلاتر
             fam_id = self.combo_family.currentData()
             unit_mode = self.combo_unit.currentData()
-            
-            d_start_py = self.date_from.date().toPython()
-            d_end_py = self.date_to.date().toPython()
+            d_start_py, d_end_py = self.date_from.date().toPython(), self.date_to.date().toPython()
             
             # 2. جلب البيانات
             raw_data = self.data_manager.stats.get_reception_matrix_data(fam_id, d_start_py, d_end_py)
             
-            matrix = {} 
-            products_info = {} 
-            products_set = set()
+            matrix, products_info, products_set, products_display = {}, {}, set(), {}
             self.grand_total_all = 0.0 
-            
-            # --- متغير للتأكد من طباعة التشخيص مرة واحدة فقط ---
-            debug_printed = False 
 
             for row in raw_data:
-                p_name = row['Product_Name']
+                p_id = row.get('Product_ID')
+                original_name = row.get('Product_Name', 'Inconnu')
+                # مفتاح فريد خفي للفصل بين المنتجات المكررة في قاعدة البيانات
+                p_unique_key = f"{p_id}_{original_name}" 
+                products_display[p_unique_key] = original_name
                 
-                # ============================================================
-                # 🕵️‍♂️ منطقة التشخيص: سنراقب المنتج الذي فيه المشكلة
-                # ============================================================
-                if "ACIDE URIQUE" in str(p_name).upper() and not debug_printed:
-                    print("\n" + "!"*50)
-                    print(f"🕵️ SPY REPORT FOR: {p_name}")
-                    print(f"1. Current Mode Selected: '{unit_mode}'")
-                    print(f"2. Raw Database Keys: {list(row.keys())}")
-                    print(f"3. Raw Database Values:")
-                    print(f"   -> Stock_Unit: '{row.get('Stock_Unit')}'")
-                    print(f"   -> Ordering_Unit: '{row.get('Ordering_Unit')}'")
-                    print(f"   -> Usage_Unit: '{row.get('Usage_Unit')}'")
-                    print("!"*50 + "\n")
-                    debug_printed = True # لكي لا يكرر الطباعة
-                # ============================================================
-
-                month = str(row['Month_Year']) 
+                month = str(row['Month_Year'])
                 qty_stock = float(row.get('Total_Stock_Qty') or 0)
                 
-                final_qty = 0.0
-                unit_label = "N/A"
-                
-                # منطق التحويل
+                # تحديد الوحدة المناسبة بناءً على الاختيار
                 if unit_mode == 'order':
-                    factor = float(row.get('Stock_Qty_Per_Order_Unit') or 1)
-                    if factor == 0: factor = 1
-                    final_qty = qty_stock / factor
-                    # نستخدم .get لضمان عدم حدوث خطأ إذا المفتاح غير موجود
-                    unit_label = row.get('Ordering_Unit')
-                    
+                    final_qty = qty_stock / float(row.get('Stock_Qty_Per_Order_Unit') or 1)
+                    u_val = row.get('Ordering_Unit')
                 elif unit_mode == 'usage':
-                    factor = float(row.get('Usage_Qty_Per_Stock_Unit') or 1)
-                    final_qty = qty_stock * factor
-                    unit_label = row.get('Usage_Unit')
-                    
-                else: 
+                    final_qty = qty_stock * float(row.get('Usage_Qty_Per_Stock_Unit') or 1)
+                    u_val = row.get('Usage_Unit')
+                else:
                     final_qty = qty_stock
-                    unit_label = row.get('Stock_Unit')
+                    u_val = row.get('Stock_Unit')
 
-                # تنظيف النص (إزالة المسافات الزائدة)
-                if unit_label:
-                    unit_label = str(unit_label).strip()
-                
-                # التخزين
-                if p_name not in matrix: matrix[p_name] = {}
-                current_val = matrix[p_name].get(month, 0.0)
-                matrix[p_name][month] = current_val + final_qty
-                
-                products_set.add(p_name)
-                
-                # تحديث الوحدة بذكاء
-                # إذا لم تكن مسجلة، أو كانت N/A، والجديدة صالحة -> سجلها
-                current_saved_unit = products_info.get(p_name, "N/A")
-                if current_saved_unit in ["N/A", "", "None"] and unit_label and unit_label not in ["N/A", "", "None"]:
-                    products_info[p_name] = unit_label
-                elif p_name not in products_info:
-                    products_info[p_name] = "N/A"
+                # معالجة الوحدة: إذا كانت فارغة تظهر N/A
+                clean_unit = "N/A"
+                if u_val and str(u_val).strip() not in ['', 'None', 'NULL']:
+                    clean_unit = str(u_val).strip()
 
+                if p_unique_key not in matrix: matrix[p_unique_key] = {}
+                matrix[p_unique_key][month] = matrix[p_unique_key].get(month, 0.0) + final_qty
+                products_set.add(p_unique_key)
+                products_info[p_unique_key] = clean_unit
                 self.grand_total_all += final_qty
 
-            # ... (باقي كود رسم الجدول يبقى كما هو دون تغيير) ...
-            # (قم بنسخ الجزء الخاص برسم الجدول من الكود السابق هنا)
-            
-            # --- تكملة الكود (نسخ لصق للتبسيط) ---
-            self.lbl_summary.setText(f"📦 Total Reçu ({self.combo_unit.currentText()}) : {self.grand_total_all:,.2f}")
+            # 3. إعداد أعمدة الشهور
             dt_start = datetime(d_start_py.year, d_start_py.month, 1)
             dt_end = datetime(d_end_py.year, d_end_py.month, 1)
             months_list = self.get_month_list(dt_start, dt_end)
-            columns = ["Produit", "Unité"] + months_list + ["TOTAL"]
-            self.table.setColumnCount(len(columns))
-            self.table.setHorizontalHeaderLabels(columns)
+            
+            # 4. رسم الجدول
+            self.lbl_summary.setText(f"📦 Total Reçu ({self.combo_unit.currentText()}) : {self.grand_total_all:,.2f}")
+            self.table.setColumnCount(len(months_list) + 3)
+            self.table.setHorizontalHeaderLabels(["Produit", "Unité"] + months_list + ["TOTAL"])
+            
+            # عدد الصفوف = المنتجات + سطر المجموع
             self.table.setRowCount(len(products_set) + 1)
-            sorted_products = sorted(list(products_set))
+            
+            sorted_keys = sorted(list(products_set), key=lambda k: products_display[k])
             column_totals = {m: 0.0 for m in months_list}
-            for r, p_name in enumerate(sorted_products):
-                item_name = QTableWidgetItem(p_name)
+
+            for r, p_key in enumerate(sorted_keys):
+                self.table.setRowHeight(r, 35)
+                # اسم المنتج
+                item_name = QTableWidgetItem(products_display[p_key])
                 item_name.setFont(QFont("Arial", 9, QFont.Bold))
                 self.table.setItem(r, 0, item_name)
-                u_lbl = products_info.get(p_name, "")
-                item_unit = QTableWidgetItem(str(u_lbl))
-                item_unit.setTextAlignment(Qt.AlignCenter); item_unit.setForeground(QColor("#7f8c8d"))
-                self.table.setItem(r, 1, item_unit)
+                
+                # الوحدة
+                unit_item = QTableWidgetItem(products_info[p_key])
+                unit_item.setTextAlignment(Qt.AlignCenter)
+                unit_item.setForeground(QColor("#7f8c8d"))
+                self.table.setItem(r, 1, unit_item)
+                
                 row_total = 0.0
                 for c, month in enumerate(months_list):
-                    qty = matrix.get(p_name, {}).get(month, 0.0)
+                    qty = matrix[p_key].get(month, 0.0)
                     row_total += qty
                     column_totals[month] += qty
-                    txt = self._format_qty(qty)
-                    item_qty = QTableWidgetItem(txt)
-                    item_qty.setTextAlignment(Qt.AlignCenter)
-                    if qty > 0: item_qty.setForeground(QColor("#27ae60")); item_qty.setBackground(QColor("#e8f8f5"))
-                    else: item_qty.setForeground(QColor("#bdc3c7"))
-                    self.table.setItem(r, c + 2, item_qty)
-                t_txt = self._format_qty(row_total)
-                item_total = QTableWidgetItem(t_txt)
-                item_total.setTextAlignment(Qt.AlignCenter); item_total.setFont(QFont("Arial", 9, QFont.Bold)); item_total.setBackground(QColor("#f4f6f7"))
-                self.table.setItem(r, len(months_list) + 2, item_total)
-            self.table.resizeColumnsToContents()
+                    
+                    item = QTableWidgetItem(self._format_qty(qty))
+                    item.setTextAlignment(Qt.AlignCenter)
+                    if qty > 0:
+                        item.setBackground(QColor("#e8f8f5"))
+                        item.setForeground(QColor("#27ae60"))
+                    self.table.setItem(r, c + 2, item)
+                
+                # إجمالي السطر (أقصى اليمين)
+                tot_item = QTableWidgetItem(self._format_qty(row_total))
+                tot_item.setTextAlignment(Qt.AlignCenter)
+                tot_item.setFont(QFont("Arial", 9, QFont.Bold))
+                tot_item.setBackground(QColor("#f4f6f7"))
+                self.table.setItem(r, len(months_list) + 2, tot_item)
 
+            # ============================================================
+            # 5. إضافة سطر المجموع الكلي (TOTAL PÉRIODE) في الأسفل
+            # ============================================================
+            last_row = len(products_set)
+            self.table.setRowHeight(last_row, 40)
+            
+            # تسمية السطر ودمج أول خليتين
+            item_tot_label = QTableWidgetItem(" TOTAL PÉRIODE")
+            item_tot_label.setFont(QFont("Arial", 10, QFont.Bold))
+            item_tot_label.setBackground(QColor("#2c3e50"))
+            item_tot_label.setForeground(QColor("white"))
+            self.table.setItem(last_row, 0, item_tot_label)
+            self.table.setSpan(last_row, 0, 1, 2) 
+
+            grand_sum = 0.0
+            for c, month in enumerate(months_list):
+                val = column_totals[month]
+                grand_sum += val
+                item_v = QTableWidgetItem(self._format_qty(val))
+                item_v.setTextAlignment(Qt.AlignCenter)
+                item_v.setFont(QFont("Arial", 9, QFont.Bold))
+                item_v.setBackground(QColor("#2c3e50"))
+                item_v.setForeground(QColor("white"))
+                self.table.setItem(last_row, c + 2, item_v)
+            
+            # الخلية النهائية (أسفل اليمين)
+            item_final = QTableWidgetItem(self._format_qty(grand_sum))
+            item_final.setTextAlignment(Qt.AlignCenter)
+            item_final.setFont(QFont("Arial", 10, QFont.Bold))
+            item_final.setBackground(QColor("#27ae60"))
+            item_final.setForeground(QColor("white"))
+            self.table.setItem(last_row, len(months_list) + 2, item_final)
+
+            self.table.resizeColumnsToContents()
+            
         except Exception as e:
             logging.error(f"Error in load_data: {e}", exc_info=True)
-            QMessageBox.critical(self, "Erreur", f"Erreur: {str(e)}")
+            QMessageBox.critical(self, "Erreur", f"Erreur lors du chargement: {str(e)}")
+
     def _format_qty(self, qty):
         if qty == 0: return "-"
         if qty.is_integer(): return f"{int(qty)}"

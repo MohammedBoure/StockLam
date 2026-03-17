@@ -1,166 +1,191 @@
 import logging
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QTableWidget, QTableWidgetItem, 
-                               QHeaderView, QHBoxLayout, QLabel, QStyledItemDelegate)
-from PySide6.QtGui import QColor, QFont, QBrush, QIcon, QPainter
+                               QHeaderView, QHBoxLayout, QLabel, QLineEdit, QPushButton, 
+                               QButtonGroup, QComboBox)
+from PySide6.QtGui import QColor, QFont, QBrush
 from PySide6.QtCore import Qt
 
-# =============================================================================
-# مفوض الرسم (Delegate) لتجاوز مشاكل الألوان
-# =============================================================================
-class ColorDelegate(QStyledItemDelegate):
-    def paint(self, painter, option, index):
-        painter.save()
-        # جلب لون الخلفية من البيانات المخصصة
-        bg_brush = index.data(Qt.BackgroundRole)
-        if bg_brush:
-            painter.fillRect(option.rect, bg_brush)
-        painter.restore()
-        # استدعاء الرسم الأصلي (للنصوص والأيقونات)
-        super().paint(painter, option, index)
-
-# =============================================================================
-# واجهة التنبيهات
-# =============================================================================
 class AlertsSection(QFrame):
-    def __init__(self):
+    def __init__(self, data_manager=None):
         super().__init__()
-        self.logger = logging.getLogger("AlertsSection")
-        
+        self.all_data = [] 
+        self.active_filter = "All"
+        self.init_ui()
+
+    def init_ui(self):
+        self.setObjectName("AlertsSection")
         self.setStyleSheet("""
-            QFrame { background: white; border-radius: 10px; }
-            QTableWidget { border: none; gridline-color: #f0f0f0; }
-            QHeaderView::section { background-color: #f8f9fa; border: none; font-weight: bold; color: #7f8c8d; }
-        """) 
-        
+            #AlertsSection { background: white; border-radius: 12px; border: 1px solid #ecf0f1; }
+            QTableWidget { border: none; gridline-color: #f8f9fa; }
+            QHeaderView::section { background-color: #f8f9fa; border: none; font-weight: bold; color: #7f8c8d; padding: 10px; }
+            QLineEdit, QComboBox { border: 1px solid #dcdde1; border-radius: 6px; padding: 6px; background: #fdfdfd; }
+            QPushButton { padding: 6px 12px; border-radius: 15px; font-weight: bold; border: 1px solid #dcdde1; background: #f8f9fa; color: #7f8c8d; }
+            QPushButton:checked { background: #007572; color: white; border: none; }
+            QPushButton#btn_urgent:checked { background: #c0392b; }
+            QPushButton#btn_anticip:checked { background: #d35400; }
+        """)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
+
+        # --- 1. أزرار أنواع التنبيهات ---
+        type_layout = QHBoxLayout()
+        self.btn_group = QButtonGroup(self)
+        self.btn_all = QPushButton("Tout")
+        self.btn_urgent = QPushButton("Urgents 🚨"); self.btn_urgent.setObjectName("btn_urgent")
+        self.btn_anticip = QPushButton("Anticipés ⏳"); self.btn_anticip.setObjectName("btn_anticip")
+        self.btn_stock = QPushButton("Stocks 📦")
+
+        for i, btn in enumerate([self.btn_all, self.btn_urgent, self.btn_anticip, self.btn_stock]):
+            btn.setCheckable(True)
+            self.btn_group.addButton(btn, i)
+        self.btn_all.setChecked(True)
+        self.btn_group.idClicked.connect(self.on_filter_clicked)
         
-        # --- العنوان ---
-        header_layout = QHBoxLayout()
-        title_lbl = QLabel("⚠️ ALERTES & NOTIFICATIONS")
-        title_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;")
-        header_layout.addWidget(title_lbl)
-        header_layout.addStretch()
-        layout.addLayout(header_layout)
+        type_layout.addWidget(self.btn_all)
+        type_layout.addWidget(self.btn_urgent)
+        type_layout.addWidget(self.btn_anticip)
+        type_layout.addWidget(self.btn_stock)
+        type_layout.addStretch()
+        layout.addLayout(type_layout)
+
+        # --- 2. فلاتر البحث المتقدم ---
+        filters_layout = QHBoxLayout()
         
-        # --- الجدول ---
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("🔍 Recherche par nom...")
+        self.search_box.setFixedWidth(200)
+        self.search_box.textChanged.connect(self.refresh_table_view)
+        
+        self.combo_fam = QComboBox()
+        self.combo_fam.addItem("Toutes Familles")
+        self.combo_fam.setFixedWidth(180)
+        self.combo_fam.currentTextChanged.connect(self.refresh_table_view)
+        
+        self.combo_brand = QComboBox()
+        self.combo_brand.addItem("Toutes Marques")
+        self.combo_brand.setFixedWidth(180)
+        self.combo_brand.currentTextChanged.connect(self.refresh_table_view)
+
+        filters_layout.addWidget(self.search_box)
+        filters_layout.addWidget(QLabel("Famille:"))
+        filters_layout.addWidget(self.combo_fam)
+        filters_layout.addWidget(QLabel("Marque:"))
+        filters_layout.addWidget(self.combo_brand)
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+
+        # --- 3. الجدول ---
         self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["PRODUIT", "TYPE", "DÉTAILS & ACTION"])
-        
-        # تفعيل الـ Delegate لضمان ظهور الألوان
-        self.table.setItemDelegate(ColorDelegate(self.table))
-        
-        self.table.setSortingEnabled(True) 
+        # 5 أعمدة فقط (تمت إزالة Action)
+        self.table.setColumnCount(5) 
+        self.table.setHorizontalHeaderLabels(["PRODUIT", "FAMILLE", "TYPE", "VALEUR", "DÉTAILS"])
+        self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
-        self.table.setFocusPolicy(Qt.NoFocus)
         
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(False) # إيقاف الألوان التلقائية
+        header.setSectionResizeMode(0, QHeaderView.Stretch)       # Product
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents) # Family
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents) # Type
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents) # Value
+        header.setSectionResizeMode(4, QHeaderView.Stretch)       # Details
         
         layout.addWidget(self.table)
 
+    def update_filters_lists(self):
+        """تحديث القوائم المنسدلة"""
+        current_fam = self.combo_fam.currentText()
+        current_brand = self.combo_brand.currentText()
+        
+        self.combo_fam.blockSignals(True)
+        self.combo_brand.blockSignals(True)
+        
+        self.combo_fam.clear()
+        self.combo_brand.clear()
+        self.combo_fam.addItem("Toutes Familles")
+        self.combo_brand.addItem("Toutes Marques")
+        
+        fams = sorted(list(set(a.get('Family', '') for a in self.all_data if a.get('Family'))))
+        brands = sorted(list(set(a.get('Brand', '') for a in self.all_data if a.get('Brand'))))
+        
+        self.combo_fam.addItems(fams)
+        self.combo_brand.addItems(brands)
+        
+        if self.combo_fam.findText(current_fam) >= 0:
+            self.combo_fam.setCurrentText(current_fam)
+        if self.combo_brand.findText(current_brand) >= 0:
+            self.combo_brand.setCurrentText(current_brand)
+        
+        self.combo_fam.blockSignals(False)
+        self.combo_brand.blockSignals(False)
+
+    def on_filter_clicked(self, id):
+        filters = ["All", "Urgente", "Anticipée", "Stock"]
+        self.active_filter = filters[id]
+        self.refresh_table_view()
+
     def update_alerts(self, alerts):
+        self.all_data = alerts
+        self.update_filters_lists()
+        self.refresh_table_view()
+
+    def refresh_table_view(self):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         
-        # 1. منطق الترتيب (Sorting Logic)
-        # نريد ترتيب تواريخ الانتهاء من الأقرب (الأصغر) إلى الأبعد (الأكبر)
-        def sort_key(a):
-            type_str = str(a.get('Type', ''))
-            is_expiry = "Péremption" in type_str
-            # جلب الأيام بشكل آمن، القيمة الافتراضية كبيرة جداً لتكون في الأسفل
-            days = a.get('DaysRemaining', 999999) 
-            
-            # الأولوية 0 لانتهاء الصلاحية لكي يظهر أولاً
-            priority = 0 if is_expiry else 1
-            
-            return (priority, days)
-
-        try:
-            alerts.sort(key=sort_key)
-        except Exception as e:
-            self.logger.error(f"Erreur de tri: {e}")
-
-        font_bold = QFont("Segoe UI", 9, QFont.Weight.Bold)
-        font_normal = QFont("Segoe UI", 9)
+        txt = self.search_box.text().lower()
+        fam = self.combo_fam.currentText()
+        brand = self.combo_brand.currentText()
         
-        for row, a in enumerate(alerts):
+        filtered = []
+        for a in self.all_data:
+            # فلترة النوع
+            if self.active_filter != "All" and self.active_filter not in a['Type']: continue
+            # فلترة النص
+            if txt and txt not in a['Product'].lower(): continue
+            # فلترة العائلة
+            if fam != "Toutes Familles" and a.get('Family') != fam: continue
+            # فلترة الماركة
+            if brand != "Toutes Marques" and a.get('Brand') != brand: continue
+            
+            filtered.append(a)
+        
+        # الترتيب حسب القيمة
+        filtered.sort(key=lambda x: x.get('RawValue', 9999))
+
+        for row, a in enumerate(filtered):
             self.table.insertRow(row)
             
-            product_name = str(a.get('Product', 'Inconnu'))
-            alert_type = str(a.get('Type', 'Autre'))
-            details_text = str(a.get('Details', ''))
+            p_item = QTableWidgetItem(a['Product'])
+            p_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
             
-            p_item = QTableWidgetItem(product_name)
-            p_item.setFont(font_bold)
+            fam_item = QTableWidgetItem(a.get('Family', '-'))
             
-            t_item = QTableWidgetItem(alert_type)
+            t_item = QTableWidgetItem(a['Type'])
             t_item.setTextAlignment(Qt.AlignCenter)
-            t_item.setFont(font_bold)
             
-            d_item = QTableWidgetItem(details_text)
-            d_item.setFont(font_normal)
-
-            # --- 2. منطق الألوان (Color Logic) ---
-            bg_color = None
-            text_color = None
+            v_item = QTableWidgetItem()
+            v_item.setData(Qt.EditRole, a['RawValue'])
+            v_item.setTextAlignment(Qt.AlignCenter)
             
-            if "Péremption" in alert_type:
-                days = a.get('DaysRemaining', 99999)
-                
-                # ترتيب الألوان حسب الأيام
-                if days <= 0:
-                    # منتهي الصلاحية (أسود أو أحمر غامق جداً)
-                    bg_color = QColor("#2c3e50") 
-                    text_color = QColor("#e74c3c")
-                elif days <= 30:
-                    # أحمر (Rouge)
-                    bg_color = QColor("#fadbd8")
-                    text_color = QColor("#c0392b")
-                elif days <= 90:
-                    # برتقالي (Orange)
-                    bg_color = QColor("#fdebd0")
-                    text_color = QColor("#d35400")
-                elif days <= 180:
-                    # أصفر (Jaune)
-                    bg_color = QColor("#fcf3cf")
-                    text_color = QColor("#7f8c8d") # نص رمادي ليظهر بوضوح
-                elif days <= 365:
-                    # أخضر فستقي (Vert pistache)
-                    bg_color = QColor("#dcedc8") # درجة الفستقي
-                    text_color = QColor("#33691e")
-                else:
-                    # أخضر غامق (Vert foncé)
-                    bg_color = QColor("#e8f5e9")
-                    text_color = QColor("#2e7d32")
+            d_item = QTableWidgetItem(a['Details'])
 
-                if QIcon.hasThemeIcon("fa5s.clock"):
-                    t_item.setIcon(QIcon(":/icons/expiry.png"))
+            # الألوان
+            text_color = QColor("#2c3e50")
+            if "Urgente" in a['Type']: text_color = QColor("#c0392b")
+            elif "Anticipée" in a['Type']: text_color = QColor("#d35400")
+            elif "Stock" in a['Type']: text_color = QColor("#c2185b")
 
-            elif "Rupture" in alert_type:
-                # لون مميز للنفاد
-                bg_color = QColor("#fce4ec") # وردي خفيف جداً
-                text_color = QColor("#c2185b")
-                
-            # تطبيق الألوان باستخدام الفرشاة (Brush)
-            final_bg = bg_color if bg_color else QColor("white")
-            final_txt = text_color if text_color else QColor("#2c3e50")
+            for item in [p_item, fam_item, t_item, v_item, d_item]:
+                item.setForeground(QBrush(text_color))
 
-            for item in [p_item, t_item, d_item]:
-                item.setBackground(QBrush(final_bg))
-                item.setForeground(QBrush(final_txt))
-            
             self.table.setItem(row, 0, p_item)
-            self.table.setItem(row, 1, t_item)
-            self.table.setItem(row, 2, d_item)
-            
-        self.table.resizeRowsToContents()
+            self.table.setItem(row, 1, fam_item)
+            self.table.setItem(row, 2, t_item)
+            self.table.setItem(row, 3, v_item)
+            self.table.setItem(row, 4, d_item)
+
         self.table.setSortingEnabled(True)

@@ -37,7 +37,7 @@ class QuickTransferDialog(QDialog):
         max_qty = int(float(batch_data.get('Quantity_Current', 0)))
         self.qty_spin.setRange(1, max_qty) # لا يمكن تجاوز الكمية المتوفرة
         self.qty_spin.setValue(1)
-        self.qty_spin.setSuffix(" U")
+        self.qty_spin.setSuffix("")
         self.qty_spin.setStyleSheet("font-weight: bold; font-size: 14px;")
         form.addRow("Quantité:", self.qty_spin)
 
@@ -80,7 +80,7 @@ class QuickConsumeDialog(QDialog):
         max_qty = int(float(batch_data.get('Quantity_Current', 0)))
         self.qty_spin.setRange(1, max_qty)
         self.qty_spin.setValue(1)
-        self.qty_spin.setSuffix(" U")
+        self.qty_spin.setSuffix("")
         self.qty_spin.setStyleSheet("font-weight: bold; font-size: 14px; color: #c0392b;")
         form.addRow("Quantité à sortir:", self.qty_spin)
         layout.addLayout(form)

@@ -12,7 +12,6 @@ from ui.widgets.procurement.dialogs import PurchaseOrderDialog
 from ui.widgets.procurement.reception_dialog import ReceptionDialog
 
 class PurchaseOrderListView(QWidget):
-    # [جديد] إشارة لإرسال رقم الطلب عند الرغبة في عرض الأرشيف
     view_receptions_requested = Signal(int)
 
     def __init__(self, manager, parent=None):
@@ -24,15 +23,12 @@ class PurchaseOrderListView(QWidget):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        # --- شريط الفلاتر ---
         filter_layout = QHBoxLayout()
         
-        # 1. البحث النصي
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Rechercher (ID)...")
         self.search_input.textChanged.connect(self.refresh_data)
         
-        # 2. فلتر الموردين
         filter_layout.addWidget(QLabel("Fournisseur:"))
         self.supplier_filter = QComboBox()
         self.supplier_filter.setMinimumWidth(150)
@@ -40,7 +36,6 @@ class PurchaseOrderListView(QWidget):
         self.load_suppliers() 
         self.supplier_filter.currentTextChanged.connect(self.refresh_data)
 
-        # 3. فلتر الحالة
         self.status_filter = QComboBox()
         self.status_filter.addItems(["Tous", "Brouillon", "Envoyée", "Complétée"])
         self.status_filter.currentTextChanged.connect(self.refresh_data)
@@ -52,7 +47,6 @@ class PurchaseOrderListView(QWidget):
         
         layout.addLayout(filter_layout)
 
-        # --- الجدول ---
         self.table = QTableWidget()
         
         columns = ["N°", "Fournisseur", "Date Commande", "Livraison Prévue", "Statut"]
@@ -71,7 +65,6 @@ class PurchaseOrderListView(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
         
-        # تفعيل القائمة عند النقر بالزر الأيمن
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
         
@@ -336,6 +329,5 @@ class PurchaseOrderListView(QWidget):
             try:
                 if hasattr(self.manager.po, 'delete_purchase_order') and self.manager.po.delete_purchase_order(po_id):
                     self.refresh_data()
-                    QMessageBox.information(self, "Succès", "Commande supprimée.")
             except Exception as e:
                 logging.error(f"Error deleting PO: {e}")

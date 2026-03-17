@@ -166,7 +166,6 @@ class ExternalPartnersTab(QWidget):
         if dialog.exec():
             data = dialog.get_data()
             if data and self.manager.add_partner(data):
-                QMessageBox.information(self, "Succès", "Partenaire ajouté.")
                 self.load_data()
 
     def edit_partner(self):
@@ -184,7 +183,6 @@ class ExternalPartnersTab(QWidget):
             new_data = dialog.get_data()
             if new_data:
                 if self.manager.update_partner(partner["Partner_ID"], new_data):
-                    QMessageBox.information(self, "Succès", "Partenaire modifié.")
                     self.load_data()
 
     def delete_partner(self):
@@ -204,5 +202,4 @@ class ExternalPartnersTab(QWidget):
 
         if reply == QMessageBox.Yes:
             if self.manager.delete_partner(partner["Partner_ID"]):
-                QMessageBox.information(self, "Succès", "Partenaire supprimé.")
                 self.load_data()

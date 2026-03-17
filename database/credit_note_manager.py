@@ -111,13 +111,17 @@ class CreditNoteManager:
                 qty_return = Decimal(str(item.get('Qty_Returned', 0)))
                 lot_number = item.get('Lot_Number')
                 
+                # استخراج Batch_ID الذي يأتي من الواجهة
+                batch_id_from_ui = item.get('Batch_ID')
+                
                 batch_id = None
                 
                 # --- خصم المخزون إذا كان "إرجاع بضاعة" ---
                 if note_type == 'Return_Goods' and qty_return > 0:
                     batch_id = self._process_stock_return(
                         cursor, product_id, qty_return, lot_number, 
-                        user_id, credit_note_id, header_data['Credit_Note_Ref']
+                        user_id, credit_note_id, header_data['Credit_Note_Ref'],
+                        batch_id_from_ui # تمرير المعرف الدقيق
                     )
                     
                     # إذا فشل العثور على الباتش أو الكمية غير كافية، نوقف العملية
@@ -159,21 +163,29 @@ class CreditNoteManager:
         finally:
             if conn: conn.close()
 
-    def _process_stock_return(self, cursor, product_id, qty, lot_number, user_id, cn_id, cn_ref):
+    def _process_stock_return(self, cursor, product_id, qty, lot_number, user_id, cn_id, cn_ref, specific_batch_id=None):
         """
         البحث عن الباتش وخصم الكمية منه بدقة.
         """
-        if not lot_number:
-            return None
+        # إذا تم تمرير Batch_ID، نبحث بدقة تامة (هذا هو الحل)
+        if specific_batch_id:
+            query_find_batch = """
+                SELECT Batch_ID, Quantity_Current 
+                FROM Inventory_Batches 
+                WHERE Batch_ID = %s AND Quantity_Current >= %s
+            """
+            cursor.execute(query_find_batch, (specific_batch_id, qty))
+        else:
+            # بحث احتياطي (الوضع القديم)
+            if not lot_number: return None
+            query_find_batch = """
+                SELECT Batch_ID, Quantity_Current 
+                FROM Inventory_Batches 
+                WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s
+                LIMIT 1
+            """
+            cursor.execute(query_find_batch, (product_id, lot_number, qty))
 
-        # البحث عن باتش يطابق المنتج واللوت، ويحتوي على كمية كافية
-        query_find_batch = """
-            SELECT Batch_ID, Quantity_Current 
-            FROM Inventory_Batches 
-            WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s
-            LIMIT 1
-        """
-        cursor.execute(query_find_batch, (product_id, lot_number, qty))
         batch = cursor.fetchone()
 
         if batch:
@@ -192,7 +204,7 @@ class CreditNoteManager:
             # تسجيل الحركة
             self.movement_manager.create_movement_log(
                 product_id=product_id,
-                movement_type='Return_To_Supplier', # تأكد من وجود هذا النوع في قاعدة البيانات
+                movement_type='Return_To_Supplier', 
                 qty_change= -qty, 
                 unit_used='Unit',
                 batch_id=batch_id,
@@ -203,8 +215,7 @@ class CreditNoteManager:
             
             return batch_id
         else:
-            return None # سيرفع خطأ في الدالة الرئيسية
-
+            return None
     def get_all_credit_notes(self, limit=100):
         """
         تم التعديل: جلب آخر 100 إشعار فقط بشكل افتراضي لتسريع التحميل الأولي.
@@ -336,13 +347,20 @@ class CreditNoteManager:
             restore_qty = abs(diff) 
             self._restore_stock(cursor, batch_id, restore_qty, user_id, f"Modif Avoir #{ref} (Réduction)")
 
-    def _deduct_stock_initial(self, cursor, product_id, qty, lot_number, user_id, ref):
-        """خصم أولي (عند الإنشاء لأول مرة)"""
-        cursor.execute("""
-            SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
-            WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s 
-            LIMIT 1
-        """, (product_id, lot_number, qty))
+    def _deduct_stock_initial(self, cursor, product_id, qty, lot_number, user_id, ref, specific_batch_id=None):
+        """خصم أولي (عند الإنشاء لأول مرة أو التعديل)"""
+        if specific_batch_id:
+            cursor.execute("""
+                SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
+                WHERE Batch_ID = %s AND Quantity_Current >= %s 
+            """, (specific_batch_id, qty))
+        else:
+            cursor.execute("""
+                SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
+                WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s 
+                LIMIT 1
+            """, (product_id, lot_number, qty))
+            
         batch = cursor.fetchone()
         
         if batch:
@@ -360,20 +378,16 @@ class CreditNoteManager:
         else:
             raise ValueError(f"Stock insuffisant (Lot: {lot_number})")
 
-    def _insert_detail_row(self, cursor, cn_id, item):
-        """مساعد لإدخال سطر التفاصيل فقط"""
-        query = """
-            INSERT INTO Credit_Note_Details 
-            (Credit_Note_ID, Product_ID, Batch_ID, Lot_Number, Expiry_Date, 
-             Qty_Returned, Unit_Price, Line_Total)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """
+    def _insert_credit_note_item(self, cursor, cn_id, item, note_type, user_id, ref):
+        """مساعد لإدخال سطر جديد تماماً مع خصم المخزون"""
+        batch_id = item.get('Batch_ID') # جلب المعرف
         qty = Decimal(str(item.get('Qty_Returned', 0)))
-        price = Decimal(str(item.get('Unit_Price', 0)))
-        cursor.execute(query, (
-            cn_id, item['Product_ID'], item.get('Batch_ID'), item.get('Lot_Number'),
-            item.get('Expiry_Date'), qty, price, qty * price
-        ))
+        
+        if note_type == 'Return_Goods' and qty > 0:
+            batch_id = self._deduct_stock_initial(cursor, item['Product_ID'], qty, item.get('Lot_Number'), user_id, ref, batch_id)
+        
+        item['Batch_ID'] = batch_id
+        self._insert_detail_row(cursor, cn_id, item)
 
     def _insert_credit_note_item(self, cursor, cn_id, item, note_type, user_id, ref):
         """مساعد لإدخال سطر جديد تماماً مع خصم المخزون"""

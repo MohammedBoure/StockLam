@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QHeaderView,QTabWidget,
     QFrame, QLabel, QLineEdit, QPushButton, QHBoxLayout, 
     QGroupBox, QMessageBox, QComboBox, QStyle, QInputDialog,
-    QDateEdit, QCheckBox, QTableWidgetItem, 
+    QDateEdit, QCheckBox, QTableWidgetItem,QApplication,
     QAbstractItemView, QMenu, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QDate, QMarginsF
@@ -45,9 +45,12 @@ class BatchesTab(QWidget):
         self.manager = manager
         self.all_data = [] 
         
-        self.current_page = 0      
-        self.rows_per_page = 50    
-        self.filtered_data = []   
+        self.loaded_count = 0      # عدد الصفوف المعروضة حالياً
+        self.batch_size = 50       # عدد الصفوف التي يتم تحميلها في كل دفعة
+        self.filtered_data = []    # القائمة الكاملة بعد الفلترة (في الذاكرة)
+
+        self.current_sort_col = -1 
+        self.current_sort_asc = True 
         
         self.init_ui()
 
@@ -121,10 +124,10 @@ class BatchesTab(QWidget):
         main_filter_layout.addLayout(left_layout, 2)
 
         line = QFrame()
-        line.setFrameShape(QFrame.VLine); line.setFrameShadow(QFrame.Sunken)
+        line.setFrameShape(QFrame.VLine)
+        line.setFrameShadow(QFrame.Sunken)
         main_filter_layout.addWidget(line)
 
-        # -- القسم الأيمن (التواريخ) --
         right_layout = QVBoxLayout()
         right_layout.setSpacing(5)
         
@@ -135,11 +138,13 @@ class BatchesTab(QWidget):
         self.chk_date_filter.stateChanged.connect(self.toggle_date_filter)
         
         self.date_from = QDateEdit(QDate.currentDate())
-        self.date_from.setCalendarPopup(True); self.date_from.setEnabled(False)
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setEnabled(False)
         self.date_from.dateChanged.connect(self.apply_filters_local)
 
         self.date_to = QDateEdit(QDate.currentDate().addYears(1))
-        self.date_to.setCalendarPopup(True); self.date_to.setEnabled(False)
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setEnabled(False)
         self.date_to.dateChanged.connect(self.apply_filters_local)
         
         exp_layout.addWidget(self.chk_date_filter)
@@ -156,11 +161,13 @@ class BatchesTab(QWidget):
         self.chk_entry_filter.stateChanged.connect(self.toggle_entry_filter)
 
         self.date_in_from = QDateEdit(QDate.currentDate().addMonths(-1))
-        self.date_in_from.setCalendarPopup(True); self.date_in_from.setEnabled(False)
+        self.date_in_from.setCalendarPopup(True)
+        self.date_in_from.setEnabled(False)
         self.date_in_from.dateChanged.connect(self.apply_filters_local)
 
         self.date_in_to = QDateEdit(QDate.currentDate())
-        self.date_in_to.setCalendarPopup(True); self.date_in_to.setEnabled(False)
+        self.date_in_to.setCalendarPopup(True)
+        self.date_in_to.setEnabled(False)
         self.date_in_to.dateChanged.connect(self.apply_filters_local)
         
         ent_layout.addWidget(self.chk_entry_filter)
@@ -192,7 +199,6 @@ class BatchesTab(QWidget):
         main_filter_layout.addLayout(right_layout, 1)
         layout.addWidget(filter_group)
 
-        # --- 2. الجدول الرئيسي ---
         self.table = QTableWidget()
         self.table.verticalHeader().setDefaultSectionSize(30) 
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
@@ -212,9 +218,8 @@ class BatchesTab(QWidget):
             header.setSectionResizeMode(c, QHeaderView.ResizeToContents)
 
         self.table.setWordWrap(True)
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        # تمكين التحديد المتعدد (ExtendedSelection) لدعم طباعة عدة صفوف
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
@@ -222,13 +227,17 @@ class BatchesTab(QWidget):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
 
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(False)
+        header.sectionClicked.connect(self.on_header_clicked) 
+
+        self.table.verticalScrollBar().valueChanged.connect(self.on_scroll_value_changed)
+
         layout.addWidget(self.table)
 
-        # --- 3. الشريط السفلي (التوتال + الأزرار) ---
         bottom_bar = QHBoxLayout()
         bottom_bar.setContentsMargins(5, 5, 5, 5)
 
-        # -- يسار: القيمة الإجمالية --
         self.lbl_total_value = QLabel("Valeur Totale : 0.00 DA")
         self.lbl_total_value.setFont(QFont("Arial", 11, QFont.Bold))
         self.lbl_total_value.setStyleSheet("""
@@ -240,84 +249,47 @@ class BatchesTab(QWidget):
                 background-color: #ecf0f1; 
             }
         """)
-        self.lbl_total_value = QLabel("Valeur Totale : 0.00 DA")
         bottom_bar.addWidget(self.lbl_total_value)
 
-        # --- بداية جزء التنقل (Pagination) ---
-        pagination_layout = QHBoxLayout()
-        pagination_layout.setSpacing(10) # مسافة مريحة بين الأزرار
-        pagination_layout.setContentsMargins(0, 0, 0, 0) # إزالة الهوامش الداخلية للحاوية
+        self.lbl_count_info = QLabel("0 éléments")
+        self.lbl_count_info.setStyleSheet("color: #7f8c8d; font-weight: bold; margin-left: 10px;")
+        bottom_bar.addWidget(self.lbl_count_info)
+        
+        bottom_bar.addStretch() 
 
-        self.btn_prev_page = QPushButton("◀ Précédent")
-        self.btn_prev_page.setMinimumWidth(110) # عرض مرن لضمان ظهور الكلمة
-        self.btn_prev_page.setCursor(Qt.PointingHandCursor)
-        self.btn_prev_page.clicked.connect(self.prev_page)
-        
-        self.lbl_page_info = QLabel("Page 1 / 1")
-        # تصميم النص بدون هوامش خارجية مزعجة
-        self.lbl_page_info.setStyleSheet("font-weight: bold; color: #2c3e50;")
-        self.lbl_page_info.setAlignment(Qt.AlignCenter)
-        self.lbl_page_info.setMinimumWidth(140)
-
-        self.btn_next_page = QPushButton("Suivant ▶")
-        self.btn_next_page.setMinimumWidth(110) # عرض مرن
-        self.btn_next_page.setCursor(Qt.PointingHandCursor)
-        self.btn_next_page.clicked.connect(self.next_page)
-        
-        pagination_layout.addWidget(self.btn_prev_page)
-        pagination_layout.addWidget(self.lbl_page_info)
-        pagination_layout.addWidget(self.btn_next_page)
-        
-        # وضع العناصر داخل حاوية (QWidget) بدلاً من GroupBox لإخفاء الإطار تماماً
-        page_group = QWidget() 
-        # تأكيد عدم وجود حدود أو خلفية
-        page_group.setStyleSheet("background: transparent; border: none;") 
-        page_group.setLayout(pagination_layout)
-        
-        bottom_bar.addWidget(page_group)
-        # --- نهاية جزء التنقل ---
-        
-        bottom_bar.addStretch() # مسافة مرنة بين التوتال والأزرار
-
-        # -- يمين: الأزرار --
         btn_style = "QPushButton { font-weight: bold; border-radius: 4px; padding: 6px 12px; font-size: 12px; }"
         
-        # 1. Utilisation
         btn_direct_use = QPushButton("⚡ Sortie")
         btn_direct_use.setStyleSheet(btn_style + "background-color: #27ae60; color: white;")
         btn_direct_use.clicked.connect(self.direct_use_process)
         bottom_bar.addWidget(btn_direct_use)
 
-        # 2. Ajustement
         btn_adjust = QPushButton("✏️ Ajustement")
         btn_adjust.setStyleSheet(btn_style + "background-color: #f39c12; color: white;")
         btn_adjust.clicked.connect(self.adjust_stock)
         bottom_bar.addWidget(btn_adjust)
 
-        # 3. Rebut
         btn_waste = QPushButton("🗑️ Rebut")
         btn_waste.setStyleSheet(btn_style + "background-color: #c0392b; color: white;")
         btn_waste.clicked.connect(self.waste_batch)
         bottom_bar.addWidget(btn_waste)
 
-        # 4. Étiquette (Print)
         btn_print = QPushButton("🖨️ Étiquette")
         btn_print.setStyleSheet(btn_style + "background-color: #34495e; color: white;")
         btn_print.clicked.connect(self.print_batch_label)
         bottom_bar.addWidget(btn_print)
 
-        # فاصل صغير
-        line_sep = QFrame(); line_sep.setFrameShape(QFrame.VLine); line_sep.setFrameShadow(QFrame.Sunken)
+        line_sep = QFrame()
+        line_sep.setFrameShape(QFrame.VLine)
+        line_sep.setFrameShadow(QFrame.Sunken)
         bottom_bar.addWidget(line_sep)
 
-        # 5. Excel
         btn_export_excel = QPushButton("📗 Excel")
         btn_export_excel.setToolTip("Exporter en Excel")
         btn_export_excel.setStyleSheet(btn_style + "background-color: #217346; color: white;")
         btn_export_excel.clicked.connect(self.export_to_excel)
         bottom_bar.addWidget(btn_export_excel)
 
-        # 6. PDF
         btn_export_pdf = QPushButton("📕 PDF")
         btn_export_pdf.setToolTip("Exporter en PDF (Paysage)")
         btn_export_pdf.setStyleSheet(btn_style + "background-color: #e74c3c; color: white;")
@@ -388,9 +360,167 @@ class BatchesTab(QWidget):
         super().showEvent(event)
         self.load_data()
 
+    
+    def apply_sorting(self):
+        """تطبيق الترتيب ثم إعادة تعيين العرض للبدء من جديد"""
+        if self.current_sort_col == -1: return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            col_index = self.current_sort_col
+            is_asc = self.current_sort_asc
+
+            self.table.horizontalHeader().setSortIndicatorShown(True)
+            self.table.horizontalHeader().setSortIndicator(
+                col_index, 
+                Qt.AscendingOrder if is_asc else Qt.DescendingOrder
+            )
+
+            # خريطة الترتيب
+            col_map = {
+                0: 'Product_Name', 1: 'Family_Name', 2: 'Manuf_Name',
+                3: 'Automate_Name', 4: 'Supplier_Name', 
+                5: 'Quantity_Current', 6: 'Date_Received', 7: 'Lot_Number',
+                8: 'Expiry_Date', 9: 'Quantity_Initial', 10: 'Internal_Barcode',
+                11: 'Unit_Price_Received', 12: 'Total_Value', 
+                13: 'PO_ID', 14: 'Location_Name'
+            }
+
+            key_name = col_map.get(col_index)
+            if not key_name and col_index != 12: return
+
+            def sort_key(item):
+                if col_index == 12:
+                    try: return float(item.get('Quantity_Current',0)) * float(item.get('Unit_Price_Received',0))
+                    except: return 0.0
+                
+                val = item.get(key_name)
+                if val is None: return -1 if col_index in [5,9,11] else ""
+
+                if col_index in [5, 9, 11]: 
+                    try: return float(val)
+                    except: return 0.0
+                elif col_index in [6, 8]: 
+                    return str(val)[:10]
+                else: 
+                    return str(val).lower()
+
+            self.filtered_data.sort(key=sort_key, reverse=not is_asc)
+
+            # إعادة التحميل من البداية
+            self.table.setRowCount(0)
+            self.loaded_count = 0
+            self.load_more_data()
+
+        except Exception as e:
+            logging.error(f"Sorting Error: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def on_scroll_value_changed(self, value):
+        """التحقق مما إذا وصل المستخدم إلى أسفل الجدول لتحميل المزيد"""
+        bar = self.table.verticalScrollBar()
+        # إذا بقي 20 بكسل أو أقل للوصول للقاع، حمل المزيد
+        if value >= bar.maximum() - 20: 
+            self.load_more_data()
+
+    def load_more_data(self):
+        """تحميل الدفعة التالية من البيانات وإضافتها للجدول"""
+        total_records = len(self.filtered_data)
+        if self.loaded_count >= total_records:
+            return  # تم تحميل كل شيء
+
+        # تحديد الشريحة (Slice) التالية
+        start_idx = self.loaded_count
+        end_idx = min(start_idx + self.batch_size, total_records)
+        
+        chunk = self.filtered_data[start_idx:end_idx]
+        self._append_rows_to_table(chunk)
+        
+        self.loaded_count = end_idx
+        self.lbl_count_info.setText(f"Affichage: {self.loaded_count} / {total_records}")
+
+
+    def _append_rows_to_table(self, data_chunk):
+        """إضافة صفوف جديدة للجدول (هذه الدالة بديلة لـ _populate_table)"""
+        
+        try:
+            role = self.window().current_user.get('Role', 'Technician')
+        except: role = 'Technician'
+        is_tech = (role == 'Technician')
+
+        def make_item(val, align=Qt.AlignCenter, color=None, font=None):
+            s_val = str(val) if val is not None else ""
+            it = QTableWidgetItem(s_val)
+            it.setTextAlignment(align)
+            if color: it.setForeground(color)
+            if font: it.setFont(font)
+            it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+            return it
+
+        start_row = self.table.rowCount()
+        
+        for i, b in enumerate(data_chunk):
+            r = start_row + i
+            self.table.insertRow(r)
+            
+            qty = float(b.get('Quantity_Current', 0))
+            
+            # تعبئة الأعمدة
+            prod_item = make_item(b.get('Product_Name', '---'), Qt.AlignLeft | Qt.AlignVCenter)
+            prod_item.setData(Qt.UserRole, b)
+            self.table.setItem(r, 0, prod_item)
+            self.table.setItem(r, 1, make_item(b.get('Family_Name', '---')))
+            self.table.setItem(r, 2, make_item(b.get('Manuf_Name', '---')))
+            self.table.setItem(r, 3, make_item(b.get('Automate_Name', '---')))
+            self.table.setItem(r, 4, make_item(b.get('Supplier_Name', '---')))
+            self.table.setItem(r, 5, make_item(f"{qty:g}", color=QColor("#27ae60"), font=QFont("", -1, QFont.Bold)))
+            self.table.setItem(r, 6, make_item(str(b.get('Date_Received') or b.get('Created_At', ''))[:10]))
+            self.table.setItem(r, 7, make_item(b.get('Lot_Number', '---')))
+            self.table.setItem(r, 8, make_item(str(b.get('Expiry_Date', ''))[:10]))
+            self.table.setItem(r, 9, make_item(f"{float(b.get('Quantity_Initial',0)):g}"))
+            self.table.setItem(r, 10, make_item(b.get('Internal_Barcode') or b.get('Barcode')))
+            
+            # الأعمدة المالية
+            if not is_tech:
+                price_u = float(b.get('Unit_Price_Received', 0))
+                discount = float(b.get('Discount_Percent', 0)) / 100.0
+                tax = float(b.get('Tax_Rate_Percent', 0)) / 100.0
+                line_val = qty * price_u * (1 - discount) * (1 + tax)
+                
+                self.table.setItem(r, 11, make_item(f"{price_u:,.2f}"))
+                self.table.setItem(r, 12, make_item(f"{line_val:,.2f}"))
+            else:
+                self.table.setItem(r, 11, QTableWidgetItem(""))
+                self.table.setItem(r, 12, QTableWidgetItem(""))
+
+            self.table.setItem(r, 13, make_item(b.get('PO_ID')))
+            self.table.setItem(r, 14, make_item(b.get('Location_Name')))
+        
+        self.table.setColumnHidden(11, is_tech)
+        self.table.setColumnHidden(12, is_tech)
+
+    def on_header_clicked(self, col_index):
+        """يتم استدعاؤها فقط عند ضغط المستخدم على رأس العمود"""
+        if self.current_sort_col == col_index:
+            # إذا ضغط نفس العمود، اعكس الاتجاه
+            self.current_sort_asc = not self.current_sort_asc
+        else:
+            # إذا ضغط عمود جديد، ابدأ تصاعدياً
+            self.current_sort_col = col_index
+            self.current_sort_asc = True
+        
+        # الآن نفذ الفرز
+        self.apply_sorting()
+
     def _populate_table(self, data):
         """عرض البيانات في الجدول (يستقبل شريحة صغيرة فقط 50 صف)"""
+        
+        # تعطيل الفرز التلقائي لمنع Qt من إعادة ترتيب الـ 50 صف فقط
         self.table.setSortingEnabled(False)
+        
+        # [تم حذف] أسطر ربط وفصل الإشارات من هنا لأن مكانها الصحيح في init_ui
+
         self.table.setRowCount(0)
         
         # 1. التحقق من الصلاحيات لحساب الإجمالي
@@ -458,9 +588,10 @@ class BatchesTab(QWidget):
             self.table.setItem(r, 13, make_item(b.get('PO_ID')))
             self.table.setItem(r, 14, make_item(b.get('Location_Name')))
 
+        # تأكيد تعطيل الفرز مرة أخرى بعد الرسم
         self.table.setSortingEnabled(False)
         
-        # الإخفاء والتحكم في الليبل السفلي
+        # الإخفاء والتحكم في الليبل السفلي والأعمدة حسب الصلاحيات
         self.table.setColumnHidden(11, is_tech)
         self.table.setColumnHidden(12, is_tech)
 
@@ -469,6 +600,111 @@ class BatchesTab(QWidget):
         else:
             self.lbl_total_value.show()
             self.lbl_total_value.setText(f"💰 Total Filtré : {total_value_filtered:,.2f} DA")
+
+    def sort_by_column(self, col_index):
+        """
+        ترتيب البيانات كاملة مع إظهار مؤشر تحميل وسهم الاتجاه
+        """
+        # 1. إظهار مؤشر التحميل (Loading Cursor)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents() # إجبار الواجهة على تحديث شكل الماوس فوراً
+
+        try:
+            # 2. منطق عكس الترتيب (Toggle)
+            if self.current_sort_col == col_index:
+                self.current_sort_asc = not self.current_sort_asc
+            else:
+                self.current_sort_col = col_index
+                self.current_sort_asc = True # افتراضي تصاعدي عند تغيير العمود
+
+            # 3. تحديث سهم الاتجاه في الهيدر
+            header = self.table.horizontalHeader()
+            header.setSortIndicatorShown(True)
+            direction = Qt.AscendingOrder if self.current_sort_asc else Qt.DescendingOrder
+            header.setSortIndicator(col_index, direction)
+
+            # 4. خريطة الأعمدة (Mapping)
+            # هذه الخريطة تربط رقم العمود باسم الحقل في قاعدة البيانات
+            col_map = {
+                0: 'Product_Name',
+                1: 'Family_Name',
+                2: 'Manuf_Name',
+                3: 'Automate_Name',
+                4: 'Supplier_Name',
+                5: 'Quantity_Current',     # رقم
+                6: 'Date_Received',        # تاريخ
+                7: 'Lot_Number',
+                8: 'Expiry_Date',          # تاريخ
+                9: 'Quantity_Initial',     # رقم
+                10: 'Internal_Barcode',
+                11: 'Unit_Price_Received', # رقم
+                12: 'Total_Value',         # حسابي
+                13: 'PO_ID',
+                14: 'Location_Name'
+            }
+
+            key_name = col_map.get(col_index)
+            
+            # إذا ضغط المستخدم على عمود غير معرف أو لا يحتوي بيانات للترتيب
+            if not key_name and col_index != 12: 
+                return
+
+            # 5. دالة استخراج القيمة للترتيب (Sorting Key)
+            def sort_key(item):
+                # معالجة خاصة لعمود "القيمة الإجمالية"
+                if col_index == 12: 
+                    try:
+                        q = float(item.get('Quantity_Current', 0))
+                        p = float(item.get('Unit_Price_Received', 0))
+                        return q * p 
+                    except: return 0.0
+
+                val = item.get(key_name)
+                
+                # التعامل مع القيم الفارغة (تظهر في البداية أو النهاية)
+                if val is None:
+                    # للأرقام نعيد -1، للنصوص نعيد نص فارغ
+                    return -1 if col_index in [5, 9, 11] else ""
+
+                # تحويل الأنواع للترتيب الصحيح
+                if col_index in [5, 9, 11]: # أرقام
+                    try: return float(val)
+                    except: return 0.0
+                
+                elif col_index in [6, 8]: # تواريخ
+                    # نحول التاريخ لنص YYYY-MM-DD لضمان الترتيب الزمني
+                    return str(val)[:10]
+                
+                else: # نصوص
+                    return str(val).lower() # تحويل لأحرف صغيرة لتجاهل حالة الأحرف
+
+            # 6. تنفيذ الترتيب على القائمة الكبيرة (في الذاكرة)
+            self.filtered_data.sort(key=sort_key, reverse=not self.current_sort_asc)
+
+            # 7. إعادة العرض من الصفحة الأولى
+            self.current_page = 0
+            self._render_current_page()
+
+        except Exception as e:
+            logging.error(f"Error Sorting: {e}")
+            QMessageBox.warning(self, "Erreur", f"Erreur de tri : {e}")
+        
+        finally:
+            # 8. إخفاء مؤشر التحميل في جميع الأحوال
+            QApplication.restoreOverrideCursor()
+
+    def update_header_indicator(self, col_index):
+        """تحديث أيقونة السهم في رأس الجدول"""
+        header = self.table.horizontalHeader()
+        for i in range(self.table.columnCount()):
+            # مسح الأيقونات القديمة
+            self.table.model().setHeaderData(i, Qt.Horizontal, None, Qt.DecorationRole)
+        
+        # وضع الأيقونة الجديدة (يمكنك استخدام أيقونات مخصصة أو نصوص)
+        # هنا سنعتمد على مؤشر الفرز الافتراضي الخاص بـ Qt
+        header.setSortIndicatorShown(True)
+        order = Qt.AscendingOrder if self.current_sort_asc else Qt.DescendingOrder
+        header.setSortIndicator(col_index, order)
 
     def print_batch_label(self):
         """طباعة الملصقات لجميع الصفوف المحددة"""
@@ -556,7 +792,6 @@ class BatchesTab(QWidget):
                     writer.writerow(cols)
                     writer.writerows(rows)
             
-            QMessageBox.information(self, "Succès", "Exportation réussie !")
         except Exception as e:
             logging.error(f"Erreur Export Excel: {e}")
             QMessageBox.critical(self, "Erreur", f"Échec: {str(e)}")
@@ -717,7 +952,6 @@ class BatchesTab(QWidget):
 
             # بناء الملف
             doc.build(elements)
-            QMessageBox.information(self, "Succès", "Export PDF réussi !")
 
         except Exception as e:
             logging.error(f"PDF Export Error: {e}", exc_info=True)
@@ -821,9 +1055,9 @@ class BatchesTab(QWidget):
             logging.error(f"Erreur load_data: {e}")
 
     def apply_filters_local(self):
-        """تطبيق الفلترة وحفظ النتائج في الذاكرة بدلاً من العرض المباشر"""
+        """تطبيق الفلترة، حساب المجموع، ثم بدء التحميل الكسول"""
         try:
-            # 1. جلب قيم الفلاتر
+            # 1. جمع معايير البحث
             search_txt = self.search_input.text().lower().strip()
             loc_id = self.loc_filter.get_current_location_id()
             family_id = self.combo_family.currentData()
@@ -838,32 +1072,26 @@ class BatchesTab(QWidget):
             use_entry_date = self.chk_entry_filter.isChecked()
             ent_from = self.date_in_from.date().toPython()
             ent_to = self.date_in_to.date().toPython()
-
             current_date = date.today()
-            
-            # قائمة مؤقتة لتخزين النتائج
+
             temp_filtered = []
             
+            # 2. حلقة الفلترة
             for row in self.all_data:
                 qty = float(row.get('Quantity_Current', 0))
                 
-                # --- شروط الفلترة ---
-                if status_idx in [0, 1, 2, 3, 4]:
-                    if qty <= 0: continue 
-                elif status_idx == 5: # Épuisé
-                    if qty > 0: continue
+                # الحالة
+                if status_idx in [0, 1, 2, 3, 4] and qty <= 0: continue 
+                elif status_idx == 5 and qty > 0: continue
 
-                # البحث النصي
+                # النص
                 bc_internal = str(row.get('Internal_Barcode', '')).lower()
                 bc_manuf = str(row.get('Barcode', '')).lower()
-                is_search_match = True
                 if search_txt:
                     full_text = f"{row.get('Product_Name','')} {row.get('Lot_Number','')} {bc_internal} {bc_manuf} {row.get('PO_ID','')}".lower()
-                    if search_txt not in full_text:
-                        is_search_match = False
-                if not is_search_match: continue
+                    if search_txt not in full_text: continue
 
-                # القوائم المنسدلة
+                # القوائم
                 if loc_id and row.get('Location_ID') != loc_id: continue
                 if family_id and row.get('Family_ID') != family_id: continue
                 if manuf_id and row.get('Manuf_ID') != manuf_id: continue
@@ -882,11 +1110,9 @@ class BatchesTab(QWidget):
                         try: exp_date_obj = datetime.strptime(raw_exp[:10], "%Y-%m-%d").date()
                         except: pass
 
-                if status_idx == 2: # Stock Faible
-                    if qty > min_threshold: continue
-                elif status_idx == 3: # Périmés
-                    if not exp_date_obj or exp_date_obj >= current_date: continue
-                elif status_idx == 4: # Proche Expiration
+                if status_idx == 2 and qty > min_threshold: continue
+                elif status_idx == 3 and (not exp_date_obj or exp_date_obj >= current_date): continue
+                elif status_idx == 4:
                     if not exp_date_obj: continue
                     days_left = (exp_date_obj - current_date).days
                     if not (0 <= days_left <= alert_days): continue
@@ -904,13 +1130,39 @@ class BatchesTab(QWidget):
                         except: pass
                     if not e_date_obj or not (ent_from <= e_date_obj <= ent_to): continue
 
-                # إذا اجتاز كل الشروط، أضفه للقائمة
                 temp_filtered.append(row)
             
-            # [تعديل] حفظ النتائج وإعادة تعيين الصفحة إلى 0
             self.filtered_data = temp_filtered
-            self.current_page = 0
-            self._render_current_page()
+
+            # 3. حساب القيمة الإجمالية (للكل وليس للمعروض فقط)
+            try:
+                role = self.window().current_user.get('Role', 'Technician')
+            except: role = 'Technician'
+            
+            if role != 'Technician':
+                total_value = 0.0
+                for b in self.filtered_data:
+                    try:
+                        q = float(b.get('Quantity_Current', 0))
+                        if q > 0:
+                            p = float(b.get('Unit_Price_Received', 0))
+                            d = float(b.get('Discount_Percent', 0)) / 100.0
+                            t = float(b.get('Tax_Rate_Percent', 0)) / 100.0
+                            total_value += q * p * (1 - d) * (1 + t)
+                    except: pass
+                self.lbl_total_value.setText(f"💰 Total Filtré : {total_value:,.2f} DA")
+                self.lbl_total_value.show()
+            else:
+                self.lbl_total_value.hide()
+
+            # 4. إعادة تعيين الجدول وبدء التحميل من الصفر
+            self.table.setRowCount(0)
+            self.loaded_count = 0
+            
+            if self.current_sort_col != -1:
+                self.apply_sorting()
+            else:
+                self.load_more_data()
 
         except Exception as e:
             logging.error(f"Erreur filters: {e}", exc_info=True)
@@ -1071,7 +1323,6 @@ class BatchesTab(QWidget):
                 )
                 
                 if success:
-                    QMessageBox.information(self, "Succès", "Transfert effectué avec succès.")
                     self.load_data() # تحديث الجدول
                     self.data_changed.emit() # إشعار باقي التبويبات
                 else:
@@ -1098,7 +1349,6 @@ class BatchesTab(QWidget):
                 )
                 
                 if success:
-                    QMessageBox.information(self, "Succès", "Sortie de stock enregistrée.")
                     self.load_data()
                     self.data_changed.emit()
                 else:

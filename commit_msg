@@ -1,32 +1,22 @@
-feat(v1.7.0): Enhanced Dashboard Charts, FEFO Logic, and Inventory Pagination
+feat/fix: comprehensive upgrade of credit note system, DB stability, and app security
 
-MAJOR CHANGES:
+This commit introduces critical bug fixes across the backend and frontend, improves database connection handling, and adds robust security features to protect data integrity.
 
-1. Dashboard & Charts Overhaul:
-   - Added dual-curve visualization: "Entrées" (Purchases) vs "Sorties" (Consumption).
-   - Implemented date alignment and zero-padding logic to ensure continuous, non-jagged chart lines.
-   - Added smart scatter labels for chart values with collision detection to prevent text overlap.
-   - Improved tooltip and legend styling.
+📦 1. Credit Notes (Avoir) System:
+- [Backend] Fixed incorrect batch deduction in `credit_note_manager.py`. It now targets the precise `Batch_ID` instead of relying solely on `Lot_Number`.
+- [Frontend] Updated `credit_note_tab.py` to properly extract `Batch_ID` from `Qt.UserRole` and pass it to the backend to guarantee accurate stock returns.
+- [DB] Included the previously missing `supplier_credit_notes` and `credit_note_details` tables in the live database schema.
 
-2. Inventory Performance Optimization:
-   - Implemented Pagination in `BatchesTab` (50 rows per page) to handle large datasets efficiently.
-   - Replaced heavy UI rendering with optimized table handling.
-   - Added styling to the search/scan area ("Zone de Scan").
+🗄️ 2. Database & Connection Pooling:
+- [Fix] Increased `pool_size` from 3 to 32 in `base.py` to prevent `PoolError: pool exhausted` crashes caused by concurrent GUI data fetching.
+- [Schema] Updated `schema_queries` in `base.py` to align with the live database:
+  * Added the `BR_ID` foreign key to `Supplier_Payments`.
+  * Added the `Stock_After` column to `Stock_Movement_Log`.
+  * Added UNIQUE constraints to `Reception_Log` to prevent duplicate invoice entries.
 
-3. FEFO (First Expired, First Out) Implementation:
-   - Enforced FEFO logic in Consumption and Dispatch tabs.
-   - Added `FEFOSelectionDialog` to warn users when selecting a newer batch while an older one exists.
-   - Smart sorting by Expiry Date then Reception Date.
-
-4. Quick Actions & UX:
-   - Added "Quick Consume" and "Quick Transfer" dialogs via context menu (Right-Click).
-   - Added "View History by Barcode" shortcut for Admins.
-
-5. Role-Based Access Control (RBAC):
-   - Restricted "History" view to Admins only.
-   - Hidden "Bon de Réception" option from Technicians in the context menu.
-   - Hidden financial columns and totals for Technicians.
-
-Fixed:
-   - `setUniformRowHeights` attribute error in PySide6.
-   - Chart animation crashes by handling series cleanup properly.
+🛡️ 3. Core App Initialization & Security (`main.py`):
+- [Performance] Resolved the Shiboken freeze bug at startup by ensuring `pandas` is imported prior to `PySide6`.
+- [Security] Implemented time-travel protection, comparing the system date against the last run date (via `QSettings`), to prevent database timestamp corruption if the system clock is altered.
+- [Stability] Enforced a single-instance lock using `QLockFile` to prevent running multiple instances of the app simultaneously.
+- [Logging] Replaced the basic infinite file logging with `RotatingFileHandler` (max 5MB, 3 backups) to prevent disk bloat, and removed redundant logging configurations from `base.py`.
+- [Logging] Added a global exception handler (`sys.excepthook`) to safely catch and log unexpected fatal UI crashes.

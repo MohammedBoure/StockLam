@@ -41,6 +41,118 @@ class PurchaseOrderManager:
             logging.error(f"Erreur lors de la génération du PO_ID annuel: {e}")
             import random
             return int(f"{current_year_prefix}{random.randint(100, 999)}")
+        
+    def create_po_header(self, header_data: Dict) -> Optional[int]:
+        """إنشاء رأس الطلب فقط."""
+        po_id = self.generate_custom_po_id()
+        if not po_id: return None
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO Purchase_Orders 
+                    (PO_ID, Supplier_ID, Order_Date, Expected_Delivery_Date, Notes, Status, Created_By) 
+                    VALUES (%s, %s, %s, %s, %s, 'Draft', %s)
+                """
+                cursor.execute(query, (
+                    po_id, 
+                    header_data['Supplier_ID'], 
+                    header_data['Order_Date'], 
+                    header_data.get('Expected_Delivery_Date'), 
+                    header_data.get('Notes'),
+                    header_data.get('Created_By') # تأكد من تمرير user_id
+                ))
+                conn.commit()
+                return po_id
+        except Exception as e:
+            logging.error(f"Error creating PO header: {e}")
+            return None
+        
+    def update_po_header(self, po_id: int, header_data: Dict) -> bool:
+        """تحديث معلومات رأس الطلب."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE Purchase_Orders 
+                    SET Supplier_ID=%s, Order_Date=%s, Expected_Delivery_Date=%s, Notes=%s
+                    WHERE PO_ID=%s
+                """
+                cursor.execute(query, (
+                    header_data['Supplier_ID'], 
+                    header_data['Order_Date'], 
+                    header_data.get('Expected_Delivery_Date'), 
+                    header_data.get('Notes'), 
+                    po_id
+                ))
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error updating PO header: {e}")
+            return False
+        
+
+    def add_po_line(self, po_id: int, item_data: Dict) -> bool:
+        """إضافة سطر منتج للطلب."""
+        try:
+            with self.db.get_db_connection() as conn:
+                if conn is None:
+                    return False
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO PO_Details 
+                    (PO_ID, Product_ID, Qty_Ordered, Ordering_Unit, Item_Note, Unit_Price_HT)
+                    VALUES (%s, %s, %s, %s, %s, 0)
+                """
+                cursor.execute(query, (
+                    po_id, 
+                    item_data['Product_ID'], 
+                    item_data['Qty_Ordered'], 
+                    item_data['Ordering_Unit'], 
+                    item_data.get('Item_Note', '')
+                ))
+                conn.commit()
+                self._recalculate_po_totals(None, po_id) # تحديث الإجماليات (ولو أنها 0 حالياً)
+                return True
+        except Exception as e:
+            logging.error(f"Error adding PO line: {e}")
+            return False
+        
+
+    def update_po_line(self, detail_id: int, item_data: Dict) -> bool:
+        """تحديث سطر منتج موجود."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE PO_Details 
+                    SET Qty_Ordered=%s, Ordering_Unit=%s, Item_Note=%s
+                    WHERE ID=%s
+                """
+                cursor.execute(query, (
+                    item_data['Qty_Ordered'], 
+                    item_data['Ordering_Unit'], 
+                    item_data.get('Item_Note', ''), 
+                    detail_id
+                ))
+                conn.commit()
+                # نحتاج لمعرفة po_id لتحديث المجموع، يمكن جلبه أو تمريره
+                return True
+        except Exception as e:
+            logging.error(f"Error updating PO line: {e}")
+            return False
+
+    def delete_po_line(self, detail_id: int) -> bool:
+        """حذف سطر."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM PO_Details WHERE ID = %s", (detail_id,))
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error deleting PO line: {e}")
+            return False
 
     def create_purchase_order(self, supplier_id: int, order_date: Any, expected_delivery_date: Optional[Any] = None, notes: Optional[str] = None) -> Optional[int]:
         new_po_id = self.generate_custom_po_id()

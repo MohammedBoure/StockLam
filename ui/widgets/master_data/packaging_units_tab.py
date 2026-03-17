@@ -170,7 +170,6 @@ class PackagingUnitsTab(QWidget):
                     description=new_data['Description']
                 )
                 self.load_data()
-                QMessageBox.information(self, "Succès", "Modification enregistrée.")
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Échec de la modification : {e}")
 

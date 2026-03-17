@@ -752,7 +752,7 @@ class ReceptionLogManager:
                     SELECT rl.BR_ID, rl.Supplier_Invoice_Ref, rl.Supplier_BL_Ref, 
                            s.Supplier_Name, rl.Reception_Date,
                            rl.Invoice_Total_HT, rl.Invoice_Total_TVA, rl.Invoice_Total_TTC, 
-                           rl.Status, rl.PO_ID
+                           rl.Status, rl.PO_ID, rl.Total_Discount, rl.Variance_Notes
                     FROM Reception_Log rl
                     JOIN Suppliers s ON rl.Supplier_ID = s.Supplier_ID
                     WHERE rl.Status IN ('Completed', 'Variance Detected', 'Pending Audit') 

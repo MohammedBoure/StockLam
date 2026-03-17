@@ -536,7 +536,6 @@ class ReceptionDialog(BaseDialog):
             # وضع المؤشر في حقل المنتج
             self.cb_product.setFocus()
             
-            QMessageBox.information(self, "Succès", "Vous pouvez maintenant saisir les produits.")
             return True
 
         except Exception as e:
@@ -617,7 +616,6 @@ class ReceptionDialog(BaseDialog):
             # وضع المؤشر في قائمة المنتجات مباشرة
             self.cb_product.setFocus()
 
-            QMessageBox.information(self, "Succès", "Réception validée. Vous pouvez maintenant ajouter les produits.")
             return True
 
         except Exception as e:
@@ -1111,15 +1109,26 @@ class ReceptionDialog(BaseDialog):
         لذا نقوم فقط بإغلاق النافذة بنجاح.
         """
         super().accept()
+
     def clear_inputs(self):
+        
+        self.cb_product.setCurrentIndex(0)  
+        self.cb_unit_type.clear()
+        self.cb_location.setCurrentIndex(0) 
+        
         self.inp_lot.clear()
         self.inp_qty.setValue(1)
         self.inp_price.setValue(0.0)
         self.inp_remise.setValue(0.0)
         self.inp_observation.clear()
+        
+        self.inp_expiry.setDate(QDate.currentDate().addYears(2))
+        
         self.current_editing_row = -1
         self.btn_add.setText(" Ajouter")
-        self.btn_add.setStyleSheet("")
+        self.btn_add.setStyleSheet("") 
+        
+        self.cb_product.setFocus()
 
     def is_input_dirty(self):
         """التحقق مما إذا كان هناك بيانات مكتوبة في الحقول ولم تُضف للجدول بعد."""

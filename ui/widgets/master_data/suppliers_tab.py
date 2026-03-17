@@ -158,7 +158,6 @@ class SuppliersTab(QWidget):
             try:
                 self.supplier_manager.add_supplier(**new_data)
                 self.load_suppliers_data()
-                QMessageBox.information(self, "Succès", "Fournisseur ajouté avec succès.")
             except Exception as e:
                 logging.error(f"Failed to add supplier: {e}")
                 QMessageBox.critical(self, "Erreur", f"Échec de l'ajout : {e}")
@@ -178,7 +177,6 @@ class SuppliersTab(QWidget):
             try:
                 self.supplier_manager.update_supplier(current_data['Supplier_ID'], **new_data)
                 self.load_suppliers_data()
-                QMessageBox.information(self, "Succès", "Les données ont été mises à jour avec succès.")
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Échec de la modification : {e}")
 

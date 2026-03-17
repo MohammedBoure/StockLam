@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
                 self.switch_page(3) # Stock
                 if self.nav_group.button(3): self.nav_group.button(3).setChecked(True)
 
+                
+
 
     def open_product_history(self, search_text):
         """تستقبل طلب البحث من صفحة المخزون وتفتح السجل"""

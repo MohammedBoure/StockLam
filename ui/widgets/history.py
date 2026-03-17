@@ -240,7 +240,6 @@ class MovementHistoryTab(QWidget):
         
         layout.addLayout(filter_layout)
 
-        # --- 2. الجدول الرئيسي ---
         self.table = QTableWidget()
         cols = [
             "Date", "Produit", "Code-Barres", "Lot", "Type", 
@@ -264,7 +263,6 @@ class MovementHistoryTab(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows) 
         self.table.setAlternatingRowColors(True)
         
-        # *** تفعيل النقر المزدوج ***
         self.table.doubleClicked.connect(self.show_full_details)
 
         layout.addWidget(self.table)
@@ -273,11 +271,8 @@ class MovementHistoryTab(QWidget):
         self.load_data()
 
     def filter_by_product(self, product_name):
-        """تستقبل اسم المنتج وتحدث واجهة السجل"""
         if product_name:
-            # وضع النص في حقل البحث
             self.search_input.setText(product_name)
-            # استدعاء التحميل للتأكد من تحديث البيانات فوراً
             self.load_data()
 
     def load_data(self):
@@ -306,94 +301,86 @@ class MovementHistoryTab(QWidget):
 
     def _populate_table(self, data):
         """
-        تعبئة الجدول بكافة حركات المخزون مع التنسيق اللوني الاحترافي.
+        تعبئة الجدول وعرض رصيد (الكود بار) المحدد.
+        نسخة مصححة 100% (تم إصلاح خطأ stock_display).
         """
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         
-        # خريطة الترجمة الكاملة للأنواع البرمجية المدعومة
         type_map = {
             'Purchase_Receive': 'Réception (Achat)',
             'Patient_Test': 'Consommation',
-            'QC_Run': 'Contrôle Qualité (QC)',
+            'QC_Run': 'QC',
             'Calibration': 'Calibration',
-            'Open_Pack': 'Ouverture Boîte',
+            'Open_Pack': 'Ouverture',
             'Adjustment': 'Ajustement',
-            'Waste': 'Rebut / Perte',
-            'Transfer': 'Transfert Interne',
-            'External_Transfer': 'Vente / Transf. Externe',
-            'Return_To_Supplier': 'Retour Fournisseur'
+            'Waste': 'Perte',
+            'Transfer': 'Transfert',
+            'External_Transfer': 'Vente/Externe',
+            'Return_To_Supplier': 'Retour Fourn.'
         }
 
         for r, mov in enumerate(data):
             self.table.insertRow(r)
             
-            def item(text, align=Qt.AlignCenter, color=None):
-                it = QTableWidgetItem(str(text if text is not None else "-"))
+            def item(text, align=Qt.AlignCenter, color=None, font=None):
+                val = str(text) if text is not None else "-"
+                it = QTableWidgetItem(val)
                 it.setTextAlignment(align) 
                 if color: it.setForeground(QBrush(QColor(color)))
+                if font: it.setFont(font)
                 return it
 
-            # 1. التاريخ (تخزين بيانات السجل كاملة في العمود الأول للنقر المزدوج)
-            first_item = item(str(mov['Transaction_Date'])[:16])
-            first_item.setData(Qt.UserRole, mov) 
-            self.table.setItem(r, 0, first_item)
+            # 1. التاريخ
+            self.table.setItem(r, 0, item(str(mov['Transaction_Date'])[:16]))
+            self.table.item(r, 0).setData(Qt.UserRole, mov)
             
-            # 2. المنتج (خط عريض وواضح)
-            p_item = item(mov.get('Product_Name', '-')) 
-            p_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            self.table.setItem(r, 1, p_item)
+            # 2. المنتج
+            self.table.setItem(r, 1, item(mov.get('Product_Name', '-'), font=QFont("Segoe UI", 9, QFont.Bold)))
             
             # 3. الباركود واللوت
-            self.table.setItem(r, 2, item(mov.get('Batch_Barcode') or '-'))
+            self.table.setItem(r, 2, item(mov.get('Batch_Barcode') or '-')) 
             self.table.setItem(r, 3, item(mov.get('Lot_Number') or '-'))
             
-            # 4. نوع الحركة مع تمييز لوني احترافي
+            # 4. نوع الحركة
             raw_type = mov['Movement_Type']
-            display_type = type_map.get(raw_type, raw_type)
-            t_item = item(display_type)
-            
-            if raw_type == 'Purchase_Receive': 
-                t_item.setBackground(QBrush(QColor("#e8f5e9"))) # أخضر (دخول مخزون)
-            elif raw_type == 'External_Transfer': 
-                t_item.setBackground(QBrush(QColor("#fff3e0"))) # برتقالي (خروج مالي)
-                t_item.setForeground(QBrush(QColor("#e65100")))
-            elif raw_type in ['Patient_Test', 'QC_Run', 'Calibration']: 
-                t_item.setBackground(QBrush(QColor("#e3f2fd"))) # أزرق (استهلاك تقني)
-                t_item.setForeground(QBrush(QColor("#1976d2")))
-            elif raw_type == 'Open_Pack':
-                t_item.setBackground(QBrush(QColor("#f3e5f5"))) # بنفسجي (تحضير)
-            elif raw_type == 'Waste': 
-                t_item.setBackground(QBrush(QColor("#ffebee"))) # أحمر (خسارة)
-            elif raw_type == 'Adjustment':
-                t_item.setForeground(QBrush(QColor("#d35400"))) # بني (تعديل جرد)
-            elif raw_type == 'Return_To_Supplier': 
-                t_item.setBackground(QBrush(QColor("#d35400"))) 
-                t_item.setForeground(QBrush(QColor("white")))
-                t_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
-                
+            t_item = item(type_map.get(raw_type, raw_type))
+            if raw_type == 'Purchase_Receive': t_item.setBackground(QBrush(QColor("#e8f5e9")))
+            elif raw_type == 'Waste': t_item.setBackground(QBrush(QColor("#ffebee")))
+            elif raw_type in ['Patient_Test', 'QC_Run']: t_item.setForeground(QBrush(QColor("#1976d2")))
             self.table.setItem(r, 4, t_item)
             
-            # 5. كمية الحركة (Mvt)
-            qty = float(mov['Qty_Change'])
+            # 5. الكمية
+            qty = float(mov.get('Qty_Change', 0))
             self.table.setItem(r, 5, item(f"{qty:g}", Qt.AlignCenter, "#c0392b" if qty < 0 else "#27ae60"))
             
-            # 6. الرصيد الحالي للمخزن (Stock)
-            stock_val = mov.get('Quantity_Current')
-            s_item = item(f"{float(stock_val):g}" if stock_val is not None else "0")
-            s_item.setFont(QFont("Arial", 8, QFont.Bold))
+            # 6. رصيد الباركود (Batch Stock)
+            batch_stock = mov.get('Batch_Historical_Stock')
+            
+            if batch_stock is None:
+                batch_stock = mov.get('Historical_Stock')
+            
+            # --- التصحيح هنا ---
+            stock_txt = f"{float(batch_stock):g}" if batch_stock is not None else "?"
+            
+            # تم استخدام المتغير الصحيح stock_txt
+            s_item = item(stock_txt, font=QFont("Arial", 9, QFont.Bold))
+            
+            if batch_stock is not None and float(batch_stock) <= 0:
+                s_item.setForeground(QBrush(QColor("#c0392b"))) 
+            else:
+                s_item.setForeground(QBrush(QColor("#2c3e50")))
+
             self.table.setItem(r, 6, s_item)
             
-            # 7. الموقع والمستخدم والملاحظات
+            # 7. باقي الأعمدة
             self.table.setItem(r, 7, item(mov.get('Location_Name', '---'), Qt.AlignCenter, "#2980b9"))
             self.table.setItem(r, 8, item(mov.get('Operator_Name') or "Système", Qt.AlignCenter, "#7f8c8d"))
             
-            reason = mov.get('Reason_Name', '')
-            notes = mov.get('Notes', '')
-            self.table.setItem(r, 9, item(f"{reason} {notes}".strip(), Qt.AlignLeft | Qt.AlignVCenter))
+            full_note = f"{mov.get('Reason_Name','') or ''} {mov.get('Notes','') or ''}".strip()
+            self.table.setItem(r, 9, item(full_note, Qt.AlignLeft | Qt.AlignVCenter))
 
         self.table.setSortingEnabled(True)
-
     def show_full_details(self):
         row = self.table.currentRow()
         if row < 0: return

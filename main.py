@@ -3,96 +3,150 @@
 import sys
 import os
 import logging
+from logging.handlers import RotatingFileHandler
+import traceback
+from datetime import datetime
+
+import pandas as pd
+
 from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
-# 1. إضافة QLockFile و QDir للاستيراد
 from PySide6.QtCore import Qt, QSettings, QLockFile, QDir 
 from database.base import Database
 from database import LabDataManager
 from ui.main_window import MainWindow
 from ui.login_dialog import LoginDialog 
 
-# إعدادات التسجيل (Logging)
+# =========================================================================
+# 1. إعدادات التسجيل (Logging) المتقدمة
+# =========================================================================
 os.environ["QT_LOGGING_RULES"] = "*.warning=false"
+
+# مسار ملف السجل
+log_file_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath("."), "app.log")
+
+# تدوير السجلات: 5 ميجابايت كحد أقصى، مع الاحتفاظ بـ 3 نسخ قديمة
+file_handler = RotatingFileHandler(
+    log_file_path, 
+    maxBytes=5 * 1024 * 1024, # 5 MB
+    backupCount=3,
+    encoding='utf-8'
+)
+console_handler = logging.StreamHandler(sys.stdout)
+
+# تنسيق السجل
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[file_handler, console_handler]
 )
 logger = logging.getLogger(__name__)
 
+# =========================================================================
+# 2. صائد الأخطاء المفاجئة (Global Crash Handler)
+# =========================================================================
+def global_exception_handler(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.critical("❌ Erreur Critique (Crash Système):", exc_info=(exc_type, exc_value, exc_traceback))
+
+sys.excepthook = global_exception_handler
+
+# =========================================================================
+# 3. الدوال المساعدة
+# =========================================================================
 def check_env_file():
     """التحقق من وجود ملف إعدادات البيئة"""
     if not os.path.exists(".env"):
-        logging.critical("FATAL: .env file not found.")
+        logger.critical("FATAL: .env file not found.")
         app = QApplication(sys.argv)
         QMessageBox.critical(None, "Erreur Fatale", "Le fichier .env est introuvable.\nVeuillez configurer la base de données.")
         return False
     return True
 
+# =========================================================================
+# 4. الدالة الرئيسية (Main)
+# =========================================================================
 def main():
     if not check_env_file():
         return
 
     app = QApplication(sys.argv)
     
-    # =========================================================================
-    # [بداية التعديل] : منع تشغيل البرنامج مرتين (Single Instance)
-    # =========================================================================
-    # تحديد مسار ملف القفل في المجلد المؤقت للنظام
+    # --- منع تشغيل البرنامج مرتين (Single Instance) ---
     lock_file_path = os.path.join(QDir.tempPath(), 'modernlam_stockmanager.lock')
     lock_file = QLockFile(lock_file_path)
     
-    # نحاول قفل الملف، إذا فشل (رجع False) فهذا يعني أن البرنامج مفتوح مسبقاً
-    # نستخدم مهلة 100 ميلي ثانية للتأكد
     if not lock_file.tryLock(100):
         QMessageBox.warning(
             None, 
             "Déjà ouvert", 
             "Le programme est déjà en cours d'exécution !\n(Impossible d'ouvrir une seconde instance)"
         )
-        sys.exit(1) # إغلاق النسخة الثانية فوراً
-    # =========================================================================
-    # [نهاية التعديل] : سيظل lock_file محجوزاً طالما البرنامج يعمل
-    # =========================================================================
-
-    # إعدادات لحفظ الجلسة (اسم المستخدم وكلمة المرور)
+        sys.exit(1)
+    
+    # إعدادات البرنامج
     settings = QSettings("ModernLam", "StockManager")
     
+    # --- الحماية ضد التلاعب بالتاريخ (Time-Travel Protection) ---
+    current_date = datetime.now().date()
+    last_run_str = settings.value("last_run_date")
+    
+    if last_run_str:
+        try:
+            last_run_date = datetime.strptime(last_run_str, "%Y-%m-%d").date()
+            if current_date < last_run_date:
+                error_msg = (
+                    f"⚠️ Erreur Critique : Date Système Invalide\n\n"
+                    f"La date actuelle de votre ordinateur ({current_date.strftime('%d/%m/%Y')}) "
+                    f"est antérieure à la dernière utilisation du programme ({last_run_date.strftime('%d/%m/%Y')}).\n\n"
+                    f"Cela peut corrompre la base de données. Veuillez corriger la date et l'heure de votre système avant de continuer."
+                )
+                logger.error(f"System date error: Current ({current_date}) < Last Run ({last_run_date})")
+                QMessageBox.critical(None, "Erreur de Date", error_msg)
+                sys.exit(1)
+        except Exception as e:
+            logger.error(f"Error parsing last_run_date: {e}")
+
+    settings.setValue("last_run_date", current_date.strftime("%Y-%m-%d"))
+
+    # --- حلقة التشغيل الرئيسية ---
     while True:
         data_manager = None
         connection_error = None
         current_user = None
 
-        # 1. محاولة الاتصال بقاعدة البيانات
+        # محاولة الاتصال بقاعدة البيانات
         try:
             db = Database()
             data_manager = LabDataManager(db)
         except Exception as e:
             connection_error = str(e)
-            logging.error(f"Database connection failed: {e}")
+            logger.error(f"Database connection failed: {e}")
 
-        # 2. التحقق من الجلسة المحفوظة (Auto-Login)
+        # التحقق من الجلسة المحفوظة (Auto-Login)
         saved_user = settings.value("saved_username")
         saved_pass = settings.value("saved_password")
 
         if data_manager and saved_user and saved_pass:
             try:
-                # [هام] نستخدم دالة authenticate وليس select مباشرة
                 user_found = data_manager.users.authenticate(saved_user, saved_pass)
-                
                 if user_found:
-                    logging.info(f"Auto-login successful for user: {saved_user}")
+                    logger.info(f"Auto-login successful for user: {saved_user}")
                     current_user = user_found
                 else:
-                    logging.warning("Auto-login failed. Clearing session.")
+                    logger.warning("Auto-login failed. Clearing session.")
                     settings.remove("saved_username")
                     settings.remove("saved_password")
                     current_user = None
             except Exception as e:
-                logging.error(f"Session recovery error: {e}")
+                logger.error(f"Session recovery error: {e}")
                 current_user = None
 
-        # 3. إظهار نافذة الدخول إذا لم يتم التعرف على المستخدم تلقائياً
+        # إظهار نافذة الدخول إذا لم يتم التعرف على المستخدم تلقائياً
         if data_manager and not current_user:
             login_dlg = LoginDialog(data_manager)
             if login_dlg.exec() == QDialog.Accepted:
@@ -107,22 +161,19 @@ def main():
             else:
                 return 
 
-        # نمرر connection_error لكي تظهر رسالة خطأ داخل النافذة إذا لم تنجح قاعدة البيانات
+        # تشغيل النافذة الرئيسية
         window = MainWindow(data_manager, current_user, connection_error)
         window.showMaximized() 
         
         exit_code = app.exec()
         
-        # 5. منطق تسجيل الخروج وإعادة التشغيل
+        # منطق تسجيل الخروج وإعادة التشغيل
         if hasattr(window, 'want_logout') and window.want_logout:
-            logging.info("User requested logout. Restarting login process...")
-            
-            # عند تسجيل الخروج يدوياً، نمسح الإعدادات لكي لا يدخل تلقائياً مرة أخرى
+            logger.info("User requested logout. Restarting login process...")
             settings.remove("saved_username")
             settings.remove("saved_password")
-            
             del window
-            continue  # يعيد الحلقة while True من البداية
+            continue  
         else:
             sys.exit(exit_code)
 

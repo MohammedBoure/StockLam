@@ -162,7 +162,6 @@ class ProductFamiliesTab(QWidget):
                 # تحديث الاسم باستخدام الدالة الأصلية
                 self.manager.families.update_family(item_data['Family_ID'], new_data['Family_Name'])
                 self.load_data()
-                QMessageBox.information(self, "Succès", "Modification enregistrée.")
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Échec de la modification : {e}")
 
@@ -184,7 +183,6 @@ class ProductFamiliesTab(QWidget):
                 success, msg = self.manager.families.soft_delete_family(item_data['Family_ID'])
                 if success:
                     self.load_data()
-                    QMessageBox.information(self, "Succès", msg)
                 else:
                     QMessageBox.warning(self, "Erreur", msg)
             except Exception as e:

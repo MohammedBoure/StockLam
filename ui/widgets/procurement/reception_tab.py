@@ -110,7 +110,6 @@ class ReceptionTab(QWidget):
             try:
                 success = self.manager.po.update_status(po_id, 'Completed')
                 if success:
-                    QMessageBox.information(self, "Succès", f"La commande #{po_id} a été clôturée avec succès.")
                     self.load_pending_pos() 
                     if hasattr(self.parent(), 'on_tab_change'):
                         self.parent().on_tab_change(2)
