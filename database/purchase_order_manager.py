@@ -4,7 +4,9 @@ import mysql.connector
 import logging
 from datetime import datetime, date
 from typing import List, Dict, Optional, Any
+from .system_logger import log_methods 
 
+@log_methods()
 class PurchaseOrderManager:
     def __init__(self, db_instance):
         self.db = db_instance

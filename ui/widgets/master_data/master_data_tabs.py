@@ -22,6 +22,7 @@ class MasterDataTabs(QWidget):
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
         
+        # 1. تهيئة الواجهات فقط
         self.tab_products = ProductsTab(self.data_manager)
         self.tab_families = ProductFamiliesTab(self.data_manager)
         self.tab_units = PackagingUnitsTab(self.data_manager)
@@ -32,14 +33,5 @@ class MasterDataTabs(QWidget):
         self.tab_waste = WasteReasonsTab(self.data_manager.waste_reasons)
         self.tab_partners = ExternalPartnersTab(self.data_manager.partners) 
 
-        self.tabs.addTab(self.tab_products, "Produits")
-        self.tabs.addTab(self.tab_families, "Familles")
-        self.tabs.addTab(self.tab_units, "Unités")
-        self.tabs.addTab(self.tab_suppliers, "Fournisseurs")
-        self.tabs.addTab(self.tab_manufacturers, "Fabricants")
-        self.tabs.addTab(self.tab_locations, "Emplacements")
-        self.tabs.addTab(self.tab_automates, "Automates")
-        self.tabs.addTab(self.tab_waste, "Raisons Rebut")
-        self.tabs.addTab(self.tab_partners, "Partenaires Externes") 
 
         layout.addWidget(self.tabs)

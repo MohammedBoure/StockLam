@@ -3,6 +3,13 @@
     "lab_address": "Algiers, Algeria",
     "expiry_warning_days": 30,
     "low_stock_threshold": 5,
+    "auto_backup_enabled": true,
+    "auto_backup_interval": 1.0,
+    "auto_backup_password": "test",
+    "backup_paths": [
+        "C:/Users/AES/Desktop",
+        "H:/"
+    ],
     "db_host": "127.0.0.1",
     "db_port": 3306,
     "db_user": "root",
@@ -11,7 +18,7 @@
     "flask_env": "development",
     "secret_key": "change_me_key",
     "max_content_length": 16777216,
-    "selected_printer": "Xprinter XP-410B",
+    "selected_printer": "Xprinter XP-TT424B",
     "label_width": 40,
     "label_height": 20,
     "gap": 3,

@@ -6,7 +6,9 @@ from datetime import date, datetime
 from typing import List, Dict, Optional
 from decimal import Decimal
 
+from .system_logger import log_methods 
 
+@log_methods()
 class InventoryBatchManager:
     """
     إدارة عمليات جدول دفعات المخزون (Inventory_Batches).

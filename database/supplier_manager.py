@@ -3,7 +3,9 @@
 import mysql.connector
 import logging
 from datetime import datetime
+from .system_logger import log_methods 
 
+@log_methods()
 class SupplierManager:
     """إدارة عمليات جدول الموردين (Suppliers)، مع التركيز على المتطلبات المالية والقانونية للمختبرات."""
 

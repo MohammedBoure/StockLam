@@ -4,7 +4,9 @@ import mysql.connector
 import logging
 from typing import List, Dict, Optional, Tuple
 from decimal import Decimal
+from .system_logger import log_methods 
 
+@log_methods()
 class ProductManager:
     """
     Gestion des opérations sur la table des produits (Products_Master).

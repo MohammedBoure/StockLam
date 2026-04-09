@@ -1,22 +1,23 @@
-feat/fix: comprehensive upgrade of credit note system, DB stability, and app security
+feat(auth, ui, inventory, backup, logs): implement granular permissions, automated backups, and full logging system
 
-This commit introduces critical bug fixes across the backend and frontend, improves database connection handling, and adds robust security features to protect data integrity.
+* Added fine-grained permissions system:
 
-📦 1. Credit Notes (Avoir) System:
-- [Backend] Fixed incorrect batch deduction in `credit_note_manager.py`. It now targets the precise `Batch_ID` instead of relying solely on `Lot_Number`.
-- [Frontend] Updated `credit_note_tab.py` to properly extract `Batch_ID` from `Qt.UserRole` and pass it to the backend to guarantee accurate stock returns.
-- [DB] Included the previously missing `supplier_credit_notes` and `credit_note_details` tables in the live database schema.
+  * Control access per interface (view/page)
+  * Control visibility per tab within each interface
+  * Integrated permissions management into user management interface
 
-🗄️ 2. Database & Connection Pooling:
-- [Fix] Increased `pool_size` from 3 to 32 in `base.py` to prevent `PoolError: pool exhausted` crashes caused by concurrent GUI data fetching.
-- [Schema] Updated `schema_queries` in `base.py` to align with the live database:
-  * Added the `BR_ID` foreign key to `Supplier_Payments`.
-  * Added the `Stock_After` column to `Stock_Movement_Log`.
-  * Added UNIQUE constraints to `Reception_Log` to prevent duplicate invoice entries.
+* Enhanced inventory module:
 
-🛡️ 3. Core App Initialization & Security (`main.py`):
-- [Performance] Resolved the Shiboken freeze bug at startup by ensuring `pandas` is imported prior to `PySide6`.
-- [Security] Implemented time-travel protection, comparing the system date against the last run date (via `QSettings`), to prevent database timestamp corruption if the system clock is altered.
-- [Stability] Enforced a single-instance lock using `QLockFile` to prevent running multiple instances of the app simultaneously.
-- [Logging] Replaced the basic infinite file logging with `RotatingFileHandler` (max 5MB, 3 backups) to prevent disk bloat, and removed redundant logging configurations from `base.py`.
-- [Logging] Added a global exception handler (`sys.excepthook`) to safely catch and log unexpected fatal UI crashes.
+  * Added option to toggle visibility of pricing information
+
+* Implemented automated backup system:
+
+  * Configurable backup intervals
+  * Support for multiple backup destinations
+  * Encrypted backups with password protection
+
+* Introduced comprehensive logging system:
+
+  * Logging at class level
+  * Logging at method/function level
+  * Tracks data creation, updates, and modifications within classes

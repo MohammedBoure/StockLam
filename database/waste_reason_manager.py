@@ -2,7 +2,9 @@
 
 import mysql.connector
 import logging
+from .system_logger import log_methods 
 
+@log_methods()
 class WasteReasonManager:
     """إدارة عمليات جدول أسباب التلف/الرفض (Waste_Reasons) لتوحيد أسباب خروج المخزون."""
 

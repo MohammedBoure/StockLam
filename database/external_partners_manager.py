@@ -3,7 +3,9 @@
 import mysql.connector
 import logging
 from typing import List, Dict, Optional
+from .system_logger import log_methods 
 
+@log_methods()
 class ExternalPartnersManager:
     """
     Gestion des opérations sur la table External_Partners.

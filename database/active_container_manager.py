@@ -5,7 +5,9 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Optional
 from decimal import Decimal
+from .system_logger import log_methods 
 
+@log_methods()
 class ActiveContainerManager:
     """
     Gère les opérations pour la table Active_Containers.

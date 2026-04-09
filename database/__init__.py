@@ -21,6 +21,8 @@ from .user_manager import UserManager
 from .external_partners_manager import ExternalPartnersManager
 from .external_transfer_manager import ExternalTransferManager
 from .credit_note_manager import CreditNoteManager
+from .system_log_manager import SystemLogManager
+from .system_logger import active_user_id,log_methods
 class LabDataManager:
 
     def __init__(self, db_instance: Database):
@@ -59,3 +61,5 @@ class LabDataManager:
         self.external_transfers = ExternalTransferManager(self.db)
 
         self.credit_notes = CreditNoteManager(self.db)
+
+        self.system_log = SystemLogManager(db_instance)

@@ -8,7 +8,9 @@ from typing import List, Dict, Optional, Tuple
 
 # استيراد مدير الحركات لتسجيل خروج البضاعة
 from .stock_movement_log_manager import StockMovementLogManager
+from .system_logger import log_methods 
 
+@log_methods()
 class CreditNoteManager:
     """
     إدارة إشعارات الدائن (Avoirs) من الموردين.

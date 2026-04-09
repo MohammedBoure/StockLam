@@ -154,3 +154,28 @@ This commit introduces critical bug fixes across the backend and frontend, impro
 - [Stability] Enforced a single-instance lock using `QLockFile` to prevent running multiple instances of the app simultaneously.
 - [Logging] Replaced the basic infinite file logging with `RotatingFileHandler` (max 5MB, 3 backups) to prevent disk bloat, and removed redundant logging configurations from `base.py`.
 - [Logging] Added a global exception handler (`sys.excepthook`) to safely catch and log unexpected fatal UI crashes.
+-----
+
+feat(auth, ui, inventory, backup, logs): implement granular permissions, automated backups, and full logging system
+
+* Added fine-grained permissions system:
+
+  * Control access per interface (view/page)
+  * Control visibility per tab within each interface
+  * Integrated permissions management into user management interface
+
+* Enhanced inventory module:
+
+  * Added option to toggle visibility of pricing information
+
+* Implemented automated backup system:
+
+  * Configurable backup intervals
+  * Support for multiple backup destinations
+  * Encrypted backups with password protection
+
+* Introduced comprehensive logging system:
+
+  * Logging at class level
+  * Logging at method/function level
+  * Tracks data creation, updates, and modifications within classes

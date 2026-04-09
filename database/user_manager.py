@@ -2,9 +2,13 @@
 
 import mysql.connector
 import logging
+import hashlib
+import json
 from datetime import datetime
 from typing import List, Dict, Optional
+from .system_logger import log_methods 
 
+@log_methods()
 class UserManager:
     """إدارة عمليات جدول المستخدمين (Users) والصلاحيات."""
 
@@ -12,34 +16,54 @@ class UserManager:
         self.db = db_instance
 
     def authenticate(self, username, password) -> Optional[Dict]:
+        """التحقق من بيانات الدخول باستخدام التشفير (SHA-256)."""
         try:
+            # تشفير كلمة المرور المدخلة لمطابقتها مع قاعدة البيانات
+            hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                # استخدام users (صغير) و Is_Active = 1 (رقمي) لضمان المطابقة
-                query = "SELECT * FROM users WHERE Username = %s AND Password = %s AND Is_Active = 1"
-                cursor.execute(query, (username, password))
+                query = "SELECT * FROM Users WHERE Username = %s AND Password = %s AND Is_Active = 1"
+                cursor.execute(query, (username, hashed_password))
                 user = cursor.fetchone()
                 
                 if user:
+                    # تحويل نص JSON للصلاحيات إلى قاموس (Dictionary)
+                    if user.get('Permissions') and isinstance(user['Permissions'], str):
+                        try:
+                            user['Permissions'] = json.loads(user['Permissions'])
+                        except json.JSONDecodeError:
+                            user['Permissions'] = {}
+                    elif not user.get('Permissions'):
+                        user['Permissions'] = {}
+
                     logging.info(f"User '{username}' logged in successfully.")
                     return user
                 else:
-                    # إضافة log تفصيلي للمساعدة في التصحيح
                     logging.warning(f"Login failed: No match for '{username}' with provided password.")
                     return None
         except mysql.connector.Error as e:
             logging.error(f"Database error during authentication: {e}")
             return None
-    def add_user(self, username, password, role='Technician', full_name=None):
-        """إضافة مستخدم جديد للنظام."""
+
+    def add_user(self, username, password, role='Technician', full_name=None, permissions=None):
+        """إضافة مستخدم جديد للنظام مع تشفير كلمة المرور وتخزين الصلاحيات."""
+        if permissions is None:
+            permissions = {}
+            
         try:
+            # تشفير كلمة المرور
+            hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            # تحويل قاموس الصلاحيات إلى نص JSON
+            perms_json = json.dumps(permissions)
+
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor()
                 query = """
-                    INSERT INTO Users (Username, Password, Role, Full_Name) 
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO Users (Username, Password, Role, Full_Name, Permissions) 
+                    VALUES (%s, %s, %s, %s, %s)
                 """
-                cursor.execute(query, (username, password, role, full_name))
+                cursor.execute(query, (username, hashed_password, role, full_name, perms_json))
                 user_id = cursor.lastrowid
                 logging.info(f"User '{username}' created with ID {user_id}.")
                 return user_id
@@ -51,18 +75,27 @@ class UserManager:
             return None
 
     def update_user(self, user_id, **kwargs):
-        """تحديث بيانات المستخدم بشكل ديناميكي (الاسم، الدور، الحالة)."""
+        """تحديث بيانات المستخدم بشكل ديناميكي (الاسم، الدور، الحالة، كلمة المرور، الصلاحيات)."""
         updates = []
         params = []
         
         # الحقول المسموح بتحديثها
-        allowed_fields = ['Username', 'Role', 'Full_Name', 'Is_Active', 'Password']
+        allowed_fields = ['Username', 'Role', 'Full_Name', 'Is_Active', 'Password', 'Permissions']
         for key, value in kwargs.items():
             if key in allowed_fields:
+                # معالجة خاصة لكلمة المرور (تشفير)
+                if key == 'Password':
+                    value = hashlib.sha256(value.encode('utf-8')).hexdigest()
+                # معالجة خاصة للصلاحيات (تحويل إلى JSON)
+                elif key == 'Permissions':
+                    if isinstance(value, dict):
+                        value = json.dumps(value)
+
                 updates.append(f"{key} = %s")
                 params.append(value)
         
-        if not updates: return False
+        if not updates: 
+            return False
         
         params.append(user_id)
         query = f"UPDATE Users SET {', '.join(updates)} WHERE User_ID = %s"
@@ -77,16 +110,28 @@ class UserManager:
             return False
 
     def get_all_users(self, include_inactive=False):
-        """جلب قائمة المستخدمين لإدارة النظام."""
+        """جلب قائمة المستخدمين لإدارة النظام مع جلب الصلاحيات."""
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                query = "SELECT User_ID, Username, Role, Full_Name, Is_Active, Created_At FROM Users"
+                query = "SELECT User_ID, Username, Role, Full_Name, Is_Active, Permissions, Created_At FROM Users"
                 if not include_inactive:
                     query += " WHERE Is_Active = TRUE"
                 query += " ORDER BY Username"
                 cursor.execute(query)
-                return cursor.fetchall()
+                users = cursor.fetchall()
+
+                # تحويل حقل الصلاحيات من JSON String إلى Dictionary لجميع المستخدمين
+                for user in users:
+                    if user.get('Permissions') and isinstance(user['Permissions'], str):
+                        try:
+                            user['Permissions'] = json.loads(user['Permissions'])
+                        except json.JSONDecodeError:
+                            user['Permissions'] = {}
+                    elif not user.get('Permissions'):
+                        user['Permissions'] = {}
+
+                return users
         except mysql.connector.Error as e:
             logging.error(f"Error fetching users: {e}")
             return []

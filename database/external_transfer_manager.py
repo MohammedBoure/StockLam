@@ -8,7 +8,9 @@ from typing import List, Dict, Tuple, Optional
 
 # نحتاج StockMovementLogManager لتسجيل الحركات
 from .stock_movement_log_manager import StockMovementLogManager
+from .system_logger import log_methods 
 
+@log_methods()
 class ExternalTransferManager:
     """
     إدارة عمليات التحويل الخارجي للمنتجات (بيع، تبرع، تبادل).

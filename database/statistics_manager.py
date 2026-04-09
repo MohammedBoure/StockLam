@@ -3,7 +3,9 @@
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
+from .system_logger import log_methods 
 
+@log_methods()
 class StatisticsManager:
     """
     Gestionnaire avancé des statistiques et du tableau de bord.

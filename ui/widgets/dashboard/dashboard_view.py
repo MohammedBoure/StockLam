@@ -95,14 +95,6 @@ class DashboardTab(QWidget):
         self.page_waste = WasteAnalysisTab()
         self.page_alerts = AlertsSection()
 
-        # إضافة التبويبات
-        self.tabs.addTab(self.page_overview, "📌 Vue d'ensemble") # التبويب الجديد
-        self.tabs.addTab(self.page_family_reception, "📅 Entrées par Famille")
-        self.tabs.addTab(self.page_valuation, "💰 Valorisation")
-        self.tabs.addTab(self.page_consumption, "📋 Consommation")
-        self.tabs.addTab(self.page_waste, "🗑️ Pertes")
-        self.tabs.addTab(self.page_alerts, "⚠️ Alertes")
-
         content_layout.addWidget(self.tabs)
         main_layout.addWidget(content_container)
         
@@ -148,6 +140,17 @@ class DashboardTab(QWidget):
             
             alerts = self.data_manager.stats.get_active_alerts()
             self.page_alerts.update_alerts(alerts)
+
+            idx_alerts = self.tabs.indexOf(self.page_alerts)
+
+            if idx_alerts != -1:
+                crit_count = sum(1 for a in alerts if a.get('Criticality') == 'High')
+                if crit_count > 0:
+                    self.tabs.setTabText(idx_alerts, f"⚠️ Alertes ({len(alerts)})")
+                    self.tabs.tabBar().setTabTextColor(idx_alerts, QColor("#c0392b"))
+                else:
+                    self.tabs.setTabText(idx_alerts, "✅ Alertes (0)")
+                    self.tabs.tabBar().setTabTextColor(idx_alerts, QColor("#27ae60"))
             
             # تلوين تبويب التنبيهات (الاندكس 5 لأننا أضفنا 6 تبويبات والترتيب يبدأ من 0)
             crit_count = sum(1 for a in alerts if a.get('Criticality') == 'High')

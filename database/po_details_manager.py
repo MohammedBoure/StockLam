@@ -4,7 +4,9 @@ import mysql.connector
 import logging
 from typing import List, Dict, Optional
 from decimal import Decimal
+from .system_logger import log_methods 
 
+@log_methods()
 class PODetailsManager:
     """
     Gestion des détails des commandes d'achat (PO_Details).

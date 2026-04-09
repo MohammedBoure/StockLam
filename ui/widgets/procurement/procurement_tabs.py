@@ -48,22 +48,19 @@ class ProcurementTab(QWidget):
             QTabBar::tab:selected { color: #1abc9c; border-bottom: 2px solid #1abc9c; background: #fff; }
         """)
         
+        # تهيئة الواجهات فقط دون إضافتها
         self.po_tab = PurchaseOrdersTab(self.data_manager)
         self.rec_tab = ReceptionTab(self.data_manager) 
         self.history_tab = ReceptionHistoryTab(self.data_manager)
         self.credit_tab = CreditNoteTab(self.data_manager)
         self.reclamation_tab = ReclamationTab(self.data_manager)
         
-        self.tabs.addTab(self.po_tab, "📦 Bons de Commandes")
-        self.tabs.addTab(self.history_tab, "📜 Bons de Réceptions")
-        self.tabs.addTab(self.credit_tab, "↩️ Avoirs / Retours")
-        self.tabs.addTab(self.reclamation_tab, "⚠️ Réclamations")
+        # ❌ تم حذف أسطر self.tabs.addTab من هنا
         
         self.po_tab.data_changed.connect(self.rec_tab.load_pending_pos)
         self.tabs.currentChanged.connect(self.on_tab_change)
         
         self.history_tab.request_create_avoir.connect(self.open_credit_note_tab)
-
         self.po_tab.po_view.view_receptions_requested.connect(self.on_view_receptions_requested)
         
         layout.addWidget(self.tabs)
@@ -73,30 +70,35 @@ class ProcurementTab(QWidget):
         self.on_tab_change(self.tabs.currentIndex())
 
     def on_tab_change(self, index):
-        if index == 0:
+        # البحث عن الواجهة النشطة حالياً بدلاً من الاعتماد على الرقم الثابت
+        current_widget = self.tabs.currentWidget()
+        
+        if current_widget == self.po_tab:
             self.po_tab.refresh_orders()
-        elif index == 1:
-            self.rec_tab.load_pending_pos()
-        elif index == 2:
+        elif current_widget == self.history_tab:
             self.history_tab.load_data()
-        elif index == 3:
+        elif current_widget == self.credit_tab:
             if hasattr(self.credit_tab, 'refresh_history'):
                 self.credit_tab.refresh_history()
-        elif index == 4:
+        elif current_widget == self.reclamation_tab:
             if hasattr(self.reclamation_tab, 'load_data'):
                 self.reclamation_tab.load_data()
+        # ملاحظة: إذا تم تفعيل rec_tab يوماً ما، يمكنك إضافة تحديثه هنا
 
     def open_credit_note_tab(self, reception_data):
-        self.tabs.setCurrentWidget(self.credit_tab)
-        if hasattr(self.credit_tab, 'populate_from_reception'):
-            self.credit_tab.populate_from_reception(reception_data)
+        # ✅ تعديل: التحقق من وجود التبويب قبل الانتقال إليه
+        idx = self.tabs.indexOf(self.credit_tab)
+        if idx != -1:
+            self.tabs.setCurrentIndex(idx)
+            if hasattr(self.credit_tab, 'populate_from_reception'):
+                self.credit_tab.populate_from_reception(reception_data)
 
-    # [دالة جديدة] للاستجابة لطلب عرض الأرشيف
     def on_view_receptions_requested(self, po_id):
-        # 1. الانتقال لتبويب الأرشيف (رقم 2)
-        self.tabs.setCurrentWidget(self.history_tab)
-        # 2. استدعاء دالة الفلترة التي أضفناها في الملف الآخر
-        self.history_tab.show_history_for_po(po_id)
+        # ✅ تعديل: التحقق من وجود التبويب قبل الانتقال إليه
+        idx = self.tabs.indexOf(self.history_tab)
+        if idx != -1:
+            self.tabs.setCurrentIndex(idx)
+            self.history_tab.show_history_for_po(po_id)
 
 
 # --- الكلاس PurchaseOrdersTab يبقى كما هو (لا يحتاج تعديل) ---

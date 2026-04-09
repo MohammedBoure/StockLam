@@ -210,10 +210,6 @@ class SupplierFinancialView(QWidget):
         # 3. Journal (الجديدة)
         self.tab_journal = PaymentsJournal(self.manager)
         
-        self.tabs.addTab(self.tab_situation, "📜 Grand Livre (Situation)")
-        self.tabs.addTab(self.tab_journal, "💰 Journal des Paiements")
-        self.tabs.addTab(self.tab_dashboard, "📊 Tableau de Bord")
-        
         layout.addWidget(self.tabs)
 
     def open_quick_payment(self):

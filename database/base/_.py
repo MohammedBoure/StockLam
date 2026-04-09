@@ -159,7 +159,12 @@ class Database:
                     return
         except:
             pass      
-        schema_queries = [            
+        schema_queries = [    
+
+            """CREATE USER 'root'@'%' IDENTIFIED BY 'root';
+            GRANT ALL PRIVILEGES ON Lab_Inventory_Enterprise_DB.* TO 'root'@'%';
+            FLUSH PRIVILEGES;
+            """,   
             # --- 1. Users & Auth ---
             """CREATE TABLE IF NOT EXISTS Users (
                 User_ID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

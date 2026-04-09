@@ -525,8 +525,9 @@ class DispatchTab(QWidget):
         btn_del = QPushButton("✕")
         btn_del.setCursor(Qt.PointingHandCursor)
         btn_del.setStyleSheet("color: #e74c3c; font-weight: bold; border: none; font-size: 18px; background: transparent;")
-        btn_del.clicked.connect(lambda r=row: self.table.removeRow(r))
+        btn_del.clicked.connect(self.remove_clicked_row) # Updated connection
         self.table.setCellWidget(row, 5, btn_del)
+        
 
         def update_row_context(index):
             selected_batch = cb_source.itemData(index)
@@ -547,6 +548,22 @@ class DispatchTab(QWidget):
 
         self.table.scrollToBottom()
         self.table.selectRow(row)
+
+    def remove_clicked_row(self):
+        # 1. Identify the button that triggered the event
+        button = self.sender()
+        if not button:
+            return
+
+        # 2. Get the button's coordinates relative to the table viewport
+        pos = button.mapTo(self.table.viewport(), button.rect().center())
+
+        # 3. Find the cell index at those coordinates
+        index = self.table.indexAt(pos)
+
+        # 4. Remove the exact row
+        if index.isValid():
+            self.table.removeRow(index.row())
 
     # ==========================================================================
     # LOGIQUE FEFO (First Expired First Out)

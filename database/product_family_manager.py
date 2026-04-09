@@ -3,7 +3,9 @@
 import mysql.connector
 import logging
 from datetime import datetime
+from .system_logger import log_methods 
 
+@log_methods()
 class ProductFamilyManager:
     def __init__(self, db_instance):
         self.db = db_instance

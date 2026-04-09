@@ -27,7 +27,9 @@ if not os.path.exists(DEFAULT_FILE_STORAGE_PATH):
     except Exception as e:
         import logging
         logging.error(f"Could not create storage directory: {e}")
+from .system_logger import log_methods 
 
+@log_methods()
 class ProductDocumentManager:
     """إدارة عمليات جدول وثائق المنتجات (Product_Documents) الضرورية للامتثال والجودة."""
 

@@ -5,7 +5,9 @@ import logging
 from datetime import datetime, date
 from typing import List, Dict, Optional, Any
 from decimal import Decimal
+from .system_logger import log_methods 
 
+@log_methods()
 class StockMovementLogManager:
     """
     إدارة عمليات جدول سجل حركات المخزون (Stock_Movement_Log).

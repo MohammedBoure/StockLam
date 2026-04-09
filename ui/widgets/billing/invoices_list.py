@@ -203,9 +203,6 @@ class InvoicesListWidget(QWidget):
             self.table.setRowHidden(r, not match)
 
     # =========================================================================
-    # PDF Export Logic - DEBUG VERSION
-    # =========================================================================
-    # =========================================================================
     # PDF Export Logic - FIXED PATHS & FULL DEBUGGING
     # =========================================================================
     def export_transfer_to_pdf(self, transfer_id):

@@ -45,6 +45,5 @@ class BillingTab(QWidget):
         self.stack.setCurrentWidget(self.editor_view)
 
     def handle_pdf_request(self, transfer_id):
-        # استدعاء دالة تصدير PDF (التي نقلناها لـ billing_tab سابقاً)
         if hasattr(self, 'export_transfer_to_pdf'):
             self.export_transfer_to_pdf(transfer_id)

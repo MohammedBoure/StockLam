@@ -3,7 +3,9 @@
 import mysql.connector
 import logging
 from datetime import datetime
+from .system_logger import log_methods 
 
+@log_methods()
 class AutomateManager:
     """إدارة عمليات جدول أجهزة التحليل (Automates)، مع تتبع الموقع والتفاصيل الفنية."""
 

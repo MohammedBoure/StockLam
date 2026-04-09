@@ -8,7 +8,9 @@ from decimal import Decimal
 
 from .inventory_batch_manager import InventoryBatchManager
 from .stock_movement_log_manager import StockMovementLogManager
+from .system_logger import log_methods 
 
+@log_methods()
 class ReceptionLogManager:
     """
     إدارة عمليات جدول سجلات الاستلام (Reception_Log) وعمليات الاستلام المخزني.

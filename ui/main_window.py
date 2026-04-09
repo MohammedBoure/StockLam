@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtCore import Qt, QSize, QFile, QTextStream, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
 from PySide6.QtGui import QPixmap, QIcon
 import qtawesome as qta
+import json
 
 from .widgets.master_data.suppliers_tab import SuppliersTab
 from .widgets.master_data.products_tab import ProductsTab
@@ -28,6 +29,10 @@ from .widgets.user_management_tab import UserManagementTab
 from .widgets.master_data.external_partners_tab import ExternalPartnersTab
 from .widgets.billing.billing_tab import BillingTab
 from .widgets.history import MovementHistoryTab
+from database.auto_backup_worker import AutoBackupWorker
+from database import active_user_id
+
+
 
 def get_resource_path(relative_path):
     try:
@@ -42,6 +47,13 @@ class MainWindow(QMainWindow):
         self.data_manager = data_manager
         self.current_user = current_user 
         self.connection_error = connection_error
+
+        if self.current_user:
+            # نستخدم get للبحث عن User_ID أو id لتجنب أخطاء المفاتيح
+            u_id = self.current_user.get('User_ID') or self.current_user.get('id')
+            if u_id:
+                active_user_id.set(u_id)
+        # ---------------------
         
         # --- تحسين: تخزين الصفحات التي تم تحميلها فقط ---
         self.loaded_pages = {} 
@@ -81,16 +93,39 @@ class MainWindow(QMainWindow):
         self.apply_permissions()
 
         if connection_error:
-            # إذا كان هناك خطأ، نعرض صفحة الإعدادات (4)
             self.switch_page(4) 
         else:
-            role = self.current_user.get('Role') if self.current_user else 'Technician'
-            if role in ['Admin', 'Manager']:
-                self.switch_page(0) # Dashboard
-                if self.nav_group.button(0): self.nav_group.button(0).setChecked(True)
+            # خريطة الصفحات مرتبطة بصلاحياتها
+            mapping = {
+                0: "nav_dashboard",
+                1: "nav_data",
+                2: "nav_procurement",
+                3: "nav_inventory",
+                8: "nav_finance",
+                6: "nav_services",
+                7: "nav_history",
+                5: "tab_users",
+                4: "nav_settings"
+            }
+
+            first_permitted_page = None
+            
+            # المرور على الصفحات بالترتيب والتحقق من الصلاحية برمجياً
+            for page_id in sorted(mapping.keys()):
+                perm_key = mapping[page_id]
+                if self.has_permission(perm_key):
+                    first_permitted_page = page_id
+                    break
+            
+            # فتح أول صفحة يملك المستخدم صلاحيتها
+            if first_permitted_page is not None:
+                self.switch_page(first_permitted_page)
+                if self.nav_group.button(first_permitted_page):
+                    self.nav_group.button(first_permitted_page).setChecked(True)
             else:
-                self.switch_page(3) # Stock
-                if self.nav_group.button(3): self.nav_group.button(3).setChecked(True)
+                logging.warning("User has no permitted pages to display.")
+        self.auto_backup_thread = AutoBackupWorker(self.data_manager)
+        self.auto_backup_thread.start()
 
                 
 
@@ -243,7 +278,7 @@ class MainWindow(QMainWindow):
             (3, "Stock & Magasin",  "fa5s.boxes"),
             (8, "États Fournisseurs", "fa5s.file-invoice-dollar"), 
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
-            (7, "Traçabilité",      "fa5s.history"), 
+            (7, "Traçabilité",      "fa5s.history"),
             (5, "Utilisateurs",    "fa5s.users"),
             (4, "Paramètres",      "fa5s.sliders-h")
         ]
@@ -338,23 +373,35 @@ class MainWindow(QMainWindow):
         group.addAnimation(self.anim_vis_min)
         group.start()
 
-    def apply_permissions(self):
-        if not self.current_user:
-            return
-        role = self.current_user.get('Role', 'Technician')
-        is_admin = (role == 'Admin')
-        is_manager = (role == 'Manager')
+    def closeEvent(self, event):
+        """Ensure all background threads are stopped before closing the application."""
+        if hasattr(self, 'auto_backup_thread') and self.auto_backup_thread.isRunning():
+            logging.info("Stopping auto-backup thread...")
+            self.auto_backup_thread.stop()
         
-        # التحكم في ظهور الأزرار
-        if self.nav_group.button(0): self.nav_group.button(0).setVisible(is_admin or is_manager)
-        if self.nav_group.button(1): self.nav_group.button(1).setVisible(is_admin or is_manager)
-        if self.nav_group.button(2): self.nav_group.button(2).setVisible(is_admin or is_manager)
-        if self.nav_group.button(3): self.nav_group.button(3).setVisible(True)
-        if self.nav_group.button(6): self.nav_group.button(6).setVisible(True)
-        if self.nav_group.button(8): self.nav_group.button(8).setVisible(is_admin) 
-        if self.nav_group.button(7): self.nav_group.button(7).setVisible(is_admin)
-        if self.nav_group.button(5): self.nav_group.button(5).setVisible(is_admin)
-        if self.nav_group.button(4): self.nav_group.button(4).setVisible(is_admin)
+        # Accept the close event to exit the application
+        event.accept()
+
+    def apply_permissions(self):
+        """التحكم في ظهور أزرار القائمة الجانبية بناءً على الصلاحيات"""
+        if not self.current_user: return
+        
+        # ربط المعرف (ID) الخاص بالزر بمفتاح الصلاحية (Permission Key)
+        mapping = {
+            0: "nav_dashboard",
+            1: "nav_data",
+            2: "nav_procurement",
+            3: "nav_inventory",
+            8: "nav_finance",
+            6: "nav_services",
+            7: "nav_history",  # واجهة السجل المستقلة
+            5: "tab_users",
+            4: "nav_settings"
+        }
+        for btn_id, perm in mapping.items():
+            btn = self.nav_group.button(btn_id)
+            if btn:
+                btn.setVisible(self.has_permission(perm))
 
     def logout(self):
         """تسجيل الخروج مع طلب التأكيد"""
@@ -378,41 +425,142 @@ class MainWindow(QMainWindow):
         for i in range(8):
             self.content_area.addWidget(QWidget())
 
+    def has_permission(self, perm_key):
+        """التحقق مما إذا كان المستخدم يملك الصلاحية المحددة في ملف JSON"""
+        if not self.current_user:
+            return False
+            
+        perms = self.current_user.get('Permissions', {})
+        
+        # تحويل النص إلى كائن برمجي في حال كان String
+        if isinstance(perms, str):
+            try:
+                perms = json.loads(perms)
+            except json.JSONDecodeError:
+                perms = []
+
+        # إذا كانت الصلاحيات محفوظة على شكل مصفوفة (كما في users_view.py)
+        if isinstance(perms, list):
+            return perm_key in perms
+        # إذا كانت محفوظة على شكل قاموس {key: True}
+        elif isinstance(perms, dict):
+            return perms.get(perm_key, False)
+            
+        return False
+
     def _load_page(self, page_id):
+        """تحميل الواجهات وإضافة التبويبات بناءً على الصلاحيات المخصصة"""
         if page_id in self.loaded_pages:
             return self.loaded_pages[page_id]
 
         widget = None
+        
+        # --- 0. Dashboard ---
         if page_id == 0:
             widget = DashboardTab(self.data_manager)
+            if self.has_permission("tab_dash_overview"):
+                widget.tabs.addTab(widget.page_overview, "📌 Vue d'ensemble")
+            if self.has_permission("tab_dash_reception"):
+                widget.tabs.addTab(widget.page_family_reception, "📅 Entrées par Famille")
+            if self.has_permission("tab_dash_consumption"):
+                widget.tabs.addTab(widget.page_consumption, "📋 Consommation")
+            if self.has_permission("tab_dash_valuation"):
+                widget.tabs.addTab(widget.page_valuation, "💰 Valorisation")
+            if self.has_permission("tab_dash_waste"):
+                widget.tabs.addTab(widget.page_waste, "🗑️ Pertes")
+            if self.has_permission("tab_dash_alerts"):
+                widget.tabs.addTab(widget.page_alerts, "⚠️ Alertes")
+
+        # --- 1. Master Data (Données de Base) ---
         elif page_id == 1:
-            widget = self._setup_master_data_tab()
+            from .widgets.master_data.master_data_tabs import MasterDataTabs
+            widget = MasterDataTabs(self.data_manager)
+            
+            if self.has_permission("tab_data_products"):
+                widget.tabs.addTab(widget.tab_products, "Produits")
+            if hasattr(self.data_manager, 'families') and self.has_permission("tab_data_families"): 
+                widget.tabs.addTab(widget.tab_families, "Familles")
+            if hasattr(self.data_manager, 'packaging_units') and self.has_permission("tab_data_units"): 
+                widget.tabs.addTab(widget.tab_units, "Unités (Pkg)")
+            if hasattr(self.data_manager, 'suppliers') and self.has_permission("tab_data_suppliers"): 
+                widget.tabs.addTab(widget.tab_suppliers, "Fournisseurs")
+            if hasattr(self.data_manager, 'manufacturers') and self.has_permission("tab_data_manufacturers"): 
+                widget.tabs.addTab(widget.tab_manufacturers, "Fabricants")
+            if hasattr(self.data_manager, 'partners') and self.has_permission("tab_data_partners"): 
+                widget.tabs.addTab(widget.tab_partners, "Partenaires")
+            if hasattr(self.data_manager, 'automates') and self.has_permission("tab_data_automates"):
+                widget.tabs.addTab(widget.tab_automates, "Automates")
+            if hasattr(self.data_manager, 'locations') and self.has_permission("tab_data_locations"): 
+                widget.tabs.addTab(widget.tab_locations, "Emplacements")
+            if hasattr(self.data_manager, 'waste_reasons') and self.has_permission("tab_data_waste_reasons"): 
+                widget.tabs.addTab(widget.tab_waste, "Motifs Rebut")
+
+        # --- 2. Procurement (Achats) ---
         elif page_id == 2:
             widget = ProcurementTab(self.data_manager)
+            if self.has_permission("tab_proc_po"):
+                widget.tabs.addTab(widget.po_tab, "📦 Bons de Commandes")
+            if self.has_permission("tab_proc_reception"):
+                widget.tabs.addTab(widget.history_tab, "📜 Bons de Réceptions")
+            if self.has_permission("tab_proc_credit"):
+                widget.tabs.addTab(widget.credit_tab, "↩️ Avoirs / Retours")
+            if self.has_permission("tab_proc_reclamation"):
+                widget.tabs.addTab(widget.reclamation_tab, "⚠️ Réclamations")
+                
         elif page_id == 3:
             widget = InventoryTab(self.data_manager)
-            if hasattr(widget, 'current_user'):
-                widget.current_user = self.current_user
-            role = self.current_user.get('Role', 'Technician') if self.current_user else 'Technician'
-            widget.apply_role_permissions(role)
             if hasattr(widget, 'batches_tab'):
                 widget.batches_tab.request_product_history.connect(self.open_product_history)
+            if self.has_permission("tab_inv_list"): 
+                widget.tabs.addTab(widget.batches_tab, "📦 1. Stock Actuel")
+            if self.has_permission("tab_inv_dispatch"): 
+                widget.tabs.addTab(widget.dispatch_tab, "🚚 2. Transfert & Consommation")
+
+        # --- 4. Settings (Paramètres) ---
         elif page_id == 4:
             widget = SettingsTab(self.data_manager)
+            if self.has_permission("tab_config"):
+                widget.tabs.addTab(widget.tab_general, "🏢 Général / Gestion des données")
+            if self.has_permission("tab_set_db"):
+                widget.tabs.addTab(widget.tab_db, "🗄️ Base de données")
+            if self.has_permission("tab_set_printer"):
+                widget.tabs.addTab(widget.tab_printer, "🖨️ Imprimante")
+            if self.has_permission("tab_set_system"):
+                widget.tabs.addTab(widget.tab_system, "⚙️ Système")
+            if self.has_permission("tab_system_logs"):
+                widget.tabs.addTab(widget.tab_system_logs, "📝 Logs Système")
+            if self.has_permission("tab_set_pdf"):
+                widget.tabs.addTab(widget.tab_pdf_config, "🎨 Configuration PDF")
+
+        # --- 5. Users ---
         elif page_id == 5:
             widget = UserManagementTab(self.data_manager)
+
+        # --- 6. Services / Sous-Traitants ---
         elif page_id == 6:
             try:
                 widget = BillingTab(self.data_manager)
             except:
                 widget = QLabel("Module Facturation non chargé")
+
+        # --- 8. Supplier Financials ---
         elif page_id == 8: 
+            from .widgets.supplier.supplier_financial_view import SupplierFinancialView
             widget = SupplierFinancialView(self.data_manager)
+            
+            if self.has_permission("tab_fin_situation"):
+                widget.tabs.addTab(widget.tab_situation, "📜 Grand Livre (Situation)")
+            if self.has_permission("tab_fin_journal"):
+                widget.tabs.addTab(widget.tab_journal, "💰 Journal des Paiements")
+            if self.has_permission("tab_fin_dashboard"):
+                widget.tabs.addTab(widget.tab_dashboard, "📊 Tableau de Bord")
+                widget.tab_dashboard.refresh_stats()
+
         elif page_id == 7:
-            try:
-                widget = MovementHistoryTab(self.data_manager)
-            except:
-                widget = QLabel("Module Historique non chargé")
+            from .widgets.history import MovementHistoryTab
+            widget = MovementHistoryTab(self.data_manager)
+            if hasattr(widget, 'load_data'):
+                widget.load_data()
 
         if widget:
             old_widget = self.content_area.widget(page_id)
@@ -424,34 +572,28 @@ class MainWindow(QMainWindow):
 
     def switch_page(self, page_id):
         if self.connection_error and page_id != 4:
-            QMessageBox.warning(self, "Erreur Connexion", "Veuillez configurer la base de données dans les paramètres.")
-            self.nav_group.button(4).setChecked(True)
+            QMessageBox.warning(self, "Erreur Connexion", "Veuillez configurer la base de données.")
             self.switch_page(4)
+            return
+
+        # خريطة لربط رقم الصفحة بمفتاح الصلاحية المطلوب
+        mapping = {
+            0: "nav_dashboard",
+            1: "nav_data",
+            2: "nav_procurement",
+            3: "nav_inventory",
+            8: "nav_finance",
+            6: "nav_services",
+            7: "nav_history",
+            5: "tab_users",
+            4: "nav_settings"
+        }
+        
+        required_perm = mapping.get(page_id)
+        # التحقق: إذا كانت الصفحة تتطلب صلاحية والمستخدم لا يملكها، امنع الدخول
+        if required_perm and not self.has_permission(required_perm):
+            logging.warning(f"Unauthorized access attempt to page {page_id}")
             return
 
         self._load_page(page_id)
         self.content_area.setCurrentIndex(page_id)
-
-    def _setup_master_data_tab(self):
-        tabs = QTabWidget()
-        tabs.addTab(ProductsTab(self.data_manager), "Produits")
-        mgr = self.data_manager
-        
-        if hasattr(mgr, 'families'): 
-            tabs.addTab(ProductFamiliesTab(mgr), "Familles")
-        if hasattr(mgr, 'packaging_units'): 
-            tabs.addTab(PackagingUnitsTab(mgr), "Unités (Pkg)")
-        if hasattr(mgr, 'suppliers'): 
-            tabs.addTab(SuppliersTab(mgr.suppliers), "Fournisseurs")
-        if hasattr(mgr, 'manufacturers'): 
-            tabs.addTab(ManufacturersTab(mgr.manufacturers), "Fabricants")
-        if hasattr(mgr, 'partners'): 
-            tabs.addTab(ExternalPartnersTab(mgr.partners), "Partenaires Externes")
-        if hasattr(mgr, 'automates') and hasattr(mgr, 'locations'):
-            tabs.addTab(AutomatesTab(mgr.automates, mgr.locations), "Automates")
-        if hasattr(mgr, 'locations'): 
-            tabs.addTab(LocationsTab(mgr.locations), "Emplacements")
-        if hasattr(mgr, 'waste_reasons'): 
-            tabs.addTab(WasteReasonsTab(mgr.waste_reasons), "Motifs Rebut")
-            
-        return tabs
