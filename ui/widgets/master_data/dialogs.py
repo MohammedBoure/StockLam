@@ -389,97 +389,187 @@ class ManufacturerDialog(BaseDialog):
 # 3. Supplier Dialog
 # ---------------------------------------------------------
 class SupplierDialog(BaseDialog):
+    """
+    Dialog pour Ajouter/Modifier un fournisseur.
+    Affiche TOUTES les informations sur une seule page bien organisée, sans onglets.
+    """
     def __init__(self, parent=None, data=None):
-        super().__init__("Données du Fournisseur", parent)
-        self.resize(600, 500)
         self.data = data
+        title = "Modifier le Fournisseur" if self.data else "Nouveau Fournisseur"
+        super().__init__(title, parent)
+        
+        # حجم مناسب لاستيعاب كافة الحقول براحة
+        self.resize(1000, 600) 
         self.init_ui()
+        
+        if self.data:
+            self.populate_form()
 
     def init_ui(self):
-        tabs = QTabWidget(self.form_widget)
-        layout = QVBoxLayout(self.form_widget)
-        layout.addWidget(tabs)
+        main_layout = QVBoxLayout(self.form_widget)
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(15, 15, 15, 15)
 
-        # Onglet Général
-        tab1 = QWidget()
-        form1 = QFormLayout(tab1)
-        self.name_input = QLineEdit()
-        self.contact_input = QLineEdit()
-        self.phone_input = QLineEdit()
-        self.email_input = QLineEdit()
-        self.website_input = QLineEdit()
+        # ---------------------------------------------------------
+        # ZONE 1: Général & Fiscalité (المنطقة العلوية)
+        # ---------------------------------------------------------
+        row1_layout = QHBoxLayout()
+        
+        # --- Groupe: Général ---
+        grp_gen = self._create_group("Informations Générales", "#2c3e50")
+        grid_gen = QGridLayout(grp_gen)
+        
+        self.inp_name = QLineEdit()
+        self.inp_contact = QLineEdit()
+        
+        grid_gen.addWidget(QLabel("Nom Fournisseur * :"), 0, 0)
+        grid_gen.addWidget(self.inp_name, 0, 1)
+        grid_gen.addWidget(QLabel("Responsable :"), 1, 0)
+        grid_gen.addWidget(self.inp_contact, 1, 1)
+        
+        row1_layout.addWidget(grp_gen, stretch=1)
 
-        form1.addRow("Nom du Fournisseur * :", self.name_input)
-        form1.addRow("Personne de Contact :", self.contact_input)
-        form1.addRow("Téléphone :", self.phone_input)
-        form1.addRow("E-mail :", self.email_input)
-        form1.addRow("Site Web :", self.website_input)
-        tabs.addTab(tab1, "Général")
+        # --- Groupe: Fiscalité ---
+        grp_fisc = self._create_group("Fiscalité", "#8e44ad")
+        grid_fisc = QGridLayout(grp_fisc)
+        
+        self.inp_tax_id = QLineEdit()
+        self.inp_rc = QLineEdit()
+        
+        grid_fisc.addWidget(QLabel("NIF (Matricule) :"), 0, 0)
+        grid_fisc.addWidget(self.inp_tax_id, 0, 1)
+        grid_fisc.addWidget(QLabel("Reg. Commerce :"), 1, 0)
+        grid_fisc.addWidget(self.inp_rc, 1, 1)
+        
+        row1_layout.addWidget(grp_fisc, stretch=1)
+        main_layout.addLayout(row1_layout)
 
-        # Onglet Adresse
-        tab2 = QWidget()
-        form2 = QFormLayout(tab2)
-        self.addr1_input = QLineEdit()
-        self.addr2_input = QLineEdit()
-        self.city_input = QLineEdit()
-        self.postal_input = QLineEdit()
+        # ---------------------------------------------------------
+        # ZONE 2: Contact & Adresse (المنطقة الوسطى)
+        # ---------------------------------------------------------
+        row2_layout = QHBoxLayout()
 
-        form2.addRow("Adresse 1 :", self.addr1_input)
-        form2.addRow("Adresse 2 :", self.addr2_input)
-        form2.addRow("Ville :", self.city_input)
-        form2.addRow("Code Postal :", self.postal_input)
-        tabs.addTab(tab2, "Adresse")
+        # --- Groupe: Contact ---
+        grp_contact = self._create_group("Coordonnées", "#2980b9")
+        grid_contact = QGridLayout(grp_contact)
+        
+        self.inp_phone = QLineEdit()
+        self.inp_email = QLineEdit()
+        self.inp_website = QLineEdit()
 
-        # Onglet Financier
-        tab3 = QWidget()
-        form3 = QFormLayout(tab3)
-        self.tax_id_input = QLineEdit()
-        self.reg_no_input = QLineEdit()
-        self.bank_name_input = QLineEdit()
-        self.iban_input = QLineEdit()
+        grid_contact.addWidget(QLabel("Téléphone :"), 0, 0)
+        grid_contact.addWidget(self.inp_phone, 0, 1)
+        grid_contact.addWidget(QLabel("Email :"), 1, 0)
+        grid_contact.addWidget(self.inp_email, 1, 1)
+        grid_contact.addWidget(QLabel("Site Web :"), 2, 0)
+        grid_contact.addWidget(self.inp_website, 2, 1)
 
-        form3.addRow("N° Fiscal (NIF) :", self.tax_id_input)
-        form3.addRow("N° Registre Commerce (RC) :", self.reg_no_input)
-        form3.addRow("Nom de la Banque :", self.bank_name_input)
-        form3.addRow("IBAN :", self.iban_input)
-        tabs.addTab(tab3, "Financier")
+        row2_layout.addWidget(grp_contact, stretch=1)
 
-        if self.data:
-            self.name_input.setText(self.data.get('Supplier_Name', ''))
-            self.contact_input.setText(self.data.get('Contact_Person', ''))
-            self.phone_input.setText(self.data.get('Phone', ''))
-            self.email_input.setText(self.data.get('Email', ''))
-            self.website_input.setText(self.data.get('Website', ''))
-            self.addr1_input.setText(self.data.get('Address_Line1', ''))
-            self.addr2_input.setText(self.data.get('Address_Line2', ''))
-            self.city_input.setText(self.data.get('City', ''))
-            self.postal_input.setText(self.data.get('Postal_Code', ''))
-            self.tax_id_input.setText(self.data.get('Tax_ID_Number', ''))
-            self.reg_no_input.setText(self.data.get('Commercial_Reg_No', ''))
-            self.bank_name_input.setText(self.data.get('Bank_Name', ''))
-            self.iban_input.setText(self.data.get('Bank_Account_IBAN', ''))
+        # --- Groupe: Adresse ---
+        grp_address = self._create_group("Localisation", "#27ae60")
+        grid_addr = QGridLayout(grp_address)
+        
+        self.inp_addr1 = QLineEdit()
+        self.inp_addr2 = QLineEdit()
+        self.inp_city = QLineEdit()
+        self.inp_postal = QLineEdit()
+
+        grid_addr.addWidget(QLabel("Adresse (Ligne 1) :"), 0, 0)
+        grid_addr.addWidget(self.inp_addr1, 0, 1, 1, 3)
+        grid_addr.addWidget(QLabel("Adresse (Ligne 2) :"), 1, 0)
+        grid_addr.addWidget(self.inp_addr2, 1, 1, 1, 3)
+        grid_addr.addWidget(QLabel("Ville :"), 2, 0)
+        grid_addr.addWidget(self.inp_city, 2, 1)
+        grid_addr.addWidget(QLabel("Code Postal :"), 2, 2)
+        grid_addr.addWidget(self.inp_postal, 2, 3)
+
+        row2_layout.addWidget(grp_address, stretch=1)
+        main_layout.addLayout(row2_layout)
+
+        # ---------------------------------------------------------
+        # ZONE 3: Banque (المنطقة السفلية)
+        # ---------------------------------------------------------
+        grp_bank = self._create_group("Informations Bancaires", "#c0392b")
+        hbox_bank = QHBoxLayout(grp_bank)
+        
+        self.inp_bank_name = QLineEdit()
+        self.inp_iban = QLineEdit()
+        
+        hbox_bank.addWidget(QLabel("Nom Banque :"))
+        hbox_bank.addWidget(self.inp_bank_name, 1)
+        hbox_bank.addWidget(QLabel("RIB / IBAN :"))
+        hbox_bank.addWidget(self.inp_iban, 2)
+        
+        main_layout.addWidget(grp_bank)
+        
+        # دفع جميع العناصر للأعلى لتجنب التمدد العشوائي
+        main_layout.addStretch()
+
+    def _create_group(self, title, color):
+        """دالة مساعدة لإنشاء QGroupBox بتنسيق موحد"""
+        gb = QGroupBox(title)
+        gb.setStyleSheet(f"""
+            QGroupBox {{ 
+                font-weight: bold; border: 1px solid #bdc3c7; 
+                border-radius: 6px; margin-top: 10px; padding-top: 12px; 
+            }}
+            QGroupBox::title {{ 
+                subcontrol-origin: margin; left: 10px; padding: 0 5px; color: {color}; 
+            }}
+        """)
+        return gb
+
+    def populate_form(self):
+        """تعبئة الحقول بالبيانات في حالة التعديل"""
+        d = self.data
+        if not d: return
+
+        self.inp_name.setText(d.get('Supplier_Name') or "")
+        self.inp_contact.setText(d.get('Contact_Person') or "")
+        self.inp_phone.setText(d.get('Phone') or "")
+        self.inp_email.setText(d.get('Email') or "")
+        self.inp_website.setText(d.get('Website') or "")
+        
+        self.inp_addr1.setText(d.get('Address_Line1') or "")
+        self.inp_addr2.setText(d.get('Address_Line2') or "")
+        self.inp_city.setText(d.get('City') or "")
+        self.inp_postal.setText(str(d.get('Postal_Code') or ""))
+        
+        self.inp_tax_id.setText(str(d.get('Tax_ID_Number') or ""))
+        self.inp_rc.setText(str(d.get('Commercial_Reg_No') or ""))
+        
+        self.inp_bank_name.setText(d.get('Bank_Name') or "")
+        self.inp_iban.setText(d.get('Bank_Account_IBAN') or "")
 
     def get_data(self):
-        name = self.name_input.text().strip()
+        """تجهيز البيانات للإرسال إلى قاعدة البيانات"""
+        name = self.inp_name.text().strip()
         if not name:
             QMessageBox.warning(self, "Erreur", "Le nom du fournisseur est obligatoire.")
             return None
+
+        # تحويل النصوص الفارغة إلى None
+        def val(txt): return txt.strip() if txt.strip() else None
+
         return {
             "Supplier_Name": name,
-            "Contact_Person": self.contact_input.text().strip() or None,
-            "Phone": self.phone_input.text().strip() or None,
-            "Email": self.email_input.text().strip() or None,
-            "Website": self.website_input.text().strip() or None,
-            "Address_Line1": self.addr1_input.text().strip() or None,
-            "Address_Line2": self.addr2_input.text().strip() or None,
-            "City": self.city_input.text().strip() or None,
-            "Postal_Code": self.postal_input.text().strip() or None,
-            "Tax_ID_Number": self.tax_id_input.text().strip() or None,
-            "Commercial_Reg_No": self.reg_no_input.text().strip() or None,
-            "Bank_Name": self.bank_name_input.text().strip() or None,
-            "Bank_Account_IBAN": self.iban_input.text().strip() or None
+            "Contact_Person": val(self.inp_contact.text()),
+            "Phone": val(self.inp_phone.text()),
+            "Email": val(self.inp_email.text()),
+            "Website": val(self.inp_website.text()),
+            
+            "Address_Line1": val(self.inp_addr1.text()),
+            "Address_Line2": val(self.inp_addr2.text()),
+            "City": val(self.inp_city.text()),
+            "Postal_Code": val(self.inp_postal.text()),
+            
+            "Tax_ID_Number": val(self.inp_tax_id.text()),
+            "Commercial_Reg_No": val(self.inp_rc.text()),
+            
+            "Bank_Name": val(self.inp_bank_name.text()),
+            "Bank_Account_IBAN": val(self.inp_iban.text())
         }
-
 
 # ---------------------------------------------------------
 # 4. Automate Dialog

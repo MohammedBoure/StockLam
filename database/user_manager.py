@@ -2,7 +2,6 @@
 
 import mysql.connector
 import logging
-import hashlib
 import json
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -16,15 +15,13 @@ class UserManager:
         self.db = db_instance
 
     def authenticate(self, username, password) -> Optional[Dict]:
-        """التحقق من بيانات الدخول باستخدام التشفير (SHA-256)."""
+        """التحقق من بيانات الدخول (مقارنة النصوص العادية بدون تشفير)."""
         try:
-            # تشفير كلمة المرور المدخلة لمطابقتها مع قاعدة البيانات
-            hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
-            
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
+                # استخدام password كما هي للمطابقة
                 query = "SELECT * FROM Users WHERE Username = %s AND Password = %s AND Is_Active = 1"
-                cursor.execute(query, (username, hashed_password))
+                cursor.execute(query, (username, password))
                 user = cursor.fetchone()
                 
                 if user:
@@ -47,13 +44,11 @@ class UserManager:
             return None
 
     def add_user(self, username, password, role='Technician', full_name=None, permissions=None):
-        """إضافة مستخدم جديد للنظام مع تشفير كلمة المرور وتخزين الصلاحيات."""
+        """إضافة مستخدم جديد للنظام وتخزين كلمة المرور كنص عادي."""
         if permissions is None:
             permissions = {}
             
         try:
-            # تشفير كلمة المرور
-            hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
             # تحويل قاموس الصلاحيات إلى نص JSON
             perms_json = json.dumps(permissions)
 
@@ -63,7 +58,8 @@ class UserManager:
                     INSERT INTO Users (Username, Password, Role, Full_Name, Permissions) 
                     VALUES (%s, %s, %s, %s, %s)
                 """
-                cursor.execute(query, (username, hashed_password, role, full_name, perms_json))
+                # تمرير password مباشرة
+                cursor.execute(query, (username, password, role, full_name, perms_json))
                 user_id = cursor.lastrowid
                 logging.info(f"User '{username}' created with ID {user_id}.")
                 return user_id
@@ -83,14 +79,12 @@ class UserManager:
         allowed_fields = ['Username', 'Role', 'Full_Name', 'Is_Active', 'Password', 'Permissions']
         for key, value in kwargs.items():
             if key in allowed_fields:
-                # معالجة خاصة لكلمة المرور (تشفير)
-                if key == 'Password':
-                    value = hashlib.sha256(value.encode('utf-8')).hexdigest()
                 # معالجة خاصة للصلاحيات (تحويل إلى JSON)
-                elif key == 'Permissions':
+                if key == 'Permissions':
                     if isinstance(value, dict):
                         value = json.dumps(value)
 
+                # سيتم تمرير كلمة المرور الجديدة (إن وجدت) كما هي بدون تشفير
                 updates.append(f"{key} = %s")
                 params.append(value)
         

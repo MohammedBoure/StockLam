@@ -1,23 +1,8 @@
-feat(auth, ui, inventory, backup, logs): implement granular permissions, automated backups, and full logging system
+refactor: update auth, overhaul supplier UI, and add exit confirmation
 
-* Added fine-grained permissions system:
+- refactor(auth): remove SHA-256 password encryption in `UserManager` (passwords now stored and authenticated in plain text)
+- feat(core): add `QMessageBox` confirmation dialog in `MainWindow.closeEvent` to prevent accidental exits and gracefully stop background threads
+- refactor(ui): redesign `SupplierDialog` from a multi-tab layout (`QTabWidget`) to a unified, single-page structured layout using `QGroupBox` for better UX
+- fix(logs): ensure system audit trails in `SystemLogManager` are strictly sorted by `log_date` descending (newest first)
 
-  * Control access per interface (view/page)
-  * Control visibility per tab within each interface
-  * Integrated permissions management into user management interface
-
-* Enhanced inventory module:
-
-  * Added option to toggle visibility of pricing information
-
-* Implemented automated backup system:
-
-  * Configurable backup intervals
-  * Support for multiple backup destinations
-  * Encrypted backups with password protection
-
-* Introduced comprehensive logging system:
-
-  * Logging at class level
-  * Logging at method/function level
-  * Tracks data creation, updates, and modifications within classes
+Version: 1.9.1

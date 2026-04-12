@@ -374,13 +374,28 @@ class MainWindow(QMainWindow):
         group.start()
 
     def closeEvent(self, event):
-        """Ensure all background threads are stopped before closing the application."""
-        if hasattr(self, 'auto_backup_thread') and self.auto_backup_thread.isRunning():
-            logging.info("Stopping auto-backup thread...")
-            self.auto_backup_thread.stop()
+        """تأكيد الخروج وإيقاف المهام الخلفية قبل إغلاق التطبيق."""
+        # إظهار رسالة تأكيد باللغة الفرنسية (لتطابق باقي النظام)
+        reply = QMessageBox.question(
+            self, 
+            "Confirmation de sortie",  
+            "Voulez-vous vraiment quitter l'application ?",  
+            QMessageBox.Yes | QMessageBox.No,  
+            QMessageBox.No  
+        )
         
-        # Accept the close event to exit the application
-        event.accept()
+        # إذا وافق المستخدم على الخروج
+        if reply == QMessageBox.Yes:
+            # إيقاف خيط النسخ الاحتياطي التلقائي إن وجد
+            if hasattr(self, 'auto_backup_thread') and self.auto_backup_thread.isRunning():
+                logging.info("Stopping auto-backup thread...")
+                self.auto_backup_thread.stop()
+            
+            # قبول حدث الإغلاق (يتم إغلاق البرنامج)
+            event.accept()
+        else:
+            # تجاهل حدث الإغلاق (يبقى البرنامج مفتوحاً)
+            event.ignore()
 
     def apply_permissions(self):
         """التحكم في ظهور أزرار القائمة الجانبية بناءً على الصلاحيات"""

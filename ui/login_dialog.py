@@ -50,7 +50,7 @@ class LoginDialog(QDialog):
         super().__init__(parent)
         self.data_manager = data_manager
         self.user_data = None
-        self.setWindowTitle("MODERNSTOCK-1.5.2")
+        self.setWindowTitle("MODERNSTOCK-1.9.1")
         self.setFixedSize(380, 250)
         self.init_ui()
 

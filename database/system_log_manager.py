@@ -26,17 +26,13 @@ class SystemLogManager:
                  search_text: Optional[str] = None,
                  limit: int = 100, 
                  offset: int = 0) -> List[Dict]:
-        """
-        Fetches logs with advanced filtering and pagination.
-        Automatically joins with the Users table to get the username.
-        Parses the JSON 'details' column back into a Python dictionary.
-        """
+        """Fetches logs sorted by date descending (Newest first)."""
         logs = []
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 
-                # الكود المصحح: إزالة كلمة query = من داخل النص
+                # Corrected query syntax
                 query = """
                     SELECT 
                         sl.id, 
@@ -53,45 +49,36 @@ class SystemLogManager:
                 """
                 params = []
 
-                # Apply Filters dynamically
                 if user_id:
                     query += " AND sl.user_id = %s"
                     params.append(user_id)
-                
                 if module_name:
                     query += " AND sl.module = %s"
                     params.append(module_name)
-                    
                 if action_name:
                     query += " AND sl.action = %s"
                     params.append(action_name)
-                    
                 if action_type:
                     query += " AND sl.action LIKE %s"
                     params.append(f"[{action_type}]%")
-                    
                 if start_date:
                     query += " AND DATE(sl.log_date) >= %s"
                     params.append(start_date)
-                    
                 if end_date:
                     query += " AND DATE(sl.log_date) <= %s"
                     params.append(end_date)
-                
-                # Full-text search inside the JSON details or action names
                 if search_text:
                     query += " AND (sl.action LIKE %s OR sl.details LIKE %s OR sl.module LIKE %s)"
                     search_pattern = f"%{search_text}%"
                     params.extend([search_pattern, search_pattern, search_pattern])
 
-                # Ordering and Pagination
+                # Ensuring DESC order for newest logs
                 query += " ORDER BY sl.log_date DESC LIMIT %s OFFSET %s"
                 params.extend([limit, offset])
 
                 cursor.execute(query, tuple(params))
                 raw_logs = cursor.fetchall()
 
-                # Process results: convert 'details' from JSON string to dict
                 for row in raw_logs:
                     if row['details']:
                         try:
@@ -100,14 +87,12 @@ class SystemLogManager:
                             row['details_dict'] = {"raw": row['details']}
                     else:
                         row['details_dict'] = {}
-                    
                     logs.append(row)
 
         except mysql.connector.Error as e:
             logger.error(f"Error fetching system logs: {e}")
             
         return logs
-
     def get_total_logs_count(self, **filters) -> int:
         """
         Returns the total number of logs matching the filters.
