@@ -1,0 +1,266 @@
+bind_address = 0.0.0.0
+
+
+C:\ProgramData\MySQL\MySQL Server 5.7
+
+
+CREATE USER 'root'@'%' IDENTIFIED BY 'root';
+GRANT ALL PRIVILEGES ON Lab_Inventory_Enterprise_DB.* TO 'root'@'%';
+FLUSH PRIVILEGES;
+
+
+ALTER TABLE Inventory_Batches DROP INDEX uq_Internal_Barcode;
+ 
+ALTER TABLE Reception_Log DROP INDEX uq_invoice_ref;
+ALTER TABLE Reception_Log DROP INDEX uq_bl_ref;
+
+
+ALTER TABLE Reception_Log
+ADD UNIQUE KEY uq_supplier_invoice (Supplier_ID, Supplier_Invoice_Ref);
+
+
+ALTER TABLE Reception_Log
+ADD UNIQUE KEY uq_supplier_bl (Supplier_ID, Supplier_BL_Ref);
+
+
+ALTER TABLE Products_Master DROP INDEX Product_Name;
+ALTER TABLE Products_Master DROP INDEX Barcode;
+
+
+
+ALTER TABLE Inventory_Batches ADD COLUMN Reception_Note TEXT NULL AFTER Status;
+
+
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+TRUNCATE TABLE `Purchase_Orders`;
+TRUNCATE TABLE `PO_Details`;
+TRUNCATE TABLE `Reception_Log`;
+TRUNCATE TABLE `Reception_Details`;
+TRUNCATE TABLE `Inventory_Batches`;
+TRUNCATE TABLE `Active_Containers`;
+TRUNCATE TABLE `Stock_Movement_Log`;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+
+
+
+
+
+add system of users:
+CREATE TABLE IF NOT EXISTS Users (
+    User_ID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Username VARCHAR(50) NOT NULL UNIQUE,
+    Password VARCHAR(255) NOT NULL,
+    Role ENUM('Admin', 'Manager', 'Technician') DEFAULT 'Technician',
+    Full_Name VARCHAR(100),
+    Is_Active BOOLEAN DEFAULT TRUE,
+    Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT IGNORE INTO Users (Username, Password, Role, Full_Name) 
+VALUES ('admin', 'admin123', 'Admin', 'Administrateur Système');
+
+ALTER TABLE Stock_Movement_Log 
+ADD COLUMN User_ID INT UNSIGNED AFTER Transaction_Date,
+ADD CONSTRAINT fk_movement_user FOREIGN KEY (User_ID) REFERENCES Users(User_ID);
+
+ALTER TABLE Purchase_Orders 
+ADD COLUMN Created_By INT UNSIGNED AFTER Notes,
+ADD CONSTRAINT fk_po_user FOREIGN KEY (Created_By) REFERENCES Users(User_ID);
+
+ALTER TABLE Reception_Log 
+ADD COLUMN Received_By INT UNSIGNED AFTER Receiver_User_ID,
+ADD CONSTRAINT fk_reception_user FOREIGN KEY (Received_By) REFERENCES Users(User_ID);
+
+UPDATE Stock_Movement_Log SET User_ID = 1 WHERE User_ID IS NULL;
+UPDATE Purchase_Orders SET Created_By = 1 WHERE Created_By IS NULL;
+UPDATE Reception_Log SET Received_By = 1 WHERE Received_By IS NULL;
+
+
+
+
+
+
+
+
+mysql> SHOW INDEX FROM Inventory_Batches;
++-------------------+------------+----------------------+--------------+------------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| Table             | Non_unique | Key_name             | Seq_in_index | Column_name      | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
++-------------------+------------+----------------------+--------------+------------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+| inventory_batches |          0 | PRIMARY              |            1 | Batch_ID         | A         |         233 |     NULL | NULL   |      | BTREE      |         |               |
+| inventory_batches |          0 | idx_barcode_location |            1 | Internal_Barcode | A         |         233 |     NULL | NULL   | YES  | BTREE      |         |               |
+| inventory_batches |          0 | idx_barcode_location |            2 | Location_ID      | A         |         233 |     NULL | NULL   |      | BTREE      |         |               |
+| inventory_batches |          1 | Product_ID           |            1 | Product_ID       | A         |         192 |     NULL | NULL   |      | BTREE      |         |               |
+| inventory_batches |          1 | Location_ID          |            1 | Location_ID      | A         |           3 |     NULL | NULL   |      | BTREE      |         |               |
+| inventory_batches |          1 | PO_ID                |            1 | PO_ID            | A         |           2 |     NULL | NULL   | YES  | BTREE      |         |               |
+| inventory_batches |          1 | BR_ID                |            1 | BR_ID            | A         |           2 |     NULL | NULL   | YES  | BTREE      |         |               |
+| inventory_batches |          1 | idx_batch_expiry     |            1 | Expiry_Date      | A         |         155 |     NULL | NULL   | YES  | BTREE      |         |               |
+| inventory_batches |          1 | idx_batch_lot        |            1 | Lot_Number       | A         |         214 |     NULL | NULL   |      | BTREE      |         |               |
+| inventory_batches |          1 | idx_internal_barcode |            1 | Internal_Barcode | A         |         233 |     NULL | NULL   | YES  | BTREE      |         |               |
++-------------------+------------+----------------------+--------------+------------------+-----------+-------------+----------+--------+------+------------+---------+---------------+
+10 rows in set (0.00 sec)
+
+
+
+
+
+
+
+
+-- جدول الشركاء الخارجيين
+CREATE TABLE IF NOT EXISTS External_Partners (
+    Partner_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Partner_Name VARCHAR(255) NOT NULL UNIQUE,
+    Partner_Type ENUM('Laboratory', 'Doctor', 'Hospital', 'Other') DEFAULT 'Laboratory',
+    Agrement_Number VARCHAR(100) NULL,
+    Contact_Person VARCHAR(150) NULL,
+    Phone VARCHAR(50) NULL,
+    Email VARCHAR(150) NULL,
+    Website VARCHAR(200) NULL,
+    Address_Line1 VARCHAR(255) NULL,
+    Address_Line2 VARCHAR(255) NULL,
+    City VARCHAR(100) NULL,
+    Postal_Code VARCHAR(20) NULL,
+    Tax_ID_Number VARCHAR(100) NULL,
+    Commercial_Reg_No VARCHAR(100) NULL,
+    Bank_Name VARCHAR(150) NULL,
+    Bank_Account_IBAN VARCHAR(150) NULL,
+    Deleted_At DATETIME NULL,
+    INDEX idx_partner_name (Partner_Name)
+);
+
+-- سجل عمليات التحويل الخارجي (الرأس)
+CREATE TABLE IF NOT EXISTS External_Transfer_Log (
+    Transfer_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Transaction_Date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Partner_ID INT UNSIGNED NOT NULL,
+    Transfer_Type ENUM('Free', 'Paid') DEFAULT 'Free',
+    Total_Amount DECIMAL(15, 2) DEFAULT 0.00,
+    Status ENUM('Draft', 'Completed', 'Cancelled') DEFAULT 'Draft',
+    Notes TEXT,
+    Created_By INT UNSIGNED,
+    FOREIGN KEY (Partner_ID) REFERENCES External_Partners(Partner_ID) ON UPDATE CASCADE,
+    FOREIGN KEY (Created_By) REFERENCES Users(User_ID),
+    INDEX idx_transfer_date (Transaction_Date),
+    INDEX idx_transfer_partner (Partner_ID)
+);
+
+-- تفاصيل عمليات التحويل (الأسطر)
+CREATE TABLE IF NOT EXISTS External_Transfer_Details (
+    Detail_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Transfer_ID INT UNSIGNED NOT NULL,
+    Product_ID INT UNSIGNED NOT NULL,
+    Batch_ID BIGINT UNSIGNED NOT NULL,
+    Qty_Transferred DECIMAL(10, 2) NOT NULL,
+    COLUMN Line_Note TEXT NULL;
+    Unit_Price DECIMAL(10, 2) DEFAULT 0.00,
+    Line_Total DECIMAL(15, 2) DEFAULT 0.00,
+    FOREIGN KEY (Transfer_ID) REFERENCES External_Transfer_Log(Transfer_ID) ON DELETE CASCADE,
+    FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE,
+    FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON DELETE RESTRICT
+);
+
+
+
+ALTER TABLE Products_Master 
+ADD COLUMN Is_Billable BOOLEAN DEFAULT FALSE 
+AFTER Storage_Temp_Req;
+
+
+
+
+-- يجب إعادة كتابة ENUM بالكامل مع إضافة النوع الجديد 'External_Transfer'
+ALTER TABLE Stock_Movement_Log 
+MODIFY COLUMN Movement_Type ENUM(
+    'Purchase_Receive', 
+    'Open_Pack', 
+    'Patient_Test', 
+    'QC_Run', 
+    'Calibration', 
+    'Adjustment', 
+    'Waste', 
+    'Transfer', 
+    'External_Transfer' -- تمت الإضافة هنا
+) NOT NULL;
+
+
+-- فهرس للبحث السريع عن الشركاء
+CREATE INDEX idx_partner_name ON External_Partners(Partner_Name);
+
+-- فهارس لسجلات التحويل
+CREATE INDEX idx_transfer_date ON External_Transfer_Log(Transaction_Date);
+CREATE INDEX idx_transfer_partner ON External_Transfer_Log(Partner_ID);
+
+
+
+
+ALTER TABLE External_Transfer_Details ADD COLUMN Line_Note TEXT NULL;
+
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS Supplier_Credit_Notes (
+    Credit_Note_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Credit_Note_Ref VARCHAR(150) NOT NULL,
+    Supplier_ID INT UNSIGNED NOT NULL,
+    BR_ID INT UNSIGNED NULL,
+    Credit_Date DATE NOT NULL,
+    Type ENUM('Return_Goods', 'Price_Correction', 'Billing_Error') DEFAULT 'Return_Goods',
+    Status ENUM('Draft', 'Validated', 'Used') DEFAULT 'Draft',
+    Total_Amount_HT DECIMAL(15, 2) DEFAULT 0.00,
+    Total_TVA DECIMAL(15, 2) DEFAULT 0.00,
+    Total_Amount_TTC DECIMAL(15, 2) DEFAULT 0.00,
+    Notes TEXT NULL,
+    Created_By INT UNSIGNED NULL,
+    Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (Supplier_ID) REFERENCES Suppliers(Supplier_ID) ON UPDATE CASCADE,
+    FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL,
+    FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS Credit_Note_Details (
+    Detail_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    Credit_Note_ID INT UNSIGNED NOT NULL,
+    Product_ID INT UNSIGNED NOT NULL,
+    Batch_ID BIGINT UNSIGNED NULL,
+    Lot_Number VARCHAR(100) NULL,
+    Expiry_Date DATE NULL,
+    Qty_Returned DECIMAL(10, 2) DEFAULT 0.00,
+    Unit_Price DECIMAL(10, 2) NOT NULL,
+    Line_Total DECIMAL(15, 2) NOT NULL,
+    FOREIGN KEY (Credit_Note_ID) REFERENCES Supplier_Credit_Notes(Credit_Note_ID) ON DELETE CASCADE,
+    FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID),
+    FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS Supplier_Payments (
+                Payment_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                Supplier_ID INT UNSIGNED NOT NULL,
+                Payment_Date DATE NOT NULL,
+                Amount DECIMAL(15, 2) NOT NULL,
+                Payment_Method ENUM('Espèce', 'Chèque', 'Virement', 'Versement', 'Autre') DEFAULT 'Espèce',
+                Reference VARCHAR(100) NULL, 
+                Notes TEXT NULL,
+                Created_By INT UNSIGNED NULL,
+                Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (Supplier_ID) REFERENCES Suppliers(Supplier_ID) ON UPDATE CASCADE,
+                FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
+            );
+
+
+ALTER TABLE Stock_Movement_Log 
+MODIFY COLUMN Movement_Type ENUM(
+    'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run', 
+    'Calibration', 'Adjustment', 'Waste', 'Transfer', 
+    'External_Transfer', 'Return_To_Supplier'
+) NOT NULL;
+
+
+
+ALTER TABLE PO_Details ADD COLUMN Ordering_Unit VARCHAR(50) DEFAULT NULL AFTER Qty_Ordered;

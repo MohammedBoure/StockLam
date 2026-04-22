@@ -1,8 +1,11 @@
-refactor: update auth, overhaul supplier UI, and add exit confirmation
+feat(inventory) v1.10.0: implement credit notes and reception tree-view grouping
 
-- refactor(auth): remove SHA-256 password encryption in `UserManager` (passwords now stored and authenticated in plain text)
-- feat(core): add `QMessageBox` confirmation dialog in `MainWindow.closeEvent` to prevent accidental exits and gracefully stop background threads
-- refactor(ui): redesign `SupplierDialog` from a multi-tab layout (`QTabWidget`) to a unified, single-page structured layout using `QGroupBox` for better UX
-- fix(logs): ensure system audit trails in `SystemLogManager` are strictly sorted by `log_date` descending (newest first)
+- Integrated a comprehensive Supplier Credit Note (Avoir) system with dynamic linking to Reception Logs.
+- Implemented a "Validate/Modify" header toggle in CreditNoteForm to enforce manual entry of Credit Note references.
+- Upgraded ReceptionDialog UI from QTableWidget to QTreeWidget to support hierarchical batch grouping.
+- Added automatic grouping logic by barcode, featuring parent summary rows for totals and child rows for specific batch details.
+- Updated CreditNoteManager backend to handle stock returns and restorations using precise Batch_ID tracking.
+- Refactored ReceptionHistoryTab to support right-click context actions for creating Credit Notes directly from history.
+- Fixed QTreeWidget attribute errors by replacing horizontalHeader() with header() calls in UI mixins.
 
-Version: 1.9.1
+Ref: #ProcurementUpdate #InventoryLogic

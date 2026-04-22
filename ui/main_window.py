@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
         self.button_texts = {} 
 
         full_name = self.current_user.get('Full_Name', 'Utilisateur') if self.current_user else 'Invité'
-        self.setWindowTitle(f"MODERNSTOCK | {full_name}")
+        self.setWindowTitle(f"StockLam | {full_name}")
 
         logo_path = get_resource_path(os.path.join("ui", "logo.png"))
         if os.path.exists(logo_path):
@@ -244,7 +244,7 @@ class MainWindow(QMainWindow):
         text_layout = QVBoxLayout(self.text_container)
         text_layout.setContentsMargins(0, 2, 0, 2)
         text_layout.setSpacing(0)
-        lbl_title = QLabel("MODERNSTOCK")
+        lbl_title = QLabel("StockLam")
         lbl_title.setStyleSheet("font-family: 'Segoe UI', sans-serif; font-size: 16px; font-weight: 800; color: #2c3e50;")
         lbl_sub = QLabel("gestion de stock")
         lbl_sub.setStyleSheet("font-size: 10px; font-weight: 600; color: #007572; letter-spacing: 1px;")
@@ -432,7 +432,7 @@ class MainWindow(QMainWindow):
             self.want_logout = True 
             
             from PySide6.QtCore import QSettings
-            settings = QSettings("ModernLam", "StockManager")
+            settings = QSettings("StockLam", "StockManager")
             
             self.close()
 

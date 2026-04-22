@@ -13,7 +13,7 @@ def build_lims_production():
     """
     project_dir = os.path.abspath(os.path.dirname(__file__))
     main_script = "main.py"
-    exe_name = "MODERNSTOCK"
+    exe_name = "StockLam"
 
     # Detect MySQL connector paths (pure Python)
     mysql_path = os.path.dirname(mysql.connector.__file__)
@@ -37,7 +37,6 @@ def build_lims_production():
 
         # UI assets
         "--add-data=ui/logo.png;ui",
-        "--add-data=ui/logo2.png;ui",
         "--add-data=ui/styles.qss;ui",
 
         # MySQL pure-python resources

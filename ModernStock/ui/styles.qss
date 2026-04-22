@@ -1,0 +1,640 @@
+/* ============================================================
+   LIMS MANAGER - ULTIMATE MODERN THEME (SAAS STYLE)
+   ------------------------------------------------------------
+   Theme:           Clean White & Teal
+   Primary Color:   #007572 (Teal)
+   Background:      #f4f7fa (Very Light Blue-Gray)
+   Text Main:       #2c3e50 (Dark Blue-Gray)
+   Text Muted:      #7f8c8d (Gray)
+   Sidebar:         #ffffff (White)
+   ============================================================ */
+
+/* --- 1. GLOBAL RESET & FONTS --- */
+* {
+    outline: none;
+}
+
+QMainWindow, QDialog {
+    background-color: #f4f7fa;
+}
+
+QWidget {
+    font-family: "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    color: #2c3e50;
+}
+
+/* ============================================================
+   2. SIDEBAR (القائمة الجانبية - تصميم أبيض عصري)
+   ============================================================ */
+/* الحاوية الرئيسية */
+QFrame#sidebar_container {
+    background-color: #ffffff;
+    border: none;
+    border-right: 1px solid #e0e0e0;
+}
+
+/* منطقة الشعار */
+QWidget#sidebar_header {
+    background-color: #ffffff;
+    border-bottom: 2px solid #f0f0f0; /* فاصل خفيف جداً */
+}
+
+/* أزرار التنقل */
+QPushButton.nav_button {
+    background-color: transparent;
+    color: #607d8b; /* لون رمادي مزرق هادئ */
+    border: none;
+    padding: 14px 24px;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 600;
+    margin: 4px 12px;
+    border-radius: 8px; /* حواف ناعمة */
+}
+
+QPushButton.nav_button:hover {
+    background-color: #e0f2f1; /* خلفية خضراء فاتحة جداً عند التمرير */
+    color: #007572;
+}
+
+QPushButton.nav_button:checked {
+    background-color: #007572; /* خلفية خضراء غامقة عند التحديد */
+    color: #ffffff; /* نص أبيض */
+    font-weight: 700;
+    /* ظل خفيف للزر النشط لإبرازه */
+    qproperty-iconSize: 20px 20px; 
+}
+
+/* ============================================================
+   3. TABLES (الجداول - النسخة المصححة والمحسنة)
+   ============================================================ */
+QTableWidget {
+    background-color: #ffffff;
+    border: 1px solid #cfd8dc; /* حدود رمادية واضحة */
+    border-radius: 8px;
+    gridline-color: #f1f5f9;   /* خطوط شبكية خفيفة جداً */
+    selection-background-color: #e0f2f1; /* لون التحديد */
+    selection-color: #007572; /* لون النص المحدد */
+    alternate-background-color: #fafbfc; /* تلوين الأسطر الزوجية */
+}
+
+/* --- الرؤوس الأفقية (الأعمدة) --- */
+QHeaderView::section:horizontal {
+    background-color: #ffffff;
+    padding: 10px 8px;
+    border: none;
+    border-bottom: 2px solid #007572; /* الخط الأخضر المميز */
+    border-right: 1px solid #f0f0f0;  /* فاصل عمودي خفيف */
+    color: #007572;
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+/* --- الرؤوس العمودية (أرقام الأسطر) - الحل الجذري --- */
+QHeaderView::section:vertical {
+    background-color: #f8f9fa; /* خلفية رمادية فاتحة */
+    color: #607d8b;            /* لون الرقم رمادي غامق */
+    border: none;
+    border-right: 1px solid #cfd8dc; /* خط فاصل عن البيانات */
+    border-bottom: 1px solid #f0f0f0;
+    
+    padding-left: 0px;   /* إزالة الحشو الداخلي */
+    padding-right: 0px;
+    
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 35px;     /* هام: عرض أدنى كافٍ لظهور الرقمين */
+    max-width: 45px;
+    text-align: center;  /* توسيط الرقم */
+}
+
+/* --- محتوى الخلايا --- */
+QTableWidget::item {
+    padding: 8px; 
+    border-bottom: 1px solid #f5f5f5;
+    color: #2c3e50;
+}
+
+QTableWidget::item:selected {
+    background-color: #e0f2f1;
+    color: #007572;
+}
+
+/* ============================================================
+   4. BUTTONS (الأزرار)
+   ============================================================ */
+QPushButton {
+    background-color: #ffffff;
+    color: #007572;
+    border: 1px solid #007572;
+    padding: 9px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+QPushButton:hover {
+    background-color: #007572;
+    color: #ffffff;
+}
+
+QPushButton:pressed {
+    background-color: #005f5c;
+    color: #ffffff;
+    border-color: #005f5c;
+}
+
+/* أزرار الإجراءات الخاصة */
+QPushButton[text^="Actualiser"], QPushButton[text^="Modifier"], QPushButton[text^="Imprimer"], QPushButton[text^="Exporter"] {
+    background-color: #ffffff;
+    color: #007572;
+    border: 1px solid #b2dfdb; /* حدود أخف قليلاً */
+}
+
+QPushButton[text^="Actualiser"]:hover, QPushButton[text^="Modifier"]:hover {
+    border-color: #007572;
+    background-color: #e0f2f1;
+    color: #007572;
+}
+
+/* أزرار الحذف والخطر */
+QPushButton[text^="Supprimer"], QPushButton[text^="Annuler"], QPushButton[text^="Mettre au Rebut"] {
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+    background-color: #ffffff;
+}
+
+QPushButton[text^="Supprimer"]:hover, QPushButton[text^="Annuler"]:hover, QPushButton[text^="Mettre au Rebut"]:hover {
+    background-color: #e74c3c;
+    color: #ffffff;
+}
+
+/* ============================================================
+   5. INPUTS (حقول الإدخال)
+   ============================================================ */
+QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox, QTextEdit {
+    background-color: #ffffff;
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: #2c3e50;
+    selection-background-color: #007572;
+}
+
+/* تأثير التركيز (Focus Glow) */
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QSpinBox:focus, QTextEdit:focus {
+    border: 2px solid #007572;
+    background-color: #ffffff;
+}
+
+/* الحقول المعطلة */
+QLineEdit:read-only, QLineEdit:disabled, QComboBox:disabled {
+    background-color: #f1f3f5;
+    color: #90a4ae;
+    border: 1px solid #e0e0e0;
+}
+
+/* ============================================================
+   6. TABS & CONTAINERS (التبويبات والحاويات)
+   ============================================================ */
+QTabWidget::pane {
+    border: 1px solid #cfd8dc;
+    background: #ffffff;
+    border-radius: 6px;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background: #eceff1;
+    color: #607d8b;
+    border: 1px solid transparent;
+    padding: 10px 22px;
+    margin-right: 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    font-weight: 600;
+}
+
+QTabBar::tab:selected {
+    background: #ffffff;
+    color: #007572;
+    border-top: 3px solid #007572; /* الشريط العلوي المميز */
+    border-bottom: 1px solid #ffffff; /* دمج مع المحتوى */
+}
+
+QTabBar::tab:hover:!selected {
+    background: #cfd8dc;
+}
+
+/* المجموعات (GroupBox) */
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #cfd8dc;
+    border-radius: 8px;
+    margin-top: 28px;
+    padding-top: 20px;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 15px;
+    padding: 0 5px;
+    color: #007572;
+}
+
+/* ============================================================
+   7. SCROLLBARS (أشرطة التمرير)
+   ============================================================ */
+QScrollBar:vertical {
+    border: none;
+    background: #f4f7fa;
+    width: 9px;
+    border-radius: 4px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #b0bec5;
+    min-height: 25px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #007572;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* ============================================================
+   8. TABLE WIDGET INPUTS (تصميم Excel - تفاعل مباشر)
+   ============================================================ */
+
+/* جعل الحقول تملأ الخلية تماماً وتختفي حدودها */
+QTableWidget QLineEdit, 
+QTableWidget QComboBox, 
+QTableWidget QSpinBox, 
+QTableWidget QDoubleSpinBox, 
+QTableWidget QDateEdit {
+    background-color: transparent; 
+    border: none;                  
+    border-radius: 0px;            
+    padding: 5px 8px;             /* زدنا الـ padding العلوي والسفلي من 0 إلى 5 */
+    margin: 0px;                   
+    color: #2c3e50;
+    font-size: 13px;
+    font-weight: 600;
+    min-height: 32px;             /* إضافة حد أدنى للارتفاع لضمان عدم ضيق الحقل */
+}
+
+/* عند الضغط على الخلية للكتابة */
+QTableWidget QLineEdit:focus, 
+QTableWidget QComboBox:focus, 
+QTableWidget QSpinBox:focus, 
+QTableWidget QDoubleSpinBox:focus, 
+QTableWidget QDateEdit:focus {
+    background-color: #ffffff;     
+    border: 1px solid #007572;    /* تقليل السمك من 2px إلى 1px ليكون أنعم */
+    color: #000000;
+}
+
+QTableWidget QComboBox::drop-down {
+    border: none;
+    background: transparent;
+    width: 20px;
+}
+
+/* إخفاء الأزرار الصغيرة (الأسهم) للأرقام داخل الجدول لتوفير المساحة */
+/* (اختياري: إذا أردت إخفاءها تماماً والاعتماد على الكتابة أو الأسهم في الكيبورد) */
+QTableWidget QAbstractSpinBox::up-button, 
+QTableWidget QAbstractSpinBox::down-button {
+    width: 0px;
+    border: none;
+    background: transparent;
+}
+
+/* ============================================================
+   9. POPUP FIXES (إصلاح ألوان القوائم والتقويم)
+   ============================================================ */
+
+/* --- 1. القائمة المنسدلة (ComboBox Popup) --- */
+QComboBox QAbstractItemView {
+    background-color: #ffffff;        /* خلفية بيضاء */
+    color: #2c3e50;                   /* نص داكن */
+    border: 1px solid #007572;        /* حدود خضراء */
+    selection-background-color: #007572; /* لون التحديد */
+    selection-color: #ffffff;         /* نص التحديد */
+    outline: none;
+}
+
+/* --- 2. تقويم التاريخ (Calendar Widget) --- */
+
+/* الخلفية العامة للتقويم */
+QCalendarWidget QWidget {
+    background-color: #ffffff; 
+    color: #2c3e50;
+}
+
+/* شريط التنقل العلوي (الشهر والسنة) */
+QCalendarWidget QToolButton {
+    color: #2c3e50;
+    background-color: transparent;
+    font-weight: bold;
+    icon-size: 24px;
+    border-radius: 4px;
+    margin: 2px;
+}
+
+QCalendarWidget QToolButton:hover {
+    background-color: #e0f2f1; /* خلفية خفيفة عند التمرير */
+}
+
+/* جدول الأيام */
+QCalendarWidget QAbstractItemView:enabled {
+    background-color: #ffffff;  /* خلفية الأيام بيضاء */
+    color: #2c3e50;             /* أرقام الأيام داكنة */
+    selection-background-color: #007572; /* اليوم المختار */
+    selection-color: #ffffff;
+    border: none;
+}
+
+/* أيام غير مفعلة (من شهر آخر) */
+QCalendarWidget QAbstractItemView:disabled {
+    color: #bdc3c7;
+}
+
+/* رأس الجدول (أسماء الأيام: أحد، اثنين...) */
+QCalendarWidget QTableView {
+    alternate-background-color: #ffffff;
+}
+
+/* تنسيق أزرار القائمة الجانبية */
+.nav_button {
+    text-align: left;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    background-color: transparent;
+    color: #2c3e50; /* لون النص */
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* عند اختيار الزر */
+.nav_button:checked {
+    background-color: #007572; /* لون MODERNLAM الأخضر */
+    color: white;
+}
+
+/* لجعل الأيقونة تتحول للأبيض عند الضغط (إذا كانت SVG تدعم ذلك) */
+.nav_button:checked {
+    border-left: 5px solid #004d4a;
+}
+
+
+/* --- تخصيص زر القائمة المنسدلة --- */
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 30px;
+    border-left: 1px solid #cfd8dc; /* فاصل خفيف */
+    border-top-right-radius: 6px;   /* تطابق مع انحناء الحقل */
+    border-bottom-right-radius: 6px;
+    background-color: #f8f9fa;      /* خلفية رمادية فاتحة جداً للزر */
+}
+
+/* --- تصميم السهم نفسه --- */
+QComboBox::down-arrow {
+    image: none; /* إلغاء الصورة الافتراضية */
+    border-left: 2px solid #007572; /* رسم سهم باستخدام الحدود */
+    border-bottom: 2px solid #007572;
+    width: 6px;
+    height: 6px;
+    margin-top: -2px; /* ضبط الموضع عمودياً */
+    transform: rotate(-45deg); /* تدوير المربع ليشكل زاوية السهم (V) */
+    left: 1px;
+}
+
+QComboBox::drop-down:hover {
+    background-color: #e0f2f1; /* تغيير اللون عند تمرير الماوس */
+}
+
+
+/* --- تصميم أزرار الزيادة والنقصان --- */
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {
+    background-color: #f8f9fa;
+    width: 24px;
+    border-left: 1px solid #cfd8dc;
+}
+
+QAbstractSpinBox::up-button {
+    border-top-right-radius: 6px;
+}
+
+QAbstractSpinBox::down-button {
+    border-bottom-right-radius: 6px;
+    border-top: 1px solid #f0f0f0; /* فاصل بين الزرين */
+}
+
+/* --- تصميم الأسهم الداخلية --- */
+QAbstractSpinBox::up-arrow {
+    image: none;
+    border-left: 2px solid #007572;
+    border-top: 2px solid #007572;
+    width: 5px;
+    height: 5px;
+    transform: rotate(45deg);
+    margin-top: 2px;
+}
+
+QAbstractSpinBox::down-arrow {
+    image: none;
+    border-left: 2px solid #007572;
+    border-bottom: 2px solid #007572;
+    width: 5px;
+    height: 5px;
+    transform: rotate(-45deg);
+    margin-bottom: 2px;
+}
+
+/* تأثير التمرير للأزرار */
+QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {
+    background-color: #e0f2f1;
+}
+
+/* حالة الضغط */
+QAbstractSpinBox::up-button:pressed, QAbstractSpinBox::down-button:pressed {
+    background-color: #b2dfdb;
+}
+
+/* --- حقل التاريخ (QDateEdit) بنمط Minimalist --- */
+
+/* في حال كان الحقل يستخدم أسهم الزيادة والنقصان (مثل SpinBox) */
+QDateEdit::up-button, QDateEdit::down-button {
+    background-color: transparent;
+    width: 18px;
+    border: none;
+    margin-right: 4px;
+}
+
+QDateEdit::up-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 4px solid #007572; /* مثلث صغير للأعلى */
+}
+
+QDateEdit::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #007572; /* مثلث صغير للأسفل */
+}
+
+/* في حال تفعيل خاصية التقويم المنبثق (Calendar Popup) */
+QDateEdit::drop-down {
+    border: none;
+    background: transparent;
+    width: 25px;
+}
+
+/* سهم منسدل بسيط جداً للتقويم */
+QDateEdit::down-arrow:on { /* عند فتح القائمة */
+    top: 1px;
+}
+
+/* تحسين شكل الحقل عند التفاعل */
+QDateEdit:hover {
+    border: 1px solid #007572;
+    background-color: #ffffff;
+}
+/* توحيد المسافات الداخلية لضمان استواء النص داخل الحقول */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+    padding: 10px 12px;
+    margin: 0px;
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+}
+
+/* التأكد من أن التسميات (Labels) في الفورم متمركزة */
+QFormLayout QLabel {
+    margin-bottom: 2px; /* تعديل طفيف جداً لرفع التسمية إذا بدت منخفضة */
+    font-weight: 600;
+}
+
+/* ============================================================
+   2. SIDEBAR (تصميم "Text Only" - بدون أشرطة)
+   ============================================================ */
+
+QFrame#sidebar_container {
+    background-color: #ffffff;
+    border-right: 1px solid #ebf0f5;
+}
+
+/* --- الهيدر (تحسين تموضع اللوغو) --- */
+/* في الوضع الصغير، نضمن توسط العناصر */
+QFrame[state="compact"] QWidget#header_container {
+    /* لا شيء خاص هنا لأننا قمنا بضبط الهوامش في بايثون */
+}
+
+/* --- أزرار التنقل (النمط العام) --- */
+QPushButton[class="nav_button"] {
+    background-color: transparent;
+    color: #607d8b;            /* رمادي هادئ */
+    border: none;              /* لا حدود أبداً */
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;          /* خط عادي */
+    text-align: left;
+    padding: 0px;
+}
+
+/* --- التفاعل عند التمرير (Hover) --- */
+QPushButton[class="nav_button"]:hover {
+    color: #007572;            /* يتغير لون النص للـ Teal */
+    background-color: #f0f7f7; /* خلفية شفافة جداً جداً للمساعدة البصرية */
+}
+
+/* ==========================================================
+   الحالة النشطة (Selected) - التعديل المطلوب
+   ========================================================== */
+QPushButton[class="nav_button"]:checked {
+    /* 1. لا شريط جانبي */
+    border: none;
+    
+    /* 2. لا خلفية (أو شفافة تماماً) */
+    background-color: transparent; 
+    
+    /* 3. النص يصبح أغمق وأغلظ */
+    color: #007572;      /* لون الـ Teal الغامق */
+    font-weight: 800;    /* خط سميك جداً (Extra Bold) */
+}
+
+/* ==========================================================
+   الوضع الكبير (Expanded)
+   ========================================================== */
+QFrame[state="expanded"] QPushButton[class="nav_button"] {
+    padding: 12px 20px;
+    margin: 4px 15px;
+    text-align: left;
+}
+
+/* في الوضع الكبير: فقط النص يتغير */
+QFrame[state="expanded"] QPushButton[class="nav_button"]:checked {
+    padding: 12px 20px; /* الحفاظ على نفس المسافة */
+}
+
+/* ==========================================================
+   الوضع الصغير (Compact)
+   ========================================================== */
+QFrame[state="compact"] QPushButton[class="nav_button"] {
+    padding: 0px;
+    margin: 8px 10px;
+    text-align: center;
+    height: 40px;
+    border-radius: 8px;
+}
+
+/* في الوضع الصغير: الأيقونة تصبح خضراء (بفضل كود بايثون) */
+QFrame[state="compact"] QPushButton[class="nav_button"]:checked {
+    /* لا نحتاج لشيء إضافي هنا، الأيقونة ستتغير واللون سيتغير */
+    background-color: transparent;
+}
+
+
+/* ==========================================================
+   بقية الأزرار
+   ========================================================== */
+QPushButton[class="logout_button"] {
+    color: #e74c3c;
+    border: none;
+    font-weight: 600;
+}
+QFrame[state="expanded"] QPushButton[class="logout_button"] {
+    text-align: left;
+    padding: 12px 20px;
+    margin-top: 20px;
+}
+QFrame[state="compact"] QPushButton[class="logout_button"] {
+    text-align: center;
+    padding: 0px;
+    margin: 10px;
+    height: 40px;
+}
+QPushButton[class="logout_button"]:hover {
+    background-color: #fdf2f2;
+}
+
+QPushButton[class="hide_button"] {
+    background-color: #f8f9fa;
+    border-top: 1px solid #ebf0f5;
+    border-radius: 0px;
+    padding: 12px;
+}

@@ -190,3 +190,16 @@ refactor: update auth, overhaul supplier UI, and add exit confirmation
 - fix(logs): ensure system audit trails in `SystemLogManager` are strictly sorted by `log_date` descending (newest first)
 
 Version: 1.9.1
+-----
+
+feat(inventory) v1.10.0: implement credit notes and reception tree-view grouping
+
+- Integrated a comprehensive Supplier Credit Note (Avoir) system with dynamic linking to Reception Logs.
+- Implemented a "Validate/Modify" header toggle in CreditNoteForm to enforce manual entry of Credit Note references.
+- Upgraded ReceptionDialog UI from QTableWidget to QTreeWidget to support hierarchical batch grouping.
+- Added automatic grouping logic by barcode, featuring parent summary rows for totals and child rows for specific batch details.
+- Updated CreditNoteManager backend to handle stock returns and restorations using precise Batch_ID tracking.
+- Refactored ReceptionHistoryTab to support right-click context actions for creating Credit Notes directly from history.
+- Fixed QTreeWidget attribute errors by replacing horizontalHeader() with header() calls in UI mixins.
+
+Ref: #ProcurementUpdate #InventoryLogic
