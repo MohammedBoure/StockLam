@@ -34,6 +34,10 @@ def _clean_target(project_dir, exe_name):
     if build_path.exists():
         shutil.rmtree(build_path)
 
+    spec_path = project_dir / f"{exe_name}.spec"
+    if spec_path.exists():
+        spec_path.unlink()
+
     dist_target = project_dir / "dist" / exe_name
     if dist_target.exists():
         shutil.rmtree(dist_target)
@@ -73,6 +77,7 @@ def build_lims_production(brand_key=DEFAULT_BRAND_KEY):
         "--onedir",
         f"--name={exe_name}",
         "--clean",
+        f"--paths={project_dir}",
         *data_args,
         "--collect-all=PySide6",
         "--collect-all=mysql.connector",
