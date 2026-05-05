@@ -30,8 +30,8 @@ class InventoryBatchManager:
         """
         conn = None
         try:
-            conn = self.db.get_db_connection()
-            conn.autocommit = False
+            conn = self.db.get_raw_connection()
+            conn.start_transaction()
             cursor = conn.cursor()
 
             final_barcode = internal_barcode
@@ -229,17 +229,30 @@ class InventoryBatchManager:
         try:
             with self.db.get_db_connection() as conn:
                 conn.autocommit = False
-                cursor = conn.cursor()
+                cursor = conn.cursor(dictionary=True)
                 
-                cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current + %s WHERE Batch_ID = %s", 
-                               (quantity_change, batch_id))
-                
-                if cursor.rowcount == 0: return False
-
-                cursor.execute("SELECT Product_ID FROM Inventory_Batches WHERE Batch_ID = %s", (batch_id,))
+                cursor.execute(
+                    "SELECT Product_ID, Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s FOR UPDATE",
+                    (batch_id,)
+                )
                 res = cursor.fetchone()
                 if not res: return False
-                product_id = res[0]
+                product_id = res['Product_ID']
+                new_quantity = Decimal(str(res['Quantity_Current'])) + Decimal(str(quantity_change))
+                if new_quantity < 0:
+                    conn.rollback()
+                    return False
+
+                cursor.execute("""
+                    UPDATE Inventory_Batches
+                    SET Quantity_Current = %s,
+                        Status = CASE
+                            WHEN %s = 0 THEN 'Depleted'
+                            WHEN Status = 'Depleted' THEN 'Available'
+                            ELSE Status
+                        END
+                    WHERE Batch_ID = %s
+                """, (new_quantity, new_quantity, batch_id))
 
                 insert_log_query = """
                     INSERT INTO Stock_Movement_Log 
@@ -367,11 +380,46 @@ class InventoryBatchManager:
             logging.error(f"Error in direct_consume_batch_unit: {e}", exc_info=True)
             return False
 
-            
+    def _transfer_barcode_for_location(self, cursor, source_barcode, source_batch_id, target_location_id):
+        stem = str(source_barcode or f"B{source_batch_id}").strip() or f"B{source_batch_id}"
+        base = f"{stem}-L{target_location_id}"
+        candidate = base[:50]
+        serial = 1
+
+        cursor.execute(
+            """
+            SELECT Internal_Barcode
+            FROM Inventory_Batches
+            WHERE Internal_Barcode = %s AND Location_ID = %s
+            LIMIT 1
+            """,
+            (candidate, target_location_id)
+        )
+        existing_target = cursor.fetchone()
+        if existing_target:
+            if isinstance(existing_target, dict):
+                return existing_target['Internal_Barcode']
+            return existing_target[0]
+
+        while True:
+            cursor.execute(
+                "SELECT Batch_ID FROM Inventory_Batches WHERE Internal_Barcode = %s LIMIT 1",
+                (candidate,)
+            )
+            if not cursor.fetchone():
+                return candidate
+
+            suffix = f"-{serial}"
+            candidate = f"{base[:50 - len(suffix)]}{suffix}"
+            serial += 1
+
     def transfer_batch_location(self, batch_id: int, new_location_id: int, qty: int, user_id: Optional[int] = None) -> bool:
         """
         نقل كمية من موقع لآخر مع إدارة دقيقة للاتصال (Context Manager Safe).
         """
+        if qty <= 0:
+            return False
+
         try:
             # 1. فتح الاتصال باستخدام Context Manager
             with self.db.get_db_connection() as conn:
@@ -394,23 +442,34 @@ class InventoryBatchManager:
                         conn.rollback()
                         return False
 
+                    if int(original['Location_ID']) == int(new_location_id):
+                        conn.rollback()
+                        return True
+
                     barcode = original['Internal_Barcode']
+                    target_barcode = self._transfer_barcode_for_location(
+                        cursor, barcode, batch_id, new_location_id
+                    )
                     unit_label = original.get('Stock_Unit', 'U')
 
                     # 2. خصم الكمية من المصدر
                     cursor.execute("""
                         UPDATE Inventory_Batches 
-                        SET Quantity_Current = Quantity_Current - %s 
+                        SET Quantity_Current = Quantity_Current - %s,
+                            Status = CASE
+                                WHEN Quantity_Current - %s <= 0 THEN 'Depleted'
+                                ELSE Status
+                            END
                         WHERE Batch_ID = %s
-                    """, (qty, batch_id))
+                    """, (qty, qty, batch_id))
 
                     # 3. معالجة الوجهة (دمج أو إنشاء)
                     cursor.execute("""
                         SELECT Batch_ID 
                         FROM Inventory_Batches 
                         WHERE Internal_Barcode = %s AND Location_ID = %s
-                        LIMIT 1
-                    """, (barcode, new_location_id))
+                        LIMIT 1 FOR UPDATE
+                    """, (target_barcode, new_location_id))
                     
                     target_batch = cursor.fetchone()
                     final_target_id = None
@@ -420,7 +479,8 @@ class InventoryBatchManager:
                         final_target_id = target_batch['Batch_ID']
                         cursor.execute("""
                             UPDATE Inventory_Batches 
-                            SET Quantity_Current = Quantity_Current + %s 
+                            SET Quantity_Current = Quantity_Current + %s,
+                                Status = CASE WHEN Status = 'Depleted' THEN 'Available' ELSE Status END
                             WHERE Batch_ID = %s
                         """, (qty, final_target_id))
                     else:
@@ -437,13 +497,24 @@ class InventoryBatchManager:
                         params = (
                             original['Product_ID'], new_location_id, original['Lot_Number'], 
                             original['Expiry_Date'], qty, original['PO_ID'], 
-                            original['BR_ID'], barcode, 
+                            original['BR_ID'], target_barcode,
                             original['Unit_Price_Received'], original['Tax_Rate_Percent'], original['Discount_Percent']
                         )
                         cursor.execute(insert_query, params)
                         final_target_id = cursor.lastrowid
 
                     # 4. تسجيل الحركة (مع تمرير user_id)
+                    self.stock_movement_log.create_movement_log(
+                        product_id=original['Product_ID'],
+                        movement_type='Transfer',
+                        qty_change=Decimal(str(-abs(qty))),
+                        unit_used=unit_label,
+                        batch_id=batch_id,
+                        user_id=user_id,
+                        notes=f"Transfert: Loc {original['Location_ID']} -> {new_location_id}",
+                        external_cursor=cursor
+                    )
+
                     self.stock_movement_log.create_movement_log(
                         product_id=original['Product_ID'],
                         movement_type='Transfer',
@@ -479,16 +550,36 @@ class InventoryBatchManager:
         """
         conn = None
         try:
-            conn = self.db.get_db_connection()
-            conn.autocommit = False
+            conn = self.db.get_raw_connection()
+            conn.start_transaction()
             cursor = conn.cursor()
 
             # 1. توليد الباركود إذا لم يكن موجوداً
+            prefix = f"BR{br_id}-" if br_id else (po_id if po_id else "STK")
             final_barcode = internal_barcode
             if not final_barcode:
-                prefix = f"BR{br_id}-" if br_id else (po_id if po_id else "STK")
                 # دالة التوليد (تأكد من وجودها)
                 final_barcode = self.generate_smart_barcode(prefix, item_index)
+
+            cursor.execute("""
+                SELECT Batch_ID, Location_ID
+                FROM Inventory_Batches
+                WHERE Internal_Barcode = %s
+                LIMIT 1
+            """, (final_barcode,))
+            barcode_owner = cursor.fetchone()
+            if barcode_owner and int(barcode_owner[1]) != int(location_id):
+                next_serial = item_index + 1
+                while True:
+                    candidate = self.generate_smart_barcode(prefix, next_serial)
+                    cursor.execute(
+                        "SELECT Batch_ID FROM Inventory_Batches WHERE Internal_Barcode = %s LIMIT 1",
+                        (candidate,)
+                    )
+                    if not cursor.fetchone():
+                        final_barcode = candidate
+                        break
+                    next_serial += 1
 
             # 2. التحقق مما إذا كان الباركود موجوداً في نفس الموقع (لتجنب الخطأ)
             cursor.execute("""
