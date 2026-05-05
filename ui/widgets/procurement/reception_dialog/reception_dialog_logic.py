@@ -595,15 +595,20 @@ class ReceptionDialogLogicMixin:
         return False
 
     def generate_internal_barcode(self):
-        po_id     = self.po_data.get('PO_ID', '0')
         batch_mgr = self.manager.batches if hasattr(self.manager, 'batches') else None
         if not batch_mgr:
             from database.inventory_batch_manager import InventoryBatchManager
             batch_mgr = InventoryBatchManager(self.manager.db)
 
-        next_barcode = batch_mgr.get_next_smart_barcode(po_id)
-        base_prefix  = str(po_id)
-        serial       = int(next_barcode[len(base_prefix):])
+        if self.br_id and hasattr(batch_mgr, 'get_next_reception_barcode'):
+            next_barcode = batch_mgr.get_next_reception_barcode(self.br_id)
+            base_prefix  = f"BR{self.br_id}-"
+        else:
+            po_id        = self.po_data.get('PO_ID', '0')
+            next_barcode = batch_mgr.get_next_smart_barcode(po_id)
+            base_prefix  = str(po_id)
+
+        serial = int(next_barcode[len(base_prefix):])
 
         while self.is_barcode_exists_in_table(next_barcode):
             serial      += 1

@@ -36,7 +36,7 @@ class InventoryBatchManager:
 
             final_barcode = internal_barcode
             if not final_barcode:
-                prefix = po_id if po_id else (br_id if br_id else "STK")
+                prefix = f"BR{br_id}-" if br_id else (po_id if po_id else "STK")
                 final_barcode = self.generate_smart_barcode(prefix, item_index)
 
             # التحقق من وجود نفس الباركود في نفس الموقع لدمج الكمية
@@ -109,6 +109,52 @@ class InventoryBatchManager:
         except Exception as e:
             logging.error(f"Error getting next barcode: {e}")
             return f"{po_id}001"
+
+    def get_next_reception_barcode(self, br_id):
+        """
+        Generate a barcode in the scope of one reception voucher.
+
+        A PO can have multiple BRs. Keeping the serial scoped to BR_ID prevents
+        two reception vouchers for the same PO from competing for the same
+        barcode sequence.
+        """
+        prefix = f"BR{br_id}-"
+
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT Internal_Barcode
+                    FROM Inventory_Batches
+                    WHERE BR_ID = %s AND Internal_Barcode LIKE %s
+                    """,
+                    (br_id, f"{prefix}%")
+                )
+
+                max_serial = 0
+                for row in cursor.fetchall():
+                    barcode = row[0]
+                    if not barcode:
+                        continue
+                    try:
+                        serial = int(str(barcode)[len(prefix):])
+                        max_serial = max(max_serial, serial)
+                    except (TypeError, ValueError):
+                        continue
+
+                next_serial = max_serial + 1
+                next_barcode = self.generate_smart_barcode(prefix, next_serial)
+
+                while self.is_barcode_exists_in_db(next_barcode):
+                    next_serial += 1
+                    next_barcode = self.generate_smart_barcode(prefix, next_serial)
+
+                return next_barcode
+
+        except Exception as e:
+            logging.error(f"Error getting next reception barcode: {e}")
+            return self.generate_smart_barcode(prefix, 1)
 
 
     def is_barcode_exists_in_db(self, barcode):
@@ -440,7 +486,7 @@ class InventoryBatchManager:
             # 1. توليد الباركود إذا لم يكن موجوداً
             final_barcode = internal_barcode
             if not final_barcode:
-                prefix = po_id if po_id else (br_id if br_id else "STK")
+                prefix = f"BR{br_id}-" if br_id else (po_id if po_id else "STK")
                 # دالة التوليد (تأكد من وجودها)
                 final_barcode = self.generate_smart_barcode(prefix, item_index)
 

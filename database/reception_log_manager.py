@@ -467,8 +467,7 @@ class ReceptionLogManager:
                 
                 # إذا لم ترسل الواجهة باركود، نقوم بتوليده هنا كخطة بديلة
                 if not smart_barcode:
-                    prefix = po_id if po_id else br_id
-                    smart_barcode = InventoryBatchManager.generate_smart_barcode(prefix, i + 1)
+                    smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{br_id}-", i + 1)
 
                 batch_query = """
                     INSERT INTO Inventory_Batches 
@@ -629,7 +628,7 @@ class ReceptionLogManager:
 
             for i, b in enumerate(data.get('Batches', [])):
                 # توليد الباركود الذكي لكل منتج في الوصل
-                smart_barcode = InventoryBatchManager.generate_smart_barcode(br_id, i + 1)
+                smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{br_id}-", i + 1)
 
                 batch_query = """
                     INSERT INTO Inventory_Batches 
@@ -697,7 +696,7 @@ class ReceptionLogManager:
                 # توليد باركود ذكي
                 smart_barcode = item.get('Internal_Barcode')
                 if not smart_barcode or smart_barcode == '---':
-                    smart_barcode = InventoryBatchManager.generate_smart_barcode(po_id, i + 1)
+                    smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{receipt_id}-", i + 1)
 
                 query_batch = """
                     INSERT INTO Inventory_Batches 
@@ -909,7 +908,7 @@ class ReceptionLogManager:
                     # === إضافة سطر جديد ===
                     smart_barcode = item.get('Internal_Barcode')
                     if not smart_barcode or smart_barcode == '---':
-                         smart_barcode = InventoryBatchManager.generate_smart_barcode(po_id, i + 1)
+                         smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{br_id}-", i + 1)
 
                     batch_query = """
                         INSERT INTO Inventory_Batches 
