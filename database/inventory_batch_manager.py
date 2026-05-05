@@ -2,7 +2,7 @@
 
 import mysql.connector
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
 from decimal import Decimal
 
@@ -227,18 +227,27 @@ class InventoryBatchManager:
     def adjust_batch_quantity(self, batch_id: int, quantity_change: int, movement_type: str, 
                                reason_id: Optional[int] = None, user_id: Optional[int] = None) -> bool:
         try:
+            change = Decimal(str(quantity_change))
             with self.db.get_db_connection() as conn:
                 conn.autocommit = False
                 cursor = conn.cursor(dictionary=True)
                 
                 cursor.execute(
-                    "SELECT Product_ID, Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s FOR UPDATE",
+                    """
+                    SELECT b.Product_ID, b.Quantity_Current, p.Stock_Unit
+                    FROM Inventory_Batches b
+                    LEFT JOIN Products_Master p ON b.Product_ID = p.Product_ID
+                    WHERE b.Batch_ID = %s
+                    FOR UPDATE
+                    """,
                     (batch_id,)
                 )
                 res = cursor.fetchone()
-                if not res: return False
+                if not res:
+                    conn.rollback()
+                    return False
                 product_id = res['Product_ID']
-                new_quantity = Decimal(str(res['Quantity_Current'])) + Decimal(str(quantity_change))
+                new_quantity = Decimal(str(res['Quantity_Current'])) + change
                 if new_quantity < 0:
                     conn.rollback()
                     return False
@@ -254,12 +263,19 @@ class InventoryBatchManager:
                     WHERE Batch_ID = %s
                 """, (new_quantity, new_quantity, batch_id))
 
-                insert_log_query = """
-                    INSERT INTO Stock_Movement_Log 
-                    (Product_ID, Batch_ID, Movement_Type, Reason_ID, Qty_Change, Unit_Used, User_ID, Transaction_Date)
-                    VALUES (%s, %s, %s, %s, %s, 'Unit', %s, NOW())
-                """
-                cursor.execute(insert_log_query, (product_id, batch_id, movement_type, reason_id, quantity_change, user_id))
+                movement_id = self.stock_movement_log.create_movement_log(
+                    product_id=product_id,
+                    movement_type=movement_type,
+                    qty_change=change,
+                    unit_used=res.get('Stock_Unit') or 'Unit',
+                    batch_id=batch_id,
+                    reason_id=reason_id,
+                    user_id=user_id,
+                    external_cursor=cursor
+                )
+                if not movement_id:
+                    conn.rollback()
+                    return False
                 
                 conn.commit()
                 return True
@@ -297,37 +313,109 @@ class InventoryBatchManager:
 
     def open_pack_transaction(self, data: Dict, user_id: Optional[int] = None) -> bool:
         conn = None
+        cursor = None
         try:
+            qty_to_open = Decimal(str(data.get('Qty_To_Open', 0)))
+            if qty_to_open <= 0:
+                return False
+
             conn = self.db.get_raw_connection()
-            conn.start_transaction(); cursor = conn.cursor()
+            conn.start_transaction()
+            cursor = conn.cursor(dictionary=True)
+
+            cursor.execute("""
+                SELECT b.Product_ID, b.Quantity_Current, b.Expiry_Date, b.Location_ID,
+                       p.Open_Vial_Stability_Days, p.Stock_Unit
+                FROM Inventory_Batches b
+                JOIN Products_Master p ON b.Product_ID = p.Product_ID
+                WHERE b.Batch_ID = %s
+                FOR UPDATE
+            """, (data['Batch_ID'],))
+            batch = cursor.fetchone()
+            if not batch or Decimal(str(batch['Quantity_Current'])) < qty_to_open:
+                conn.rollback()
+                return False
+
+            open_expiry = data.get('Calculated_Open_Expiry')
+            if not open_expiry:
+                official_expiry = batch.get('Expiry_Date')
+                if isinstance(official_expiry, datetime):
+                    official_expiry = official_expiry.date()
+                elif isinstance(official_expiry, str):
+                    try:
+                        official_expiry = datetime.strptime(official_expiry[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        official_expiry = None
+
+                stability_days = int(batch.get('Open_Vial_Stability_Days') or 30)
+                calculated_expiry = date.today() + timedelta(days=stability_days)
+                open_expiry = min(official_expiry, calculated_expiry) if official_expiry else calculated_expiry
 
             # خصم من المخزن المغلق
-            cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current - %s WHERE Batch_ID = %s", 
-                           (data['Qty_To_Open'], data['Batch_ID']))
+            cursor.execute("""
+                UPDATE Inventory_Batches
+                SET Quantity_Current = Quantity_Current - %s,
+                    Status = CASE
+                        WHEN Quantity_Current - %s <= 0 THEN 'Depleted'
+                        ELSE Status
+                    END
+                WHERE Batch_ID = %s AND Quantity_Current >= %s
+            """, (qty_to_open, qty_to_open, data['Batch_ID'], qty_to_open))
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return False
 
             # إنشاء الحاوية المفتوحة (المنطق المختصر)
-            # ... (كود Insert Active_Containers) ...
+            cursor.execute("""
+                INSERT INTO Active_Containers
+                (Parent_Batch_ID, Product_ID, Date_Opened, Open_Expiration_Date,
+                 Initial_Usage_Qty, Remaining_Usage_Qty, Current_Location_ID, Status)
+                VALUES (%s, %s, NOW(), %s, %s, %s, %s, 'In_Use')
+            """, (
+                data['Batch_ID'],
+                batch['Product_ID'],
+                open_expiry,
+                qty_to_open,
+                qty_to_open,
+                data.get('Current_Location_ID') or batch.get('Location_ID')
+            ))
             container_id = cursor.lastrowid
 
             # [التصحيح]: تسجيل الحركة مع User_ID
-            log_mov = """
-                INSERT INTO Stock_Movement_Log 
-                (Product_ID, Batch_ID, Container_ID, Movement_Type, Qty_Change, Unit_Used, User_ID, Transaction_Date)
-                VALUES (%s, %s, %s, 'Open_Pack', %s, 'Stock_Unit', %s, NOW())
-            """
-            cursor.execute(log_mov, (data['Product_ID'], data['Batch_ID'], container_id, -int(data['Qty_To_Open']), user_id))
+            movement_id = self.stock_movement_log.create_movement_log(
+                product_id=batch['Product_ID'],
+                movement_type='Open_Pack',
+                qty_change=-abs(qty_to_open),
+                unit_used=batch.get('Stock_Unit') or 'Stock_Unit',
+                batch_id=data['Batch_ID'],
+                container_id=container_id,
+                user_id=user_id,
+                notes="Ouverture de paquet",
+                external_cursor=cursor
+            )
+            if not movement_id:
+                conn.rollback()
+                return False
 
             conn.commit(); return True
         except Exception as e:
             if conn: conn.rollback()
+            logging.error(f"Error in open_pack_transaction: {e}", exc_info=True)
             return False
         finally:
-            if conn: conn.close()
+            if conn and conn.is_connected():
+                if cursor:
+                    cursor.close()
+                conn.close()
 
     def direct_consume_batch_unit(self, batch_id: int, qty: int = 1, user_id: Optional[int] = None) -> bool:
         """
         تم تصحيح الخطأ Ambiguous Product_ID هنا عن طريق تحديد b.Product_ID
         """
+        qty_to_consume = Decimal(str(qty))
+        if qty_to_consume <= 0:
+            return False
+
         try:
             with self.db.get_db_connection() as conn:
                 conn.autocommit = False 
@@ -339,12 +427,14 @@ class InventoryBatchManager:
                     FROM Inventory_Batches b 
                     JOIN Products_Master p ON b.Product_ID = p.Product_ID 
                     WHERE b.Batch_ID = %s
+                    FOR UPDATE
                 """
                 cursor.execute(query, (batch_id,))
                 res = cursor.fetchone()
                 
                 if not res:
                     logging.warning(f"Batch {batch_id} not found.")
+                    conn.rollback()
                     return False
                 
                 product_id, unit_used = res
@@ -352,26 +442,34 @@ class InventoryBatchManager:
                 # تنفيذ عملية الخصم
                 update_query = """
                     UPDATE Inventory_Batches 
-                    SET Quantity_Current = Quantity_Current - %s 
+                    SET Quantity_Current = Quantity_Current - %s,
+                        Status = CASE
+                            WHEN Quantity_Current - %s <= 0 THEN 'Depleted'
+                            ELSE Status
+                        END
                     WHERE Batch_ID = %s AND Quantity_Current >= %s
                 """
-                cursor.execute(update_query, (qty, batch_id, qty))
+                cursor.execute(update_query, (qty_to_consume, qty_to_consume, batch_id, qty_to_consume))
                 
                 if cursor.rowcount == 0:
                     logging.warning(f"Insufficient quantity in batch {batch_id}")
+                    conn.rollback()
                     return False
 
                 # تسجيل الحركة في السجل
-                self.stock_movement_log.create_movement_log(
+                movement_id = self.stock_movement_log.create_movement_log(
                     product_id=product_id,
                     movement_type='Patient_Test',
-                    qty_change=Decimal(str(-abs(qty))),
+                    qty_change=-abs(qty_to_consume),
                     unit_used=unit_used if unit_used else 'Unit',
                     batch_id=batch_id,
                     user_id=user_id,
                     notes="Consommation Directe",
                     external_cursor=cursor
                 )
+                if not movement_id:
+                    conn.rollback()
+                    return False
                 
                 conn.commit()
                 return True
@@ -444,7 +542,7 @@ class InventoryBatchManager:
 
                     if int(original['Location_ID']) == int(new_location_id):
                         conn.rollback()
-                        return True
+                        return False
 
                     barcode = original['Internal_Barcode']
                     target_barcode = self._transfer_barcode_for_location(
@@ -504,7 +602,7 @@ class InventoryBatchManager:
                         final_target_id = cursor.lastrowid
 
                     # 4. تسجيل الحركة (مع تمرير user_id)
-                    self.stock_movement_log.create_movement_log(
+                    source_movement_id = self.stock_movement_log.create_movement_log(
                         product_id=original['Product_ID'],
                         movement_type='Transfer',
                         qty_change=Decimal(str(-abs(qty))),
@@ -515,7 +613,7 @@ class InventoryBatchManager:
                         external_cursor=cursor
                     )
 
-                    self.stock_movement_log.create_movement_log(
+                    target_movement_id = self.stock_movement_log.create_movement_log(
                         product_id=original['Product_ID'],
                         movement_type='Transfer',
                         qty_change=Decimal(str(qty)),
@@ -525,6 +623,9 @@ class InventoryBatchManager:
                         notes=f"Transfert: Loc {original['Location_ID']} -> {new_location_id}",
                         external_cursor=cursor
                     )
+                    if not source_movement_id or not target_movement_id:
+                        conn.rollback()
+                        return False
 
                     conn.commit()
                     return True
