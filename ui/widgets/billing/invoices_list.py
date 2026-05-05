@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate, Signal
 import qtawesome as qta
 import json
+from branding import get_banner_path
 
 # ReportLab Imports
 try:
@@ -246,8 +247,7 @@ class InvoicesListWidget(QWidget):
 
         logo_path = settings.get('banner_path', '')
         if not os.path.exists(logo_path):
-            potential_logo = os.path.join(cwd, "ui", "logo2.png")
-            if os.path.exists(potential_logo): logo_path = potential_logo
+            logo_path = get_banner_path()
 
         # 2. جلب البيانات من قاعدة البيانات
         try:

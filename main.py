@@ -6,6 +6,20 @@ import logging
 from logging.handlers import RotatingFileHandler
 import traceback
 from datetime import datetime
+from branding import (
+    configure_brand_from_argv,
+    get_app_name,
+    get_lock_file_name,
+    get_organization_name,
+    get_settings_app_name,
+)
+
+try:
+    configure_brand_from_argv(sys.argv)
+except ValueError as e:
+    print(e)
+    print("Usage: python main.py [stocklam|modernstock]")
+    sys.exit(2)
 
 import pandas as pd
 
@@ -75,9 +89,11 @@ def main():
         return
 
     app = QApplication(sys.argv)
+    app.setApplicationName(get_app_name())
+    app.setOrganizationName(get_organization_name())
     
     # --- منع تشغيل البرنامج مرتين (Single Instance) ---
-    lock_file_path = os.path.join(QDir.tempPath(), 'modernlam_stockmanager.lock')
+    lock_file_path = os.path.join(QDir.tempPath(), get_lock_file_name())
     lock_file = QLockFile(lock_file_path)
     
     if not lock_file.tryLock(100):
@@ -89,7 +105,7 @@ def main():
         sys.exit(1)
     
     # إعدادات البرنامج
-    settings = QSettings("ModernLam", "StockManager")
+    settings = QSettings(get_organization_name(), get_settings_app_name())
     
     # --- الحماية ضد التلاعب بالتاريخ (Time-Travel Protection) ---
     current_date = datetime.now().date()

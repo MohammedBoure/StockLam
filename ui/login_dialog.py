@@ -1,13 +1,10 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLineEdit, QPushButton, 
-                               QLabel, QMessageBox, QCheckBox)
-from PySide6.QtCore import Qt, QSize
+                               QMessageBox, QCheckBox)
 from PySide6.QtGui import QIcon
 import qtawesome as qta
-import sys
-import os
-
 import json
 import os
+from branding import get_login_window_title, get_logo_path
 
 class SessionManager:
     SESSION_FILE = "user_session.json"
@@ -38,19 +35,12 @@ class SessionManager:
         """حذف بيانات الدخول (عند الخروج أو فشل الدخول)"""
         if os.path.exists(SessionManager.SESSION_FILE):
             os.remove(SessionManager.SESSION_FILE)
-def get_resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
 class LoginDialog(QDialog):
     def __init__(self, data_manager, parent=None):
         super().__init__(parent)
         self.data_manager = data_manager
         self.user_data = None
-        self.setWindowTitle("StockLam-1.10.0")
+        self.setWindowTitle(get_login_window_title())
         self.setFixedSize(380, 250)
         self.init_ui()
 
@@ -59,7 +49,7 @@ class LoginDialog(QDialog):
         layout.setSpacing(15)
         layout.setContentsMargins(40, 40, 40, 40)
 
-        logo_path = get_resource_path(os.path.join("ui", "logo.png"))
+        logo_path = get_logo_path()
         if os.path.exists(logo_path):
             self.setWindowIcon(QIcon(logo_path))
         else:

@@ -1,8 +1,0 @@
-refactor: update auth, overhaul supplier UI, and add exit confirmation
-
-- refactor(auth): remove SHA-256 password encryption in `UserManager` (passwords now stored and authenticated in plain text)
-- feat(core): add `QMessageBox` confirmation dialog in `MainWindow.closeEvent` to prevent accidental exits and gracefully stop background threads
-- refactor(ui): redesign `SupplierDialog` from a multi-tab layout (`QTabWidget`) to a unified, single-page structured layout using `QGroupBox` for better UX
-- fix(logs): ensure system audit trails in `SystemLogManager` are strictly sorted by `log_date` descending (newest first)
-
-Version: 1.9.1

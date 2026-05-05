@@ -1,7 +1,6 @@
 # ui\main_window.py
 
 import os
-import sys
 import logging
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QStackedWidget, QLabel, QPushButton, QFrame, QButtonGroup, 
@@ -31,15 +30,13 @@ from .widgets.billing.billing_tab import BillingTab
 from .widgets.history import MovementHistoryTab
 from database.auto_backup_worker import AutoBackupWorker
 from database import active_user_id
-
-
-
-def get_resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
+from branding import (
+    get_app_name,
+    get_logo_path,
+    get_organization_name,
+    get_resource_path as get_brand_resource_path,
+    get_settings_app_name,
+)
 
 class MainWindow(QMainWindow):
     def __init__(self, data_manager, current_user, connection_error=None): 
@@ -65,9 +62,9 @@ class MainWindow(QMainWindow):
         self.button_texts = {} 
 
         full_name = self.current_user.get('Full_Name', 'Utilisateur') if self.current_user else 'Invité'
-        self.setWindowTitle(f"StockLam | {full_name}")
+        self.setWindowTitle(f"{get_app_name()} | {full_name}")
 
-        logo_path = get_resource_path(os.path.join("ui", "logo.png"))
+        logo_path = get_logo_path()
         if os.path.exists(logo_path):
             self.setWindowIcon(QIcon(logo_path))
         else:
@@ -158,7 +155,7 @@ class MainWindow(QMainWindow):
 
     def load_stylesheet(self):
         try:
-            style_path = get_resource_path("ui/styles.qss")
+            style_path = get_brand_resource_path("ui/styles.qss")
             style_file = QFile(style_path)
             if style_file.open(QFile.ReadOnly | QFile.Text):
                 stream = QTextStream(style_file)
@@ -232,7 +229,7 @@ class MainWindow(QMainWindow):
         self.header_container.setFixedHeight(80) 
 
         self.logo_label = QLabel()
-        logo_path = get_resource_path(os.path.join("ui", "logo.png"))
+        logo_path = get_logo_path()
         if os.path.exists(logo_path):
             self.logo_pixmap = QPixmap(logo_path)
         else:
@@ -244,7 +241,7 @@ class MainWindow(QMainWindow):
         text_layout = QVBoxLayout(self.text_container)
         text_layout.setContentsMargins(0, 2, 0, 2)
         text_layout.setSpacing(0)
-        lbl_title = QLabel("StockLam")
+        lbl_title = QLabel(get_app_name())
         lbl_title.setStyleSheet("font-family: 'Segoe UI', sans-serif; font-size: 16px; font-weight: 800; color: #2c3e50;")
         lbl_sub = QLabel("gestion de stock")
         lbl_sub.setStyleSheet("font-size: 10px; font-weight: 600; color: #007572; letter-spacing: 1px;")
@@ -432,7 +429,7 @@ class MainWindow(QMainWindow):
             self.want_logout = True 
             
             from PySide6.QtCore import QSettings
-            settings = QSettings("StockLam", "StockManager")
+            settings = QSettings(get_organization_name(), get_settings_app_name())
             
             self.close()
 
