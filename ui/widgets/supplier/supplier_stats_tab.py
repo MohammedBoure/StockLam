@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont, QBrush
 import qtawesome as qta
+from database.system_logger import active_user_id
 
 # --- ReportLab PDF ---
 try:
@@ -201,6 +202,19 @@ class SupplierStatsTab(QWidget):
             for s in suppliers:
                 self.combo_supplier.addItem(s['Supplier_Name'], s['Supplier_ID'])
 
+    def get_current_user_id(self):
+        user_id = active_user_id.get()
+        if user_id:
+            return user_id
+
+        parent_widget = self.parent()
+        while parent_widget:
+            current_user = getattr(parent_widget, 'current_user', None)
+            if isinstance(current_user, dict):
+                return current_user.get('User_ID') or current_user.get('id')
+            parent_widget = parent_widget.parent()
+        return None
+
     def load_data(self):
         supplier_id = self.combo_supplier.currentData()
         if not supplier_id: return
@@ -270,7 +284,7 @@ class SupplierStatsTab(QWidget):
         if dlg.exec():
             data = dlg.get_data()
             data['Supplier_ID'] = supplier_id
-            data['Created_By'] = 1 # يمكن ربطه بالمستخدم الحالي لاحقاً
+            data['Created_By'] = self.get_current_user_id()
             
             if hasattr(self.manager.suppliers, 'add_payment'):
                 success, msg = self.manager.suppliers.add_payment(data)
