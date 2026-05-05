@@ -327,6 +327,9 @@ class ConsumptionTab(QWidget):
         errors = []
         skipped_count = 0
         swapped_count = 0
+        main_win = self.window()
+        current_user = getattr(main_win, 'current_user', None)
+        user_id = current_user.get('User_ID') if isinstance(current_user, dict) else None
 
         for r in range(self.table.rowCount()):
             # جلب البيانات
@@ -356,7 +359,9 @@ class ConsumptionTab(QWidget):
                             continue
 
                     # تنفيذ الاستهلاك على target_batch (سواء كان الأصلي أو المستبدل)
-                    res = self.manager.batches.direct_consume_batch_unit(target_batch['Batch_ID'], qty)
+                    res = self.manager.batches.direct_consume_batch_unit(
+                        target_batch['Batch_ID'], qty, user_id=user_id
+                    )
                 
                 else:
                     # التحويل (Transfer)
@@ -364,7 +369,9 @@ class ConsumptionTab(QWidget):
                     if not dest_id:
                         errors.append(f"Destination manquante pour {batch.get('Product_Name')}")
                         continue
-                    res = self.manager.batches.transfer_batch_location(batch['Batch_ID'], dest_id, qty)
+                    res = self.manager.batches.transfer_batch_location(
+                        batch['Batch_ID'], dest_id, qty, user_id=user_id
+                    )
                 
                 if res: success_count += 1
                 else: errors.append(f"Erreur DB pour {batch.get('Product_Name')}")
