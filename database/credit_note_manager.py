@@ -175,6 +175,7 @@ class CreditNoteManager:
                 SELECT Batch_ID, Quantity_Current 
                 FROM Inventory_Batches 
                 WHERE Batch_ID = %s AND Product_ID = %s AND Quantity_Current >= %s
+                FOR UPDATE
             """
             cursor.execute(query_find_batch, (specific_batch_id, product_id, qty))
         else:
@@ -185,6 +186,7 @@ class CreditNoteManager:
                 FROM Inventory_Batches 
                 WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s
                 LIMIT 1
+                FOR UPDATE
             """
             cursor.execute(query_find_batch, (product_id, lot_number, qty))
 
@@ -334,7 +336,7 @@ class CreditNoteManager:
         if diff > 0:
             # زيادة في الإرجاع (خصم إضافي من المخزون)
             # يجب التأكد من توفر الرصيد
-            cursor.execute("SELECT Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s", (batch_id,))
+            cursor.execute("SELECT Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s FOR UPDATE", (batch_id,))
             curr = cursor.fetchone()
             if not curr or curr['Quantity_Current'] < diff:
                 raise ValueError(f"Stock insuffisant pour augmenter le retour de {diff}")
@@ -361,12 +363,14 @@ class CreditNoteManager:
             cursor.execute("""
                 SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
                 WHERE Batch_ID = %s AND Product_ID = %s AND Quantity_Current >= %s 
+                FOR UPDATE
             """, (specific_batch_id, product_id, qty))
         else:
             cursor.execute("""
                 SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
                 WHERE Product_ID = %s AND Lot_Number = %s AND Quantity_Current >= %s 
                 LIMIT 1
+                FOR UPDATE
             """, (product_id, lot_number, qty))
             
         batch = cursor.fetchone()

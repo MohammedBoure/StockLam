@@ -551,60 +551,10 @@ class InventoryBatchManager:
         """
         معالجة عملية استلام كاملة مع تسجيل معرف المستخدم.
         """
-        try:
-            with self.db.get_db_connection() as conn:
-                cursor = conn.cursor()
-
-                # 1. إنشاء رأس الاستلام (Header) مع ربطه بالمستخدم (Received_By)
-                query_header = """
-                    INSERT INTO Reception_Log 
-                    (PO_ID, Supplier_ID, Supplier_Invoice_Ref, Supplier_BL_Ref, Document_Type, 
-                    Reception_Date, Invoice_Total_HT, Invoice_Total_TVA, Invoice_Total_TTC, Total_Discount, Received_By)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """
-                cursor.execute(query_header, (
-                    header_data['PO_ID'], header_data['Supplier_ID'], header_data['Supplier_Invoice_Ref'],
-                    header_data['Supplier_BL_Ref'], header_data['Document_Type'], header_data['Reception_Date'],
-                    header_data['Invoice_Total_HT'], header_data['Invoice_Total_TVA'],
-                    header_data['Invoice_Total_TTC'], header_data['Total_Discount'],
-                    user_id  # تم إضافة تمرير المعرف هنا لقاعدة البيانات
-                ))
-                receipt_id = cursor.lastrowid
-
-                # 2. إنشاء أسطر الدفعات (Batches)
-                for item in items:
-                    query_batch = """
-                        INSERT INTO Inventory_Batches 
-                        (Product_ID, Location_ID, Lot_Number, Expiry_Date, Quantity_Initial, 
-                        Quantity_Current, Unit_Price_Received, Internal_Barcode, Stock_Unit, BR_ID, PO_ID)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """
-                    cursor.execute(query_batch, (
-                        item['Product_ID'], item['Location_ID'], item['Lot_Number'], item['Expiry_Date'],
-                        item['Qty_Received'], item['Qty_Received'], item['Unit_Price_Received'],
-                        item['Internal_Barcode'], item['Unit_Label'], receipt_id, header_data['PO_ID']
-                    ))
-                    batch_id = cursor.lastrowid
-
-                    # 3. تسجيل الحركة في السجل التاريخي مع ربطها بالمستخدم
-                    self.stock_movement_log.create_movement_log(
-                        product_id=item['Product_ID'],
-                        movement_type='Purchase_Receive',
-                        qty_change=Decimal(str(item['Qty_Received'])),
-                        unit_used=item['Unit_Label'],
-                        batch_id=batch_id,
-                        user_id=user_id,  # تمرير المعرف لحل مشكلة "System"
-                        notes=f"Réception PO #{header_data['PO_ID']} - Ref: {header_data['Supplier_Invoice_Ref']}",
-                        external_cursor=cursor
-                    )
-
-                conn.commit()
-                return True, "Réception enregistrée avec succès."
-
-        except Exception as e:
-            if 'conn' in locals(): conn.rollback()
-            logging.error(f"Erreur lors de la réception: {e}")
-            return False, str(e)
+        from .reception_log_manager import ReceptionLogManager
+        return ReceptionLogManager(self.db).process_full_reception(
+            header_data, items, user_id=user_id
+        )
 
     def get_all_batches_with_details(self, include_zero_stock=False) -> List[Dict]:
         """

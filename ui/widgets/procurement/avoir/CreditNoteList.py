@@ -10,6 +10,8 @@ from PySide6.QtCore import Qt, QDate, QStringListModel, Signal
 from PySide6.QtGui import QColor, QFont, QBrush, QAction
 import qtawesome as qta
 
+from database.system_logger import active_user_id
+
 
 
 
@@ -100,6 +102,19 @@ class CreditNoteList(QWidget):
         item = self.table.item(row, 0)
         return int(item.text()) if item else None
 
+    def get_current_user_id(self):
+        user_id = active_user_id.get()
+        if user_id:
+            return user_id
+
+        parent_widget = self.parent()
+        while parent_widget:
+            current_user = getattr(parent_widget, 'current_user', None)
+            if isinstance(current_user, dict):
+                return current_user.get('User_ID') or current_user.get('id')
+            parent_widget = parent_widget.parent()
+        return None
+
     def trigger_edit(self):
         cn_id = self.get_selected_id()
         if cn_id:
@@ -118,7 +133,9 @@ class CreditNoteList(QWidget):
         
         if reply == QMessageBox.Yes:
             if hasattr(self.manager.credit_notes, 'delete_credit_note'):
-                success, msg = self.manager.credit_notes.delete_credit_note(cn_id, user_id=1)
+                success, msg = self.manager.credit_notes.delete_credit_note(
+                    cn_id, user_id=self.get_current_user_id()
+                )
                 if success:
                     self.load_data()
                 else:

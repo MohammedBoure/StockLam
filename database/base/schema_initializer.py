@@ -529,8 +529,8 @@ class SchemaInitializerMixin:
                     except mysql.connector.Error as err:
                         # Log but ignore errors related to ALTER TABLE if column already exists
                         # Error 1060: Duplicate column name
-                        # Error 1061: Duplicate key name (for indexes/constraints)
-                        if err.errno in (1060, 1061):
+                        # Error 1061/1826: Duplicate key/foreign-key name.
+                        if err.errno in (1060, 1061, 1826):
                             pass
                         else:
                             logging.warning(f"Schema warning during query '{query[:30]}...': {err}")

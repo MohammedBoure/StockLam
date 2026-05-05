@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QDate, QStringListModel, Signal
 import qtawesome as qta
 
 from ui.widgets.inventory.dialogs import BarcodeLineEdit, NumericSpinBox
+from database.system_logger import active_user_id
 from .BatchSelectionDialog import BatchSelectionDialog
 
 # ==============================================================================
@@ -233,6 +234,19 @@ class CreditNoteForm(QWidget):
             self.all_products_cache = self.manager.products.get_all_products()
             self.update_completer(self.all_products_cache)
 
+    def get_current_user_id(self):
+        user_id = active_user_id.get()
+        if user_id:
+            return user_id
+
+        parent_widget = self.parent()
+        while parent_widget:
+            current_user = getattr(parent_widget, 'current_user', None)
+            if isinstance(current_user, dict):
+                return current_user.get('User_ID') or current_user.get('id')
+            parent_widget = parent_widget.parent()
+        return None
+
     def update_completer(self, product_list):
         search_list = []
         seen = set()
@@ -378,6 +392,18 @@ class CreditNoteForm(QWidget):
         if is_return and not lot:
             QMessageBox.warning(self, "Attention", "Le N° de Lot est obligatoire pour un retour.")
             self.txt_lot.setFocus()
+            return
+
+        batch_id = self.selected_product.get('Batch_ID')
+        current_qty = self.selected_product.get('Quantity_Current')
+        if is_return and batch_id and current_qty is not None and qty > float(current_qty):
+            QMessageBox.warning(
+                self,
+                "Stock insuffisant",
+                f"Quantité disponible pour ce lot: {float(current_qty):g}."
+            )
+            self.spin_qty.setFocus()
+            self.spin_qty.selectAll()
             return
             
         expiry = self.date_expiry.date().toString("yyyy-MM-dd") if is_return else None
@@ -655,13 +681,14 @@ class CreditNoteForm(QWidget):
             })
 
         try:
+            user_id = self.get_current_user_id()
             if self.current_edit_id:
                 success, msg = self.manager.credit_notes.update_credit_note(
-                    self.current_edit_id, header_data, items, user_id=1
+                    self.current_edit_id, header_data, items, user_id=user_id
                 )
             else:
                 success, msg = self.manager.credit_notes.create_credit_note(
-                    header_data, items, user_id=1
+                    header_data, items, user_id=user_id
                 )
 
             if success:

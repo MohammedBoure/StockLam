@@ -787,10 +787,14 @@ class ReceptionLogManager:
         حفظ عملية استلام جديدة وتسجيل الحركة في السجل.
         """
         conn = None
+        cursor = None
+        barcode_lock_acquired = False
         try:
             conn = self.db.get_raw_connection()
             conn.start_transaction()
             cursor = conn.cursor()
+            self._acquire_barcode_generation_lock(cursor)
+            barcode_lock_acquired = True
 
             # 1. إدخال الرأس (Header)
             query_log = """
@@ -811,14 +815,14 @@ class ReceptionLogManager:
             receipt_id = cursor.lastrowid
 
             # 2. إدخال المنتجات (Batches)
-            from .inventory_batch_manager import InventoryBatchManager
             po_id = header_data.get('PO_ID') or receipt_id
 
             for i, item in enumerate(items):
-                # توليد باركود ذكي
-                smart_barcode = item.get('Internal_Barcode')
-                if not smart_barcode or smart_barcode == '---':
-                    smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{receipt_id}-", i + 1)
+                smart_barcode = self._allocate_reception_barcode(
+                    cursor,
+                    receipt_id,
+                    item.get('Internal_Barcode')
+                )
 
                 query_batch = """
                     INSERT INTO Inventory_Batches 
@@ -851,6 +855,8 @@ class ReceptionLogManager:
 
             # تحديث حالة الطلب
             conn.commit()
+            self._release_barcode_generation_lock(cursor)
+            barcode_lock_acquired = False
             self._recalculate_reception_totals(receipt_id)
             return True, "Réception enregistrée avec succès."
         except Exception as e:
@@ -858,6 +864,8 @@ class ReceptionLogManager:
             logging.error(f"Error process_full_reception: {e}")
             return False, str(e)
         finally:
+            if cursor and barcode_lock_acquired:
+                self._release_barcode_generation_lock(cursor)
             if conn: conn.close()
 
     def get_all_receptions(self):
