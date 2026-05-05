@@ -551,6 +551,7 @@ class Database:
             "CREATE INDEX idx_batch_expiry ON Inventory_Batches(Expiry_Date);",
             "CREATE INDEX idx_batch_lot ON Inventory_Batches(Lot_Number);",
             "CREATE INDEX idx_internal_barcode ON Inventory_Batches(Internal_Barcode);",
+            "CREATE UNIQUE INDEX uq_inventory_internal_barcode ON Inventory_Batches(Internal_Barcode);",
             "CREATE UNIQUE INDEX idx_barcode_location ON Inventory_Batches(Internal_Barcode, Location_ID);",
             "CREATE INDEX idx_reception_invoice_ref ON Reception_Log(Supplier_Invoice_Ref);",
             "CREATE INDEX idx_reception_po_id ON Reception_Log(PO_ID);",

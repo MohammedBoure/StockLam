@@ -15,8 +15,10 @@ venv/
 __pycache__/
 documents/
 
+build/
 dist
 dist-ssr
+*.spec
 *.local
 
 # Editor directories and files
