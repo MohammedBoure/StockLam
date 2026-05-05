@@ -280,7 +280,7 @@ class StockMovementLogManager:
 
                 cursor.execute("""
                     SELECT COUNT(*) FROM Purchase_Orders 
-                    WHERE Status IN ('Sent', 'Partial', 'Approved')
+                    WHERE Status IN ('Sent', 'Partial_Received')
                 """)
                 stats['pending_orders'] = cursor.fetchone()[0]
 

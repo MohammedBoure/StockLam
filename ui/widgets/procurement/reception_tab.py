@@ -145,7 +145,7 @@ class ReceptionTab(QWidget):
     def load_pending_pos(self):
         try:
             all_pos = self.manager.po.get_all_purchase_orders()
-            allowed_statuses = ['Sent', 'Partial', 'Approved']
+            allowed_statuses = ['Sent', 'Partial_Received', 'Partial', 'Approved']
             
             search_txt = self.search_input.text().lower().strip()
             supplier_sel = self.supplier_filter.currentText() # المورد المختار

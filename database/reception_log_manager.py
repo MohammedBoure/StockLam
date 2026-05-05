@@ -216,16 +216,17 @@ class ReceptionLogManager:
                     t_tva += line_tva
 
                 t_ttc = (t_ht - t_disc) + t_tva
+                reception_status = 'Completed' if batches else 'Pending Audit'
 
                 # 3. تحديث رأس الفاتورة (BR)
                 update_query = """
                     UPDATE Reception_Log 
                     SET Invoice_Total_HT = %s, Invoice_Total_TVA = %s, 
                         Invoice_Total_TTC = %s, Total_Discount = %s,
-                        Status = 'Completed'
+                        Status = %s
                     WHERE BR_ID = %s
                 """
-                cursor.execute(update_query, (t_ht, t_tva, t_ttc, t_disc, br_id))
+                cursor.execute(update_query, (t_ht, t_tva, t_ttc, t_disc, reception_status, br_id))
                 
                 # -------------------------------------------------------------
                 # 4. تحديث حالة الـ PO - (المنطق المصحح)
@@ -236,11 +237,11 @@ class ReceptionLogManager:
                     current_po_row = cursor.fetchone()
                     current_status = current_po_row['Status'] if current_po_row else 'Draft'
 
-                    # ب) إذا كان مكتمل سابقاً، نتركه مكتمل ولا نعيد الحساب
-                    if current_status == 'Completed':
-                         logging.info(f"PO #{po_id} is already Completed. Skipping status auto-update.")
+                    # ب) لا نغير الطلبات الملغاة، وباقي الحالات يعاد حسابها من الكميات
+                    if current_status == 'Cancelled':
+                         logging.info(f"PO #{po_id} is Cancelled. Skipping status auto-update.")
                     else:
-                        # ج) الحساب التلقائي (فقط إذا لم يكن مكتمل)
+                        # ج) الحساب التلقائي من مجموع المطلوب والمستلم
                         check_po_query = """
                             SELECT 
                                 (SELECT COALESCE(SUM(Qty_Ordered), 0) FROM PO_Details WHERE PO_ID = %s) as Total_Ordered,
@@ -256,7 +257,7 @@ class ReceptionLogManager:
                         if total_ordered > 0 and total_received >= total_ordered:
                             new_po_status = 'Completed'
                         elif total_received > 0:
-                            new_po_status = 'Partial'
+                            new_po_status = 'Partial_Received'
                         
                         # تحديث الحالة فقط إذا تغيرت
                         if new_po_status != current_status:
@@ -612,10 +613,8 @@ class ReceptionLogManager:
                 ))
                 # تم حذف سطر الـ UPDATE هنا لضمان عدم ضياع الباركود الذكي
 
-            if po_id:
-                cursor.execute("UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (po_id,))
-
             conn.commit()
+            self._recalculate_reception_totals(br_id)
             return True
         except Exception as e:
             if conn: conn.rollback()
@@ -773,10 +772,8 @@ class ReceptionLogManager:
                     VALUES (%s, %s, 'Purchase_Receive', %s, 'Stock_Unit', NOW(), %s)
                 """, (b['Product_ID'], batch_id, b['Received_Qty'], f"Réception BR #{br_id}"))
 
-            if data.get('PO_ID'):
-                cursor.execute("UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (data['PO_ID'],))
-
             conn.commit()
+            self._recalculate_reception_totals(br_id)
             return True
         except Exception as e:
             if conn: conn.rollback()
@@ -853,10 +850,8 @@ class ReceptionLogManager:
                 )
 
             # تحديث حالة الطلب
-            if header_data.get('PO_ID'):
-                cursor.execute("UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (header_data['PO_ID'],))
-
             conn.commit()
+            self._recalculate_reception_totals(receipt_id)
             return True, "Réception enregistrée avec succès."
         except Exception as e:
             if conn: conn.rollback()

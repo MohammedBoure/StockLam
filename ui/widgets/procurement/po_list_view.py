@@ -37,7 +37,7 @@ class PurchaseOrderListView(QWidget):
         self.supplier_filter.currentTextChanged.connect(self.refresh_data)
 
         self.status_filter = QComboBox()
-        self.status_filter.addItems(["Tous", "Brouillon", "Envoyée", "Complétée"])
+        self.status_filter.addItems(["Tous", "Brouillon", "Envoyée", "Partielle", "Complétée"])
         self.status_filter.currentTextChanged.connect(self.refresh_data)
         
         filter_layout.addWidget(self.search_input)
@@ -49,7 +49,7 @@ class PurchaseOrderListView(QWidget):
 
         self.table = QTableWidget()
         
-        columns = ["N°", "Fournisseur", "Date Commande", "Livraison Prévue", "Statut"]
+        columns = ["N°", "Fournisseur", "Date Commande", "Livraison Prévue", "Statut", "Montant TTC"]
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
         
@@ -212,13 +212,14 @@ class PurchaseOrderListView(QWidget):
             status_map = {
                 'Draft': 'Brouillon',
                 'Sent': 'Envoyée',
+                'Partial_Received': 'Partielle',
                 'Partial': 'Partielle',
                 'Completed': 'Complétée',
                 'Cancelled': 'Annulée'
             }
             
             colors_map = {
-                'Draft': 'gray', 'Sent': 'blue', 'Partial': 'orange',
+                'Draft': 'gray', 'Sent': 'blue', 'Partial_Received': 'orange', 'Partial': 'orange',
                 'Completed': 'green', 'Cancelled': 'red'
             }
             

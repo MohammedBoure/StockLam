@@ -150,21 +150,11 @@ class ReceptionDialogLogicMixin:
                 mgr.update_reception_header_info(self.br_id, header_data)
 
             # تحديث حالة PO
-            po_id = self.po_data.get('PO_ID')
-            if po_id:
-                with mgr.db.get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "UPDATE Purchase_Orders SET Status = 'Completed' WHERE PO_ID = %s", (po_id,)
-                    )
-                    conn.commit()
-                logging.info(f"PO #{po_id} marked as Completed immediately after validation.")
-
             self.invoice_ref.setReadOnly(True)
             self.bl_ref.setReadOnly(True)
             self.reception_date.setReadOnly(True)
 
-            self.btn_validate_ref.setText(" Validé (Commande Complétée)")
+            self.btn_validate_ref.setText(" Validé")
             self.btn_validate_ref.setStyleSheet(
                 "background-color: #27ae60; color: white; font-weight: bold; border: none;"
             )

@@ -174,9 +174,9 @@ class CreditNoteManager:
             query_find_batch = """
                 SELECT Batch_ID, Quantity_Current 
                 FROM Inventory_Batches 
-                WHERE Batch_ID = %s AND Quantity_Current >= %s
+                WHERE Batch_ID = %s AND Product_ID = %s AND Quantity_Current >= %s
             """
-            cursor.execute(query_find_batch, (specific_batch_id, qty))
+            cursor.execute(query_find_batch, (specific_batch_id, product_id, qty))
         else:
             # بحث احتياطي (الوضع القديم)
             if not lot_number: return None
@@ -301,6 +301,12 @@ class CreditNoteManager:
 
     def _restore_stock(self, cursor, batch_id, qty, user_id, reason):
         """إعادة كمية للمخزون وتسجيلها كحركة موجبة"""
+        cursor.execute("SELECT Product_ID FROM Inventory_Batches WHERE Batch_ID = %s", (batch_id,))
+        batch_row = cursor.fetchone()
+        if not batch_row:
+            raise ValueError(f"Batch introuvable: {batch_id}")
+        product_id = batch_row['Product_ID'] if isinstance(batch_row, dict) else batch_row[0]
+
         cursor.execute("""
             UPDATE Inventory_Batches 
             SET Quantity_Current = Quantity_Current + %s,
@@ -310,7 +316,7 @@ class CreditNoteManager:
         
         # نسجل الحركة كـ +Return_To_Supplier لتظهر كتصحيح موجب
         self.movement_manager.create_movement_log(
-            product_id=None, # سيجلبه تلقائياً
+            product_id=product_id,
             movement_type='Return_To_Supplier', 
             qty_change=qty, # كمية موجبة
             unit_used='Unit', batch_id=batch_id, user_id=user_id,
@@ -354,8 +360,8 @@ class CreditNoteManager:
         if specific_batch_id:
             cursor.execute("""
                 SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
-                WHERE Batch_ID = %s AND Quantity_Current >= %s 
-            """, (specific_batch_id, qty))
+                WHERE Batch_ID = %s AND Product_ID = %s AND Quantity_Current >= %s 
+            """, (specific_batch_id, product_id, qty))
         else:
             cursor.execute("""
                 SELECT Batch_ID, Quantity_Current FROM Inventory_Batches 
@@ -382,7 +388,7 @@ class CreditNoteManager:
 
     def _insert_credit_note_item(self, cursor, cn_id, item, note_type, user_id, ref):
         """مساعد لإدخال سطر جديد تماماً مع خصم المخزون"""
-        batch_id = item.get('Batch_ID') # جلب المعرف
+        batch_id = item.get('Batch_ID')
         qty = Decimal(str(item.get('Qty_Returned', 0)))
         
         if note_type == 'Return_Goods' and qty > 0:
@@ -391,16 +397,31 @@ class CreditNoteManager:
         item['Batch_ID'] = batch_id
         self._insert_detail_row(cursor, cn_id, item)
 
-    def _insert_credit_note_item(self, cursor, cn_id, item, note_type, user_id, ref):
-        """مساعد لإدخال سطر جديد تماماً مع خصم المخزون"""
-        batch_id = None
+    def _insert_detail_row(self, cursor, cn_id, item):
         qty = Decimal(str(item.get('Qty_Returned', 0)))
-        
-        if note_type == 'Return_Goods' and qty > 0:
-            batch_id = self._deduct_stock_initial(cursor, item['Product_ID'], qty, item.get('Lot_Number'), user_id, ref)
-        
-        item['Batch_ID'] = batch_id
-        self._insert_detail_row(cursor, cn_id, item)
+        unit_price = Decimal(str(item.get('Unit_Price', 0)))
+        cursor.execute("""
+            INSERT INTO Credit_Note_Details
+            (Credit_Note_ID, Product_ID, Batch_ID, Lot_Number, Expiry_Date,
+             Qty_Returned, Unit_Price, Line_Total)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            cn_id,
+            item['Product_ID'],
+            item.get('Batch_ID'),
+            item.get('Lot_Number'),
+            item.get('Expiry_Date'),
+            qty,
+            unit_price,
+            qty * unit_price
+        ))
+
+    @staticmethod
+    def _credit_note_item_key(item):
+        batch_id = item.get('Batch_ID')
+        if batch_id:
+            return ('batch', int(batch_id))
+        return ('product_lot', item.get('Product_ID'), item.get('Lot_Number'))
 
     def update_credit_note(self, credit_note_id, header_data, new_items, user_id):
         """
@@ -420,6 +441,7 @@ class CreditNoteManager:
                 raise ValueError("Avoir introuvable.")
             
             note_type = header_data.get('Type', 'Return_Goods')
+            old_note_type = old_header['Type']
             ref = header_data['Credit_Note_Ref']
 
             # 2. جلب التفاصيل القديمة لمقارنتها
@@ -429,8 +451,14 @@ class CreditNoteManager:
             # خريطة للمقارنة: Key = (Product_ID, Lot_Number)
             old_items_map = {}
             for it in old_items_list:
-                key = (it['Product_ID'], it['Lot_Number'])
+                key = self._credit_note_item_key(it)
                 old_items_map[key] = it
+
+            if old_note_type == 'Return_Goods' and note_type != 'Return_Goods':
+                for old_item in old_items_list:
+                    qty_to_restore = Decimal(str(old_item['Qty_Returned']))
+                    if qty_to_restore > 0 and old_item['Batch_ID']:
+                        self._restore_stock(cursor, old_item['Batch_ID'], qty_to_restore, user_id, f"Changement type Avoir #{ref}")
 
             # 3. حذف التفاصيل من الجدول (سنعيد إدخالها لاحقاً، لكن المخزون نعالجه بالفروقات)
             cursor.execute("DELETE FROM Credit_Note_Details WHERE Credit_Note_ID = %s", (credit_note_id,))
@@ -439,12 +467,12 @@ class CreditNoteManager:
             sql_update_header = """
                 UPDATE Supplier_Credit_Notes 
                 SET Supplier_ID=%s, Credit_Note_Ref=%s, Credit_Date=%s, Type=%s, 
-                    Total_Amount_HT=%s, Total_Amount_TTC=%s, Notes=%s
+                    Total_Amount_HT=%s, Total_TVA=%s, Total_Amount_TTC=%s, Notes=%s
                 WHERE Credit_Note_ID=%s
             """
             cursor.execute(sql_update_header, (
                 header_data['Supplier_ID'], ref, header_data['Credit_Date'],
-                note_type, header_data['Total_Amount_HT'], header_data['Total_Amount_TTC'],
+                note_type, header_data['Total_Amount_HT'], header_data.get('Total_TVA', 0), header_data['Total_Amount_TTC'],
                 header_data.get('Notes', ''), credit_note_id
             ))
 
@@ -456,11 +484,11 @@ class CreditNoteManager:
                 lot = new_item.get('Lot_Number')
                 new_qty = Decimal(str(new_item.get('Qty_Returned', 0)))
                 
-                key = (p_id, lot)
+                key = self._credit_note_item_key(new_item)
                 processed_keys.add(key)
                 
                 # أ) هل هذا السطر (نفس المنتج واللوت) كان موجوداً؟
-                if key in old_items_map and note_type == 'Return_Goods':
+                if key in old_items_map and old_note_type == 'Return_Goods' and note_type == 'Return_Goods':
                     old_item = old_items_map[key]
                     old_qty = Decimal(str(old_item['Qty_Returned']))
                     batch_id = old_item['Batch_ID'] # نستخدم نفس الباتش القديم
@@ -476,12 +504,14 @@ class CreditNoteManager:
                     self._insert_detail_row(cursor, credit_note_id, new_item)
 
                 # ب) سطر جديد كلياً (أو لوت مختلف)
-                else:
+                elif note_type == 'Return_Goods':
                     self._insert_credit_note_item(cursor, credit_note_id, new_item, note_type, user_id, ref)
+                else:
+                    self._insert_detail_row(cursor, credit_note_id, new_item)
 
             # 6. معالجة العناصر المحذوفة (كانت موجودة ولم تعد موجودة)
             for key, old_item in old_items_map.items():
-                if key not in processed_keys and note_type == 'Return_Goods':
+                if key not in processed_keys and old_note_type == 'Return_Goods' and note_type == 'Return_Goods':
                     # إعادة الكمية كاملة للمخزون
                     qty_to_restore = Decimal(str(old_item['Qty_Returned']))
                     if qty_to_restore > 0 and old_item['Batch_ID']:
