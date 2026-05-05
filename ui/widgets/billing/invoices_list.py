@@ -207,9 +207,24 @@ class InvoicesListWidget(QWidget):
                 id_item = QTableWidgetItem(formatted_ref)
                 id_item.setData(Qt.UserRole, t['Transfer_ID']) # حفظ الـ ID الحقيقي في الـ Data للعمليات البرمجية
                 
+                raw_date = t.get('Transaction_Date')
+                if hasattr(raw_date, 'strftime'):
+                    date_text = raw_date.strftime("%Y-%m-%d %H:%M")
+                else:
+                    date_text = str(raw_date or "")
+
+                partner_text = t.get('Partner_Name') or t.get('City') or "-"
+                amount = float(t.get('Total_Amount') or 0)
+                amount_item = QTableWidgetItem(f"{amount:,.2f}")
+                amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
                 self.table.setItem(row, 0, id_item)
+                self.table.setItem(row, 1, QTableWidgetItem(date_text))
+                self.table.setItem(row, 2, QTableWidgetItem(str(partner_text)))
+                self.table.setItem(row, 3, amount_item)
         
         self.on_selection_changed()
+        self.filter_table(self.search_input.text())
 
     def filter_table(self, text):
         for r in range(self.table.rowCount()):
