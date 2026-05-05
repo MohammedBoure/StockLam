@@ -53,7 +53,7 @@ class CreditNoteManager:
             logging.error(f"Error fetching credit note details: {e}")
             return None
 
-    def delete_credit_note(self, credit_note_id):
+    def _delete_credit_note_without_stock_restore_legacy(self, credit_note_id):
         """
         حذف إشعار (بحذر). 
         ملاحظة: لا نقوم بإعادة المخزون تلقائياً في الحذف لتفادي التعقيد، 

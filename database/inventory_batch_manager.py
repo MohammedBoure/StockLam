@@ -21,7 +21,7 @@ class InventoryBatchManager:
         self.stock_movement_log = StockMovementLogManager(db_instance)
 
 
-    def create_inventory_batch(self, product_id, br_id, lot_number, expiry_date, 
+    def _create_inventory_batch_legacy(self, product_id, br_id, lot_number, expiry_date, 
                                initial_stock_qty, location_id, date_received, 
                                po_id=None, unit_price=0.0, tax_rate=0.0, discount=0.0, 
                                item_index=1, internal_barcode=None):
