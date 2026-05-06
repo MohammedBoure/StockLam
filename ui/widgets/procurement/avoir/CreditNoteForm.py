@@ -192,6 +192,7 @@ class CreditNoteForm(QWidget):
         self.btn_save.setIcon(qta.icon("fa5s.save", color="white"))
         self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-size: 14px; font-weight: bold;")
         self.btn_save.clicked.connect(self.save_credit_note)
+        self.btn_save.hide()
 
         footer_layout.addWidget(self.btn_back) 
         footer_layout.addWidget(self.btn_reset)
@@ -405,6 +406,9 @@ class CreditNoteForm(QWidget):
             self.spin_qty.setFocus()
             self.spin_qty.selectAll()
             return
+
+        if not self.ensure_credit_note_header_saved():
+            return
             
         expiry = self.date_expiry.date().toString("yyyy-MM-dd") if is_return else None
         total_line = qty * price
@@ -441,13 +445,18 @@ class CreditNoteForm(QWidget):
             
             btn_del = QPushButton("✖")
             btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
-            btn_del.clicked.connect(lambda checked=False, r=row: self.remove_line(r)) 
+            btn_del.clicked.connect(lambda checked=False, b=btn_del: self.remove_line(self.row_for_delete_button(b)))
             self.table.setCellWidget(row, 7, btn_del)
         
         self.calculate_total()
+        if not self.persist_current_credit_note():
+            return
         self.clear_entry_fields()
 
     def remove_line(self, row):
+        if row is None or row < 0 or row >= self.table.rowCount():
+            return
+
         confirm = QMessageBox.question(
             self, "Confirmation", 
             "Voulez-vous vraiment retirer cette ligne ?",
@@ -464,6 +473,13 @@ class CreditNoteForm(QWidget):
             self.clear_entry_fields()
             
         self.calculate_total()
+        self.persist_current_credit_note()
+
+    def row_for_delete_button(self, button):
+        for row in range(self.table.rowCount()):
+            if self.table.cellWidget(row, 7) is button:
+                return row
+        return -1
 
     def calculate_total(self):
         total = 0.0
@@ -501,6 +517,7 @@ class CreditNoteForm(QWidget):
         self.selected_product = None
         self.btn_save.setText(" Valider l'Avoir")
         self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-size: 14px; font-weight: bold;")
+        self.btn_save.hide()
         self.btn_cancel_edit.hide()
         self.txt_search_br.clear()
         self.txt_search_br.setStyleSheet("")
@@ -586,6 +603,7 @@ class CreditNoteForm(QWidget):
             
             self.btn_save.setText("💾 Modifier l'Avoir")
             self.btn_save.setStyleSheet("background-color: #d35400; color: white; padding: 10px 20px; font-weight: bold;")
+            self.btn_save.hide()
             self.btn_cancel_edit.show()
             
             idx_supp = self.combo_supplier.findData(header['Supplier_ID'])
@@ -621,7 +639,7 @@ class CreditNoteForm(QWidget):
                 
                 btn_del = QPushButton("✖")
                 btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
-                btn_del.clicked.connect(lambda checked=False, r=row: self.remove_line(r)) 
+                btn_del.clicked.connect(lambda checked=False, b=btn_del: self.remove_line(self.row_for_delete_button(b)))
                 self.table.setCellWidget(row, 7, btn_del)
 
             self.calculate_total()
@@ -683,9 +701,10 @@ class CreditNoteForm(QWidget):
         self.current_edit_id = credit_note_id
         self.btn_save.setText("Modifier l'Avoir")
         self.btn_save.setStyleSheet("background-color: #d35400; color: white; padding: 10px 20px; font-weight: bold;")
+        self.btn_save.hide()
         self.btn_cancel_edit.hide()
 
-    def save_header_only(self):
+    def save_header_only(self, show_message=True):
         header_data = self.build_header_data()
         if not header_data:
             return False
@@ -706,7 +725,8 @@ class CreditNoteForm(QWidget):
                 if credit_note_id:
                     self.mark_credit_note_saved(credit_note_id)
                 self.set_header_enabled(False)
-                QMessageBox.information(self, "Succes", "L'en-tete de l'Avoir a ete enregistre.")
+                if show_message:
+                    QMessageBox.information(self, "Succes", "L'en-tete de l'Avoir a ete enregistre.")
                 return True
 
             QMessageBox.critical(self, "Erreur", f"Echec: {msg}")
@@ -715,6 +735,42 @@ class CreditNoteForm(QWidget):
         except Exception as e:
             logging.error(f"Header Save Error: {e}")
             QMessageBox.critical(self, "Erreur", str(e))
+            return False
+
+    def ensure_credit_note_header_saved(self):
+        if self.current_edit_id:
+            return True
+        return self.save_header_only(show_message=False)
+
+    def reload_current_credit_note(self):
+        if self.current_edit_id:
+            credit_note_id = self.current_edit_id
+            self.load_for_edit(credit_note_id)
+
+    def persist_current_credit_note(self):
+        if not self.current_edit_id:
+            return self.save_header_only(show_message=False)
+
+        header_data = self.build_header_data()
+        if not header_data:
+            self.reload_current_credit_note()
+            return False
+
+        try:
+            user_id = self.get_current_user_id()
+            success, msg = self.manager.credit_notes.update_credit_note(
+                self.current_edit_id, header_data, self.build_items_data(), user_id=user_id
+            )
+            if success:
+                return True
+
+            QMessageBox.critical(self, "Erreur", f"Echec: {msg}")
+            self.reload_current_credit_note()
+            return False
+        except Exception as e:
+            logging.error(f"Immediate Avoir Save Error: {e}")
+            QMessageBox.critical(self, "Erreur", str(e))
+            self.reload_current_credit_note()
             return False
 
     def save_credit_note(self):
