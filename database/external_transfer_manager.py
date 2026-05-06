@@ -61,6 +61,40 @@ class ExternalTransferManager:
             logging.error(f"Error updating transfer {transfer_id}: {e}")
             return False
 
+    def save_transfer_header_only(self, transfer_id, partner_id, transaction_date, user_id):
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                if transfer_id:
+                    cursor.execute(
+                        """
+                        UPDATE External_Transfer_Log
+                        SET Partner_ID = %s, Transaction_Date = %s
+                        WHERE Transfer_ID = %s
+                        """,
+                        (partner_id, transaction_date, transfer_id)
+                    )
+                    conn.commit()
+                    if cursor.rowcount == 0:
+                        cursor.execute("SELECT 1 FROM External_Transfer_Log WHERE Transfer_ID = %s", (transfer_id,))
+                        if cursor.fetchone() is None:
+                            return False, "Transaction introuvable.", transfer_id
+                    return True, "En-tete enregistre.", transfer_id
+
+                cursor.execute(
+                    """
+                    INSERT INTO External_Transfer_Log
+                    (Partner_ID, Status, Created_By, Transaction_Date)
+                    VALUES (%s, 'Draft', %s, %s)
+                    """,
+                    (partner_id, user_id, transaction_date)
+                )
+                conn.commit()
+                return True, "En-tete enregistre.", cursor.lastrowid
+        except Exception as e:
+            logging.error(f"Error saving transfer header only: {e}")
+            return False, str(e), transfer_id
+
     def get_all_transfers(self) -> List[Dict]:
         """جلب قائمة التحويلات للعرض."""
         try:

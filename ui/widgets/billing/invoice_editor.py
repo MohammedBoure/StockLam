@@ -114,6 +114,11 @@ class InvoiceEditorWidget(QWidget):
         
         self.combo_partner = QComboBox()
         self.combo_partner.setMinimumHeight(40)
+        self.btn_validate_header = QPushButton("Valider l'en-tete")
+        self.btn_validate_header.setMinimumHeight(40)
+        self.btn_validate_header.setCursor(Qt.PointingHandCursor)
+        self.btn_validate_header.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border-radius: 6px; padding: 0 16px;")
+        self.btn_validate_header.clicked.connect(self.handle_header_click)
         self.combo_partner.setPlaceholderText("Sélectionner un client...")
         
         h_layout.addWidget(QLabel("Date :"))
@@ -121,6 +126,7 @@ class InvoiceEditorWidget(QWidget):
         h_layout.addSpacing(40)
         h_layout.addWidget(QLabel("Partenaire :"))
         h_layout.addWidget(self.combo_partner, stretch=1)
+        h_layout.addWidget(self.btn_validate_header)
         layout.addWidget(header_group)
 
         # --- 3. بطاقة البحث والجدول ---
@@ -204,6 +210,8 @@ class InvoiceEditorWidget(QWidget):
             if header:
                 index = self.combo_partner.findData(header['Partner_ID'])
                 if index >= 0: self.combo_partner.setCurrentIndex(index)
+                if header.get('Transaction_Date'):
+                    self.inp_date.setDate(QDate.fromString(str(header['Transaction_Date'])[:10], "yyyy-MM-dd"))
                 # تعيين التاريخ ...
 
             if details is None:
@@ -263,6 +271,7 @@ class InvoiceEditorWidget(QWidget):
         else:
             self.lbl_title.setText("NOUVELLE TRANSACTION / BL")
             self.inp_date.setDate(QDate.currentDate())
+        self.set_header_enabled(not bool(transfer_id))
         
         self.calc_totals() #
         self.barcode_input.setFocus()
@@ -273,6 +282,53 @@ class InvoiceEditorWidget(QWidget):
         if hasattr(self.manager, 'partners'):
             for p in self.manager.partners.get_all_partners():
                 self.combo_partner.addItem(f"{p['Partner_Name']} ({p.get('City', '-')})", p['Partner_ID'])
+
+    def get_current_user_id(self):
+        if hasattr(self.window(), 'current_user') and self.window().current_user:
+            return self.window().current_user.get('User_ID', 1)
+        return 1
+
+    def set_header_enabled(self, enabled):
+        self.inp_date.setEnabled(enabled)
+        self.combo_partner.setEnabled(enabled)
+        if enabled:
+            self.btn_validate_header.setText("Valider l'en-tete")
+            self.btn_validate_header.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border-radius: 6px; padding: 0 16px;")
+        else:
+            self.btn_validate_header.setText("Modifier l'en-tete")
+            self.btn_validate_header.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; border-radius: 6px; padding: 0 16px;")
+
+    def save_header_only(self, show_message=True):
+        partner_id = self.combo_partner.currentData()
+        if not partner_id:
+            QMessageBox.warning(self, "Attention", "Veuillez selectionner un partenaire.")
+            return False
+
+        transaction_date = self.inp_date.date().toString("yyyy-MM-dd") + " 00:00:00"
+        success, msg, transfer_id = self.manager.external_transfers.save_transfer_header_only(
+            self.current_id,
+            partner_id,
+            transaction_date,
+            self.get_current_user_id()
+        )
+
+        if not success:
+            QMessageBox.critical(self, "Erreur", msg)
+            return False
+
+        self.current_id = transfer_id
+        self.lbl_title.setText(f"TRANSACTION / BL N° {self.format_id(transfer_id)}")
+        self.set_header_enabled(False)
+        if show_message:
+            QMessageBox.information(self, "Succes", "L'en-tete a ete enregistre.")
+        return True
+
+    def handle_header_click(self):
+        if "Modifier" in self.btn_validate_header.text():
+            self.set_header_enabled(True)
+            self.combo_partner.setFocus()
+            return
+        self.save_header_only()
 
     def check_instant_barcode(self, text):
         """التحقق من الباركود بمجرد الكتابة أو المسح"""
@@ -503,6 +559,9 @@ class InvoiceEditorWidget(QWidget):
             return
 
         # 2. التحقق من وجود سلع في الجدول
+        if not self.save_header_only(show_message=False):
+            return
+
         if self.table.rowCount() == 0:
             QMessageBox.warning(
                 self, 
