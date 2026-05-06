@@ -74,6 +74,47 @@ class CreditNoteManager:
 
 
 
+    def _insert_credit_note_header(self, cursor, header_data: Dict, user_id: Optional[int] = None) -> int:
+        query_header = """
+            INSERT INTO Supplier_Credit_Notes
+            (Credit_Note_Ref, Supplier_ID, BR_ID, Credit_Date, Type, Status,
+             Total_Amount_HT, Total_TVA, Total_Amount_TTC, Notes, Created_By, Created_At)
+            VALUES (%s, %s, %s, %s, %s, 'Validated', %s, %s, %s, %s, %s, NOW())
+        """
+
+        note_type = header_data.get('Type', 'Return_Goods')
+        params_header = (
+            header_data['Credit_Note_Ref'],
+            header_data['Supplier_ID'],
+            header_data.get('BR_ID'),
+            header_data['Credit_Date'],
+            note_type,
+            header_data.get('Total_Amount_HT', 0),
+            header_data.get('Total_TVA', 0),
+            header_data.get('Total_Amount_TTC', 0),
+            header_data.get('Notes', ''),
+            user_id
+        )
+
+        cursor.execute(query_header, params_header)
+        return cursor.lastrowid
+
+    def create_credit_note_header(self, header_data: Dict, user_id: Optional[int] = None) -> Tuple[bool, str, Optional[int]]:
+        conn = None
+        try:
+            conn = self.db.get_raw_connection()
+            conn.start_transaction()
+            cursor = conn.cursor(dictionary=True)
+            credit_note_id = self._insert_credit_note_header(cursor, header_data, user_id)
+            conn.commit()
+            return True, f"Avoir enregistre avec succes (ID: {credit_note_id})", credit_note_id
+        except Exception as e:
+            if conn: conn.rollback()
+            logging.error(f"Error creating credit note header: {e}")
+            return False, str(e), None
+        finally:
+            if conn: conn.close()
+
     def create_credit_note(self, header_data: Dict, items: List[Dict], user_id: Optional[int] = None) -> Tuple[bool, str]:
         conn = None
         try:
@@ -82,30 +123,8 @@ class CreditNoteManager:
             cursor = conn.cursor(dictionary=True)
 
             # 1. إدخال رأس الإشعار
-            query_header = """
-                INSERT INTO Supplier_Credit_Notes 
-                (Credit_Note_Ref, Supplier_ID, BR_ID, Credit_Date, Type, Status, 
-                 Total_Amount_HT, Total_TVA, Total_Amount_TTC, Notes, Created_By, Created_At)
-                VALUES (%s, %s, %s, %s, %s, 'Validated', %s, %s, %s, %s, %s, NOW())
-            """
-            
             note_type = header_data.get('Type', 'Return_Goods')
-            
-            params_header = (
-                header_data['Credit_Note_Ref'],
-                header_data['Supplier_ID'],
-                header_data.get('BR_ID'),
-                header_data['Credit_Date'],
-                note_type,
-                header_data.get('Total_Amount_HT', 0),
-                header_data.get('Total_TVA', 0),
-                header_data.get('Total_Amount_TTC', 0),
-                header_data.get('Notes', ''),
-                user_id
-            )
-            
-            cursor.execute(query_header, params_header)
-            credit_note_id = cursor.lastrowid
+            credit_note_id = self._insert_credit_note_header(cursor, header_data, user_id)
 
             # 2. معالجة تفاصيل المنتجات
             for item in items:

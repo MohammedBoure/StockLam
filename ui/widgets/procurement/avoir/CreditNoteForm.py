@@ -496,6 +496,12 @@ class CreditNoteForm(QWidget):
         self.table.setRowCount(0)
         self.txt_ref.clear()
         self.linked_br_id = None
+        self.current_edit_id = None
+        self.editing_row = None
+        self.selected_product = None
+        self.btn_save.setText(" Valider l'Avoir")
+        self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-size: 14px; font-weight: bold;")
+        self.btn_cancel_edit.hide()
         self.txt_search_br.clear()
         self.txt_search_br.setStyleSheet("")
         
@@ -633,36 +639,28 @@ class CreditNoteForm(QWidget):
         self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 10px 20px; font-weight: bold;")
         self.btn_cancel_edit.hide()
 
-    def save_credit_note(self):
-        if self.table.rowCount() == 0:
-            confirm = QMessageBox.question(
-                self, "Avoir sans détails", 
-                "Aucun produit n'a été ajouté.\nVoulez-vous quand même créer l'Avoir (juste l'en-tête) ?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if confirm == QMessageBox.No:
-                return
-        
+    def build_header_data(self):
         supplier_id = self.combo_supplier.currentData()
         ref = self.txt_ref.text().strip()
-        
+
         if not supplier_id or not ref:
-            QMessageBox.warning(self, "Manquant", "Fournisseur et Référence obligatoires.")
-            return
+            QMessageBox.warning(self, "Manquant", "Fournisseur et Reference obligatoires.")
+            return None
 
         total_ttc = float(self.lbl_total.text().replace("Total TTC:", "").replace("DA", "").replace(",", "").strip())
-        
-        header_data = {
+        return {
             'Supplier_ID': supplier_id,
             'Credit_Note_Ref': ref,
             'Credit_Date': self.date_edit.date().toString("yyyy-MM-dd"),
             'Type': self.combo_type.currentData(),
             'Total_Amount_TTC': total_ttc,
             'Total_Amount_HT': total_ttc,
+            'Total_TVA': 0,
             'Notes': "Saisie via Interface Avoir",
-            'BR_ID': self.linked_br_id # [NOUVEAU] إرسال معرف الوصل لقاعدة البيانات 
+            'BR_ID': self.linked_br_id
         }
 
+    def build_items_data(self):
         items = []
         for r in range(self.table.rowCount()):
             exp_str = self.table.item(r, 3).text()
@@ -673,12 +671,58 @@ class CreditNoteForm(QWidget):
 
             items.append({
                 'Product_ID': int(self.table.item(r, 0).text()),
-                'Batch_ID': batch_id, 
+                'Batch_ID': batch_id,
                 'Lot_Number': self.table.item(r, 2).text(),
                 'Expiry_Date': expiry_val,
                 'Qty_Returned': float(self.table.item(r, 4).text()),
                 'Unit_Price': float(self.table.item(r, 5).text())
             })
+        return items
+
+    def mark_credit_note_saved(self, credit_note_id):
+        self.current_edit_id = credit_note_id
+        self.btn_save.setText("Modifier l'Avoir")
+        self.btn_save.setStyleSheet("background-color: #d35400; color: white; padding: 10px 20px; font-weight: bold;")
+        self.btn_cancel_edit.hide()
+
+    def save_header_only(self):
+        header_data = self.build_header_data()
+        if not header_data:
+            return False
+
+        try:
+            user_id = self.get_current_user_id()
+            if self.current_edit_id:
+                success, msg = self.manager.credit_notes.update_credit_note(
+                    self.current_edit_id, header_data, self.build_items_data(), user_id=user_id
+                )
+                credit_note_id = self.current_edit_id
+            else:
+                success, msg, credit_note_id = self.manager.credit_notes.create_credit_note_header(
+                    header_data, user_id=user_id
+                )
+
+            if success:
+                if credit_note_id:
+                    self.mark_credit_note_saved(credit_note_id)
+                self.set_header_enabled(False)
+                QMessageBox.information(self, "Succes", "L'en-tete de l'Avoir a ete enregistre.")
+                return True
+
+            QMessageBox.critical(self, "Erreur", f"Echec: {msg}")
+            return False
+
+        except Exception as e:
+            logging.error(f"Header Save Error: {e}")
+            QMessageBox.critical(self, "Erreur", str(e))
+            return False
+
+    def save_credit_note(self):
+        header_data = self.build_header_data()
+        if not header_data:
+            return
+
+        items = self.build_items_data()
 
         try:
             user_id = self.get_current_user_id()
@@ -692,11 +736,11 @@ class CreditNoteForm(QWidget):
                 )
 
             if success:
-                QMessageBox.information(self, "Succès", "L'Avoir a été enregistré avec succès.")
+                QMessageBox.information(self, "Succes", "L'Avoir a ete enregistre avec succes.")
                 self.saved_successfully.emit()
                 self.reset_form()
             else:
-                QMessageBox.critical(self, "Erreur", f"Échec: {msg}")
+                QMessageBox.critical(self, "Erreur", f"Echec: {msg}")
 
         except Exception as e:
             logging.error(f"Save Error: {e}")
@@ -729,4 +773,4 @@ class CreditNoteForm(QWidget):
                 QMessageBox.warning(self, "Attention", "Veuillez remplir la référence (Réf Avoir).")
                 return
             
-            self.set_header_enabled(False)
+            self.save_header_only()
