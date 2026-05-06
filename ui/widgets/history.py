@@ -23,6 +23,81 @@ class MovementDetailsDialog(QDialog):
         self.init_ui()
 
     def init_ui(self):
+        self._build_details_view()
+        return
+
+    def _build_details_view(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        def value(*keys, default="-"):
+            for key in keys:
+                val = self.data.get(key)
+                if val not in (None, ""):
+                    return str(val)
+            return default
+
+        def add_row(form, label, text):
+            label_widget = QLabel(f"<b>{label}</b>")
+            value_widget = QLabel(text)
+            value_widget.setWordWrap(True)
+            value_widget.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            form.addRow(label_widget, value_widget)
+
+        type_map = {
+            'Purchase_Receive': 'Reception (Achat)',
+            'Patient_Test': 'Consommation',
+            'QC_Run': 'QC',
+            'Calibration': 'Calibration',
+            'Open_Pack': 'Ouverture',
+            'Adjustment': 'Ajustement',
+            'Waste': 'Perte',
+            'Transfer': 'Transfert',
+            'External_Transfer': 'Vente/Externe',
+            'Return_To_Supplier': 'Retour Fournisseur',
+        }
+
+        movement_type = value('Movement_Type')
+        qty_raw = self.data.get('Qty_Change')
+        try:
+            qty_text = f"{float(qty_raw):g} {value('Unit_Used', default='')}".strip()
+        except (TypeError, ValueError):
+            qty_text = value('Qty_Change')
+
+        main_group = QGroupBox("Operation")
+        main_form = QFormLayout(main_group)
+        add_row(main_form, "Date :", value('Transaction_Date')[:19])
+        add_row(main_form, "Type :", type_map.get(movement_type, movement_type))
+        add_row(main_form, "Quantite :", qty_text)
+        add_row(main_form, "Stock apres mouvement :", value('Stock_After', 'Batch_Historical_Stock', 'Historical_Stock'))
+        add_row(main_form, "Utilisateur :", value('Operator_Name'))
+        layout.addWidget(main_group)
+
+        product_group = QGroupBox("Produit et lot")
+        product_form = QFormLayout(product_group)
+        add_row(product_form, "Produit :", value('Product_Name'))
+        add_row(product_form, "Code-barres :", value('Batch_Barcode', 'Product_Barcode'))
+        add_row(product_form, "Lot :", value('Lot_Number'))
+        add_row(product_form, "Emplacement :", value('Location_Name'))
+        add_row(product_form, "Batch ID :", value('Batch_ID'))
+        layout.addWidget(product_group)
+
+        notes_group = QGroupBox("Notes")
+        notes_form = QFormLayout(notes_group)
+        add_row(notes_form, "Raison :", value('Reason_Name'))
+        add_row(notes_form, "Notes :", value('Notes'))
+        add_row(notes_form, "Mouvement ID :", value('Movement_ID', 'Log_ID'))
+        layout.addWidget(notes_group)
+
+        btn_close = QPushButton("Fermer")
+        btn_close.clicked.connect(self.accept)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+        return
+
         """
         بناء واجهة سجل حركات المخزون مع فلاتر شاملة وتنسيق عرض مرن.
         تم حل مشكلة ضيق القائمة المنسدلة وزيادة خيارات الفلترة.
