@@ -590,15 +590,21 @@ class ReceptionDialogLogicMixin:
             from database.inventory_batch_manager import InventoryBatchManager
             batch_mgr = InventoryBatchManager(self.manager.db)
 
-        if self.br_id and hasattr(batch_mgr, 'get_next_reception_barcode'):
-            next_barcode = batch_mgr.get_next_reception_barcode(self.br_id)
-            base_prefix  = f"BR{self.br_id}-"
+        po_id = self.po_data.get('PO_ID', '0')
+        if hasattr(batch_mgr, 'get_barcode_prefix_for_po'):
+            base_prefix = batch_mgr.get_barcode_prefix_for_po(po_id)
         else:
-            po_id        = self.po_data.get('PO_ID', '0')
-            next_barcode = batch_mgr.get_next_smart_barcode(po_id)
-            base_prefix  = str(po_id)
+            base_prefix = str(po_id)
 
-        serial = int(next_barcode[len(base_prefix):])
+        if self.br_id and hasattr(batch_mgr, 'get_next_reception_barcode'):
+            next_barcode = batch_mgr.get_next_reception_barcode(self.br_id, po_id=po_id)
+        else:
+            next_barcode = batch_mgr.get_next_smart_barcode(po_id)
+
+        if hasattr(batch_mgr, 'extract_smart_barcode_serial'):
+            serial = batch_mgr.extract_smart_barcode_serial(next_barcode, base_prefix) or 0
+        else:
+            serial = int(str(next_barcode)[len(base_prefix):])
 
         while self.is_barcode_exists_in_table(next_barcode):
             serial      += 1

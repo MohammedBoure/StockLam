@@ -20,6 +20,32 @@ class InventoryBatchManager:
         self.db = db_instance
         self.stock_movement_log = StockMovementLogManager(db_instance)
 
+    @staticmethod
+    def get_barcode_prefix_for_po(po_id):
+        """
+        Return the legacy reception barcode prefix.
+
+        PO_ID already contains the two-digit year and the annual order number
+        (example: 2618 for order 18 in 2026). Reception barcodes therefore use
+        PO_ID + a zero-padded serial: 2618001, 2618002, ...
+        """
+        po_text = str(po_id or "").strip()
+        if po_text and po_text != "0":
+            return po_text
+        return datetime.now().strftime('%y')
+
+    @staticmethod
+    def extract_smart_barcode_serial(barcode, prefix):
+        barcode_text = str(barcode or "")
+        prefix_text = str(prefix or "")
+        if not prefix_text or not barcode_text.startswith(prefix_text):
+            return None
+
+        serial_text = barcode_text[len(prefix_text):]
+        if not serial_text.isdigit():
+            return None
+        return int(serial_text)
+
 
     def _create_inventory_batch_legacy(self, product_id, br_id, lot_number, expiry_date, 
                                initial_stock_qty, location_id, date_received, 
@@ -36,7 +62,7 @@ class InventoryBatchManager:
 
             final_barcode = internal_barcode
             if not final_barcode:
-                prefix = f"BR{br_id}-" if br_id else (po_id if po_id else "STK")
+                prefix = self.get_barcode_prefix_for_po(po_id) if po_id else (f"BR{br_id}-" if br_id else "STK")
                 final_barcode = self.generate_smart_barcode(prefix, item_index)
 
             # التحقق من وجود نفس الباركود في نفس الموقع لدمج الكمية
@@ -81,7 +107,7 @@ class InventoryBatchManager:
                 cursor.close()
                 conn.close()
 
-    def get_next_smart_barcode(self, po_id):
+    def _get_next_smart_barcode_legacy(self, po_id):
         """
         تبحث في قاعدة البيانات عن آخر باركود لهذا الطلب وتعطي الرقم التالي مباشرة.
         """
@@ -110,7 +136,7 @@ class InventoryBatchManager:
             logging.error(f"Error getting next barcode: {e}")
             return f"{po_id}001"
 
-    def get_next_reception_barcode(self, br_id):
+    def _get_next_reception_barcode_legacy(self, br_id):
         """
         Generate a barcode in the scope of one reception voucher.
 
@@ -156,6 +182,82 @@ class InventoryBatchManager:
             logging.error(f"Error getting next reception barcode: {e}")
             return self.generate_smart_barcode(prefix, 1)
 
+    def get_next_smart_barcode(self, po_id):
+        """Return the next legacy barcode for a purchase order: PO_ID + 001."""
+        prefix = self.get_barcode_prefix_for_po(po_id)
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT Internal_Barcode FROM Inventory_Batches WHERE Internal_Barcode LIKE %s",
+                    (f"{prefix}%",)
+                )
+
+                max_serial = 0
+                for row in cursor.fetchall():
+                    barcode = row[0] if row else None
+                    serial = self.extract_smart_barcode_serial(barcode, prefix)
+                    if serial is not None:
+                        max_serial = max(max_serial, serial)
+
+                next_serial = max_serial + 1
+                next_barcode = self.generate_smart_barcode(prefix, next_serial)
+                while self.is_barcode_exists_in_db(next_barcode):
+                    next_serial += 1
+                    next_barcode = self.generate_smart_barcode(prefix, next_serial)
+                return next_barcode
+
+        except Exception as e:
+            logging.error(f"Error getting next barcode: {e}")
+            return self.generate_smart_barcode(prefix, 1)
+
+    def get_next_reception_barcode(self, br_id, po_id=None):
+        """
+        Return the next barcode for a reception while preserving the old shape.
+
+        The serial is first based on existing rows in the current BR, then it
+        skips any value already used anywhere in Inventory_Batches. This keeps
+        BR editing stable and prevents collisions across multiple BRs for the
+        same PO.
+        """
+        prefix = None
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                if not po_id and br_id:
+                    cursor.execute("SELECT PO_ID FROM Reception_Log WHERE BR_ID = %s", (br_id,))
+                    row = cursor.fetchone()
+                    po_id = row[0] if row else None
+
+                prefix = self.get_barcode_prefix_for_po(po_id) if po_id else f"BR{br_id}-"
+                cursor.execute(
+                    """
+                    SELECT Internal_Barcode
+                    FROM Inventory_Batches
+                    WHERE BR_ID = %s AND Internal_Barcode LIKE %s
+                    """,
+                    (br_id, f"{prefix}%")
+                )
+
+                max_serial = 0
+                for row in cursor.fetchall():
+                    barcode = row[0] if row else None
+                    serial = self.extract_smart_barcode_serial(barcode, prefix)
+                    if serial is not None:
+                        max_serial = max(max_serial, serial)
+
+                next_serial = max_serial + 1
+                next_barcode = self.generate_smart_barcode(prefix, next_serial)
+                while self.is_barcode_exists_in_db(next_barcode):
+                    next_serial += 1
+                    next_barcode = self.generate_smart_barcode(prefix, next_serial)
+                return next_barcode
+
+        except Exception as e:
+            logging.error(f"Error getting next reception barcode: {e}")
+            if not prefix:
+                prefix = self.get_barcode_prefix_for_po(po_id) if po_id else f"BR{br_id}-"
+            return self.generate_smart_barcode(prefix, 1)
 
     def is_barcode_exists_in_db(self, barcode):
         """التحقق مما إذا كان الباركود موجوداً في قاعدة البيانات"""
@@ -656,7 +758,7 @@ class InventoryBatchManager:
             cursor = conn.cursor()
 
             # 1. توليد الباركود إذا لم يكن موجوداً
-            prefix = f"BR{br_id}-" if br_id else (po_id if po_id else "STK")
+            prefix = self.get_barcode_prefix_for_po(po_id) if po_id else (f"BR{br_id}-" if br_id else "STK")
             final_barcode = internal_barcode
             if not final_barcode:
                 # دالة التوليد (تأكد من وجودها)

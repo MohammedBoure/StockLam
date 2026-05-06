@@ -60,10 +60,27 @@ class ReceptionLogManager:
         cursor.execute(query, tuple(params))
         return cursor.fetchone() is not None
 
-    def _generate_next_reception_barcode(self, cursor, br_id, exclude_batch_id=None):
-        prefix = f"BR{br_id}-"
-        query = "SELECT Internal_Barcode FROM Inventory_Batches WHERE Internal_Barcode LIKE %s"
-        params = [f"{prefix}%"]
+    def _get_reception_po_id(self, cursor, br_id, fallback_po_id=None):
+        if fallback_po_id:
+            return fallback_po_id
+        if not br_id:
+            return None
+
+        cursor.execute("SELECT PO_ID FROM Reception_Log WHERE BR_ID = %s", (br_id,))
+        row = cursor.fetchone()
+        if isinstance(row, dict):
+            return row.get('PO_ID')
+        return row[0] if row else None
+
+    def _generate_next_reception_barcode(self, cursor, br_id, exclude_batch_id=None, po_id=None):
+        po_id = self._get_reception_po_id(cursor, br_id, po_id)
+        prefix = InventoryBatchManager.get_barcode_prefix_for_po(po_id) if po_id else f"BR{br_id}-"
+        query = """
+            SELECT Internal_Barcode
+            FROM Inventory_Batches
+            WHERE BR_ID = %s AND Internal_Barcode LIKE %s
+        """
+        params = [br_id, f"{prefix}%"]
         if exclude_batch_id:
             query += " AND Batch_ID <> %s"
             params.append(exclude_batch_id)
@@ -73,12 +90,9 @@ class ReceptionLogManager:
         max_serial = 0
         for row in cursor.fetchall():
             barcode = self._row_barcode(row)
-            if not barcode:
-                continue
-            try:
-                max_serial = max(max_serial, int(str(barcode)[len(prefix):]))
-            except (TypeError, ValueError):
-                continue
+            serial = InventoryBatchManager.extract_smart_barcode_serial(barcode, prefix)
+            if serial is not None:
+                max_serial = max(max_serial, serial)
 
         serial = max_serial + 1
         barcode = InventoryBatchManager.generate_smart_barcode(prefix, serial)
@@ -87,13 +101,20 @@ class ReceptionLogManager:
             barcode = InventoryBatchManager.generate_smart_barcode(prefix, serial)
         return barcode
 
-    def _allocate_reception_barcode(self, cursor, br_id, preferred_barcode=None, exclude_batch_id=None):
+    def _allocate_reception_barcode(self, cursor, br_id, preferred_barcode=None, exclude_batch_id=None, po_id=None):
+        po_id = self._get_reception_po_id(cursor, br_id, po_id)
+        expected_prefix = (
+            InventoryBatchManager.get_barcode_prefix_for_po(po_id)
+            if po_id else f"BR{br_id}-"
+        )
         preferred_barcode = str(preferred_barcode).strip() if preferred_barcode else None
         if preferred_barcode and preferred_barcode != '---':
-            if not self._barcode_exists(cursor, preferred_barcode, exclude_batch_id):
+            is_existing_row = exclude_batch_id is not None
+            has_expected_prefix = preferred_barcode.startswith(expected_prefix)
+            if (is_existing_row or has_expected_prefix) and not self._barcode_exists(cursor, preferred_barcode, exclude_batch_id):
                 return preferred_barcode
 
-        return self._generate_next_reception_barcode(cursor, br_id, exclude_batch_id)
+        return self._generate_next_reception_barcode(cursor, br_id, exclude_batch_id, po_id)
 
     @staticmethod
     def _is_duplicate_key_error(error):
@@ -302,7 +323,8 @@ class ReceptionLogManager:
                 barcode_to_save = self._allocate_reception_barcode(
                     cursor,
                     line_data['BR_ID'],
-                    preferred_barcode
+                    preferred_barcode,
+                    po_id=po_id_val
                 )
 
                 params = (
@@ -392,7 +414,8 @@ class ReceptionLogManager:
                 cursor,
                 line_data['BR_ID'],
                 line_data.get('Internal_Barcode'),
-                batch_id
+                batch_id,
+                po_id=line_data.get('PO_ID')
             )
 
             # 2. تحديث الباتش
@@ -446,7 +469,6 @@ class ReceptionLogManager:
             conn = self.db.get_raw_connection()
             conn.start_transaction()
             cursor = conn.cursor()
-
             # التحقق من الاستهلاك
             cursor.execute("SELECT Quantity_Initial, Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s", (batch_id,))
             row = cursor.fetchone() # returns tuple in raw cursor
@@ -568,10 +590,14 @@ class ReceptionLogManager:
         t_ttc = (t_ht - t_rem) + t_tva
 
         conn = None
+        cursor = None
+        barcode_lock_acquired = False
         try:
             conn = self.db.get_raw_connection()
             conn.start_transaction()
             cursor = conn.cursor()
+            self._acquire_barcode_generation_lock(cursor)
+            barcode_lock_acquired = True
 
             query = """
                 INSERT INTO Reception_Log 
@@ -583,17 +609,18 @@ class ReceptionLogManager:
                                   supplier_id, t_ht, t_tva, t_ttc))
             br_id = cursor.lastrowid
 
-            from .inventory_batch_manager import InventoryBatchManager
-
             for i, b in enumerate(data.get('Batches', [])):
                 f = data.get('Financials', [])[i] if 'Financials' in data else {}
                 
                 # استخدام الكود القادم من الواجهة (الذي يحتوي على معرف الطلب)
-                smart_barcode = b.get('Internal_Barcode')
+                smart_barcode = self._allocate_reception_barcode(
+                    cursor,
+                    br_id,
+                    b.get('Internal_Barcode'),
+                    po_id=po_id
+                )
                 
                 # إذا لم ترسل الواجهة باركود، نقوم بتوليده هنا كخطة بديلة
-                if not smart_barcode:
-                    smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{br_id}-", i + 1)
 
                 batch_query = """
                     INSERT INTO Inventory_Batches 
@@ -614,6 +641,8 @@ class ReceptionLogManager:
                 # تم حذف سطر الـ UPDATE هنا لضمان عدم ضياع الباركود الذكي
 
             conn.commit()
+            self._release_barcode_generation_lock(cursor)
+            barcode_lock_acquired = False
             self._recalculate_reception_totals(br_id)
             return True
         except Exception as e:
@@ -621,6 +650,8 @@ class ReceptionLogManager:
             logging.error(f"Error process_reception: {e}")
             return False
         finally:
+            if cursor and barcode_lock_acquired:
+                self._release_barcode_generation_lock(cursor)
             if conn: conn.close()
             
     def get_reception_summary(self, br_id):
@@ -735,9 +766,13 @@ class ReceptionLogManager:
         
     def record_reception_transaction(self, data):
         conn = self.db.get_raw_connection()
+        cursor = None
+        barcode_lock_acquired = False
         try:
             conn.start_transaction()
             cursor = conn.cursor()
+            self._acquire_barcode_generation_lock(cursor)
+            barcode_lock_acquired = True
 
             reception_query = """
                 INSERT INTO Reception_Log 
@@ -748,11 +783,14 @@ class ReceptionLogManager:
                                            data.get('Reception_Date'), data.get('Variance_Notes')))
             br_id = cursor.lastrowid 
 
-            from .inventory_batch_manager import InventoryBatchManager
-
             for i, b in enumerate(data.get('Batches', [])):
                 # توليد الباركود الذكي لكل منتج في الوصل
-                smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{br_id}-", i + 1)
+                smart_barcode = self._allocate_reception_barcode(
+                    cursor,
+                    br_id,
+                    b.get('Internal_Barcode'),
+                    po_id=data.get('PO_ID')
+                )
 
                 batch_query = """
                     INSERT INTO Inventory_Batches 
@@ -773,6 +811,8 @@ class ReceptionLogManager:
                 """, (b['Product_ID'], batch_id, b['Received_Qty'], f"Réception BR #{br_id}"))
 
             conn.commit()
+            self._release_barcode_generation_lock(cursor)
+            barcode_lock_acquired = False
             self._recalculate_reception_totals(br_id)
             return True
         except Exception as e:
@@ -780,6 +820,8 @@ class ReceptionLogManager:
             logging.error(f"Error recording reception: {e}")
             return False
         finally:
+            if cursor and barcode_lock_acquired:
+                self._release_barcode_generation_lock(cursor)
             if conn: conn.close()
 
     def process_full_reception(self, header_data, items, user_id=None):
@@ -821,7 +863,8 @@ class ReceptionLogManager:
                 smart_barcode = self._allocate_reception_barcode(
                     cursor,
                     receipt_id,
-                    item.get('Internal_Barcode')
+                    item.get('Internal_Barcode'),
+                    po_id=po_id
                 )
 
                 query_batch = """
@@ -922,10 +965,14 @@ class ReceptionLogManager:
         2. نسجل حركة جديدة بالفرق (Delta) باسم المستخدم الجديد الذي قام بالتعديل.
         """
         conn = None
+        cursor = None
+        barcode_lock_acquired = False
         try:
             conn = self.db.get_raw_connection()
             conn.start_transaction()
             cursor = conn.cursor(dictionary=True)
+            self._acquire_barcode_generation_lock(cursor)
+            barcode_lock_acquired = True
 
             # 1. تحديث الرأس (Header) - يتم تحديثه لأنه يمثل الحالة الحالية للفاتورة
             query_update_header = """
@@ -967,7 +1014,6 @@ class ReceptionLogManager:
                 cursor.execute(f"DELETE FROM Inventory_Batches WHERE Batch_ID IN ({format_strings})", tuple(batches_to_delete))
 
             # 4. التعديل والإضافة
-            from .inventory_batch_manager import InventoryBatchManager
             po_id = header_data.get('PO_ID') or br_id
             edit_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -1001,11 +1047,18 @@ class ReceptionLogManager:
                             Internal_Barcode=%s
                         WHERE Batch_ID=%s
                     """
+                    barcode_to_save = self._allocate_reception_barcode(
+                        cursor,
+                        br_id,
+                        item.get('Internal_Barcode'),
+                        exclude_batch_id=bid,
+                        po_id=po_id
+                    )
                     cursor.execute(update_query, (
                         item['Product_ID'], item['Location_ID'], item.get('Lot_Number'), item['Expiry_Date'],
                         new_initial, new_current, item.get('Line_Note', ''),
                         item['Unit_Price_Received'], item['Tax_Rate_Percent'], item.get('Discount_Percent', 0),
-                        item.get('Internal_Barcode'), bid
+                        barcode_to_save, bid
                     ))
 
                     # === التغيير الجذري هنا: تسجيل الفرق كحركة جديدة ===
@@ -1034,9 +1087,12 @@ class ReceptionLogManager:
 
                 else:
                     # === إضافة سطر جديد ===
-                    smart_barcode = item.get('Internal_Barcode')
-                    if not smart_barcode or smart_barcode == '---':
-                         smart_barcode = InventoryBatchManager.generate_smart_barcode(f"BR{br_id}-", i + 1)
+                    smart_barcode = self._allocate_reception_barcode(
+                        cursor,
+                        br_id,
+                        item.get('Internal_Barcode'),
+                        po_id=po_id
+                    )
 
                     batch_query = """
                         INSERT INTO Inventory_Batches 
@@ -1066,6 +1122,8 @@ class ReceptionLogManager:
                     )
 
             conn.commit()
+            self._release_barcode_generation_lock(cursor)
+            barcode_lock_acquired = False
             return True, "Mise à jour réussie (Historique conservé)."
 
         except Exception as e:
@@ -1073,6 +1131,8 @@ class ReceptionLogManager:
             logging.error(f"Error update_reception: {e}")
             return False, str(e)
         finally:
+            if cursor and barcode_lock_acquired:
+                self._release_barcode_generation_lock(cursor)
             if conn: conn.close()
 
     def delete_reception(self, br_id: int) -> Tuple[bool, str]:
