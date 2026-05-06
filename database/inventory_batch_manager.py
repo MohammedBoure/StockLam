@@ -454,18 +454,14 @@ class InventoryBatchManager:
                 open_expiry = min(official_expiry, calculated_expiry) if official_expiry else calculated_expiry
 
             # خصم من المخزن المغلق
+            new_parent_qty = Decimal(str(batch['Quantity_Current'])) - qty_to_open
+            parent_status = 'Depleted' if new_parent_qty <= 0 else batch.get('Status', 'Available')
             cursor.execute("""
                 UPDATE Inventory_Batches
-                SET Quantity_Current = Quantity_Current - %s,
-                    Status = CASE
-                        WHEN Quantity_Current - %s <= 0 THEN 'Depleted'
-                        ELSE Status
-                    END
-                WHERE Batch_ID = %s AND Quantity_Current >= %s
-            """, (qty_to_open, qty_to_open, data['Batch_ID'], qty_to_open))
-            if cursor.rowcount == 0:
-                conn.rollback()
-                return False
+                SET Quantity_Current = %s,
+                    Status = %s
+                WHERE Batch_ID = %s
+            """, (new_parent_qty, parent_status, data['Batch_ID']))
 
             # إنشاء الحاوية المفتوحة (المنطق المختصر)
             cursor.execute("""
@@ -525,7 +521,7 @@ class InventoryBatchManager:
                 
                 # تصحيح SQL: تحديد p أو b لمنع الغموض
                 query = """
-                    SELECT b.Product_ID, p.Stock_Unit 
+                    SELECT b.Product_ID, b.Quantity_Current, b.Status, p.Stock_Unit
                     FROM Inventory_Batches b 
                     JOIN Products_Master p ON b.Product_ID = p.Product_ID 
                     WHERE b.Batch_ID = %s
@@ -539,19 +535,23 @@ class InventoryBatchManager:
                     conn.rollback()
                     return False
                 
-                product_id, unit_used = res
+                product_id, current_qty, current_status, unit_used = res
+                current_qty = Decimal(str(current_qty))
+                if current_qty < qty_to_consume:
+                    logging.warning(f"Insufficient quantity in batch {batch_id}")
+                    conn.rollback()
+                    return False
                 
                 # تنفيذ عملية الخصم
+                new_qty = current_qty - qty_to_consume
+                new_status = 'Depleted' if new_qty <= 0 else current_status
                 update_query = """
                     UPDATE Inventory_Batches 
-                    SET Quantity_Current = Quantity_Current - %s,
-                        Status = CASE
-                            WHEN Quantity_Current - %s <= 0 THEN 'Depleted'
-                            ELSE Status
-                        END
-                    WHERE Batch_ID = %s AND Quantity_Current >= %s
+                    SET Quantity_Current = %s,
+                        Status = %s
+                    WHERE Batch_ID = %s
                 """
-                cursor.execute(update_query, (qty_to_consume, qty_to_consume, batch_id, qty_to_consume))
+                cursor.execute(update_query, (new_qty, new_status, batch_id))
                 
                 if cursor.rowcount == 0:
                     logging.warning(f"Insufficient quantity in batch {batch_id}")
@@ -653,15 +653,14 @@ class InventoryBatchManager:
                     unit_label = original.get('Stock_Unit', 'U')
 
                     # 2. خصم الكمية من المصدر
+                    source_new_qty = Decimal(str(original['Quantity_Current'])) - Decimal(str(qty))
+                    source_status = 'Depleted' if source_new_qty <= 0 else original.get('Status', 'Available')
                     cursor.execute("""
                         UPDATE Inventory_Batches 
-                        SET Quantity_Current = Quantity_Current - %s,
-                            Status = CASE
-                                WHEN Quantity_Current - %s <= 0 THEN 'Depleted'
-                                ELSE Status
-                            END
+                        SET Quantity_Current = %s,
+                            Status = %s
                         WHERE Batch_ID = %s
-                    """, (qty, qty, batch_id))
+                    """, (source_new_qty, source_status, batch_id))
 
                     # 3. معالجة الوجهة (دمج أو إنشاء)
                     cursor.execute("""
