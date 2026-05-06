@@ -40,6 +40,10 @@ class InvoiceEditorWidget(QWidget):
         self.current_id = None
         self.batches_cache = []
         self.search_map = {}
+        self.barcode_map = {}
+        self.current_transfer_batch_ids = set()
+        self.current_transfer_qty_by_batch = {}
+        self.current_transfer_details = []
         
         self.init_ui()
         self.apply_internal_styles()
@@ -191,7 +195,7 @@ class InvoiceEditorWidget(QWidget):
     # =========================================================================
 
 
-    def load_transfer_data(self, transfer_id):
+    def load_transfer_data(self, transfer_id, details=None):
         try:
             mgr = self.manager.external_transfers
             all_transfers = mgr.get_all_transfers()
@@ -202,7 +206,8 @@ class InvoiceEditorWidget(QWidget):
                 if index >= 0: self.combo_partner.setCurrentIndex(index)
                 # تعيين التاريخ ...
 
-            details = mgr.get_transfer_details(transfer_id)
+            if details is None:
+                details = mgr.get_transfer_details(transfer_id)
             self.table.setRowCount(0)
             
             for item in details:
@@ -222,12 +227,29 @@ class InvoiceEditorWidget(QWidget):
         except Exception as e:
             logging.error(f"Error loading: {e}", exc_info=True)
 
+    def prepare_transfer_scope(self, transfer_id):
+        self.current_transfer_batch_ids = set()
+        self.current_transfer_qty_by_batch = {}
+        self.current_transfer_details = []
+
+        if not transfer_id or not hasattr(self.manager, 'external_transfers'):
+            return
+
+        self.current_transfer_details = self.manager.external_transfers.get_transfer_details(transfer_id)
+        for item in self.current_transfer_details:
+            batch_id = item.get('Batch_ID')
+            if batch_id is None:
+                continue
+            self.current_transfer_batch_ids.add(batch_id)
+            self.current_transfer_qty_by_batch[batch_id] = float(item.get('Qty_Transferred') or 0)
+
     def load_context(self, transfer_id=None):
         """تحميل الواجهة وتحديد هل نحتاج للمنتجات الصفرية أم لا."""
         self.current_id = transfer_id
         self.table.setRowCount(0)
         
         # إذا كان هناك ID، فهذا يعني "تعديل"، لذا نحتاج لجلب المنتجات الصفرية
+        self.prepare_transfer_scope(transfer_id)
         include_zero = True if transfer_id else False
         self.refresh_batches_cache(include_zero=include_zero)
         
@@ -237,7 +259,7 @@ class InvoiceEditorWidget(QWidget):
             # التعديل هنا: عرض المعرف المنسق في العنوان
             formatted_ref = self.format_id(transfer_id)
             self.lbl_title.setText(f"MODIFICATION TRANSACTION N° {formatted_ref}")
-            self.load_transfer_data(transfer_id)
+            self.load_transfer_data(transfer_id, self.current_transfer_details)
         else:
             self.lbl_title.setText("NOUVELLE TRANSACTION / BL")
             self.inp_date.setDate(QDate.currentDate())
@@ -277,9 +299,10 @@ class InvoiceEditorWidget(QWidget):
         """
         if hasattr(self.manager, 'batches'):
             # إذا كنا في وضع التعديل، نطلب من المدير جلب حتى المنتجات الصفرية
-            self.batches_cache = self.manager.batches.get_all_batches_with_details(
+            all_batches = self.manager.batches.get_all_batches_with_details(
                 include_zero_stock=include_zero
             )
+            self.batches_cache = self.filter_batches_for_transfer_scope(all_batches)
             
             suggestions = []
             self.search_map = {}
@@ -287,6 +310,8 @@ class InvoiceEditorWidget(QWidget):
 
             for b in self.batches_cache:
                 qty = float(b['Quantity_Current'])
+                batch_id = b.get('Batch_ID')
+                is_current_transfer_batch = batch_id in self.current_transfer_batch_ids
                 
                 # بناء الفهارس للبحث السريع
                 if b.get('Internal_Barcode'):
@@ -296,13 +321,27 @@ class InvoiceEditorWidget(QWidget):
 
                 # في قائمة البحث (الاقتراحات)، نظهر فقط ما هو أكبر من الصفر 
                 # لكي لا يختار المستخدم منتجاً منتهياً بالخطأ في فاتورة جديدة
-                if qty > 0:
+                # Edit mode also keeps lots already present in this BL.
+                if qty > 0 or is_current_transfer_batch:
                     barcode = b.get('Internal_Barcode') or b.get('Barcode') or "---"
                     txt = f"[{barcode}] {b['Product_Name']} | Lot: {b['Lot_Number']} | 📍 {b.get('Location_Name','-')}"
                     suggestions.append(txt)
                     self.search_map[txt] = b
 
             self.completer.setModel(QStringListModel(suggestions))
+
+    def filter_batches_for_transfer_scope(self, batches):
+        if not self.current_id:
+            return batches
+
+        scoped_batches = []
+        for batch in batches:
+            batch_id = batch.get('Batch_ID')
+            qty = float(batch.get('Quantity_Current') or 0)
+            if qty > 0 or batch_id in self.current_transfer_batch_ids:
+                scoped_batches.append(batch)
+        return scoped_batches
+
     def on_search_selected(self, text):
         batch = self.search_map.get(text)
         if batch:
@@ -381,7 +420,13 @@ class InvoiceEditorWidget(QWidget):
 
         # بناء مربعات الإدخال
         current_stock = int(float(batch.get('Quantity_Current', 0)))
-        max_allowed = current_stock + (initial_qty if self.current_id else 0)
+        previous_qty = int(float(self.current_transfer_qty_by_batch.get(batch['Batch_ID'], 0)))
+        max_allowed = current_stock + previous_qty
+        if max_allowed <= 0:
+            QMessageBox.warning(self, "Stock insuffisant", "Ce lot n'est pas disponible pour cette transaction.")
+            return
+        if initial_qty > max_allowed:
+            initial_qty = max_allowed
         
         sb_qty = QSpinBox()
         sb_qty.setRange(1, max_allowed); sb_qty.setValue(initial_qty); sb_qty.setAlignment(Qt.AlignCenter)
