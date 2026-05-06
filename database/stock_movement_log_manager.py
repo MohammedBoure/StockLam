@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, date
 from typing import List, Dict, Optional, Any
 from decimal import Decimal
+from .base.config import get_env_bool
 from .system_logger import log_methods 
 
 @log_methods()
@@ -14,13 +15,20 @@ class StockMovementLogManager:
     يسجل كل عملية تؤثر على المخزون (دخول، خروج، تلف، تعديل) لتوفير سجل تدقيق كامل.
     """
 
+    _schema_checked = False
+
     def __init__(self, db_instance):
         self.db = db_instance
-        self._ensure_schema()
+        if get_env_bool("DB_SCHEMA_CHECK_ON_STARTUP", default=False):
+            self._ensure_schema()
+        else:
+            logging.debug("Stock movement schema check skipped by startup config.")
 
 
     def _ensure_schema(self):
         """تأكد من وجود عمود Stock_After لتسجيل القيم بشكل صحيح وجديد"""
+        if StockMovementLogManager._schema_checked:
+            return
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -28,6 +36,7 @@ class StockMovementLogManager:
                 if not cursor.fetchone():
                     logging.info("Adding Stock_After column to Stock_Movement_Log...")
                     cursor.execute("ALTER TABLE Stock_Movement_Log ADD COLUMN Stock_After DECIMAL(15, 2) NULL;")
+                StockMovementLogManager._schema_checked = True
         except Exception as e:
             logging.error(f"Schema check error: {e}")
 

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
-from .config import get_external_path
+from .config import get_env_bool, get_external_path
 
 
 class Database:
@@ -64,9 +64,18 @@ class Database:
         except Exception as e:
             logging.error(f"Failed to create SQLAlchemy engine: {e}")
 
+        self.schema_check_on_startup = get_env_bool(
+            "DB_SCHEMA_CHECK_ON_STARTUP",
+            default=False
+        )
         is_local = self.db_config['host'] in ['127.0.0.1', 'localhost']
-        if is_local:
+        if is_local and self.schema_check_on_startup:
             self._initialize_schema()
+        else:
+            logging.info(
+                "Schema startup checks skipped. Set DB_SCHEMA_CHECK_ON_STARTUP=true "
+                "in .env to run migrations."
+            )
 
     def _ensure_database_exists(self):
         try:

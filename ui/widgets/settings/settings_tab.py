@@ -443,6 +443,14 @@ class SettingsTab(QWidget):
     # Rest of the functions remain the same
     def export_to_env_file(self):
         try:
+            schema_check = "false"
+            if os.path.exists(ENV_FILE):
+                with open(ENV_FILE, 'r', encoding='utf-8') as existing_env:
+                    for line in existing_env:
+                        if line.strip().startswith("DB_SCHEMA_CHECK_ON_STARTUP="):
+                            schema_check = line.strip().split("=", 1)[1] or "false"
+                            break
+
             with open(ENV_FILE, 'w', encoding='utf-8') as f:
                 f.write(f"FLASK_ENV={self.combo_env.currentText()}\n")
                 f.write(f"SECRET_KEY={self.txt_secret.text()}\n")
@@ -452,6 +460,7 @@ class SettingsTab(QWidget):
                 f.write(f"DB_USER={self.txt_db_user.text()}\n")
                 f.write(f"DB_PASSWORD={self.txt_db_pass.text()}\n")
                 f.write(f"DB_NAME={self.txt_db_name.text()}\n")
+                f.write(f"DB_SCHEMA_CHECK_ON_STARTUP={schema_check}\n")
             QMessageBox.information(self, "Succès", "Fichier .env exporté avec succès.")
         except Exception as e:
             QMessageBox.critical(self, "Erreur", str(e))
