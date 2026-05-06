@@ -1285,6 +1285,31 @@ class ReceptionLogManager:
             import logging
             logging.error(f"Erreur get_reception_with_batches_by_ref: {e}")
             raise e
+
+    def get_reception_with_batches_by_id(self, br_id):
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM Reception_Log WHERE BR_ID = %s", (br_id,))
+                header = cursor.fetchone()
+                if not header:
+                    return None
+
+                query_batches = """
+                    SELECT
+                        b.Batch_ID, b.Product_ID, b.Lot_Number, b.Expiry_Date,
+                        b.Quantity_Current, b.Unit_Price_Received, b.Internal_Barcode,
+                        p.Product_Name, p.Barcode
+                    FROM Inventory_Batches b
+                    JOIN Products_Master p ON b.Product_ID = p.Product_ID
+                    WHERE b.BR_ID = %s AND b.Quantity_Initial > 0
+                """
+                cursor.execute(query_batches, (br_id,))
+                return {'Header': header, 'Batches': cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Erreur get_reception_with_batches_by_id: {e}")
+            raise e
+
     def get_reception_by_id(self, br_id):
         """جلب بيانات رأس وصل استلام محدد بواسطة معرفه"""
         with self.db.get_db_connection() as conn:

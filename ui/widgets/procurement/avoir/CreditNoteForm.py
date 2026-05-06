@@ -264,6 +264,31 @@ class CreditNoteForm(QWidget):
                 
         self.completer.setModel(QStringListModel(search_list))
 
+    def is_reception_scoped(self):
+        return bool(self.linked_br_id) or self.current_reception_mode
+
+    def apply_reception_scope(self, data):
+        header = data.get('Header', {}) if data else {}
+        batches = data.get('Batches', []) if data else []
+
+        self.current_reception_mode = True
+        self.reception_batches_cache = batches
+        self.linked_br_id = header.get('BR_ID') or self.linked_br_id
+
+        supplier_id = header.get('Supplier_ID')
+        idx = self.combo_supplier.findData(supplier_id)
+        if idx >= 0:
+            self.combo_supplier.setCurrentIndex(idx)
+            self.combo_supplier.setEnabled(False)
+
+        br_ref = header.get('Supplier_Invoice_Ref') or header.get('Supplier_BL_Ref') or str(self.linked_br_id or "")
+        self.txt_search_br.setText(br_ref)
+        self.txt_search_br.setStyleSheet("border: 2px solid #27ae60; background-color: #e8f8f5;")
+
+        self.update_completer(self.reception_batches_cache)
+        self.lbl_search_info.setText(f"Recherche (Limitee au Bon #{self.linked_br_id}):")
+        self.lbl_search_info.setStyleSheet("color: #d35400; font-weight: bold;")
+
     def on_barcode_scanned(self):
         text = self.txt_search.text().strip()
         if text: self.find_product(text)
@@ -274,7 +299,8 @@ class CreditNoteForm(QWidget):
     def find_product(self, query):
         matches = []
         query = query.lower().strip()
-        source_list = self.reception_batches_cache if self.current_reception_mode else self.all_products_cache
+        reception_scoped = self.is_reception_scoped()
+        source_list = self.reception_batches_cache if reception_scoped else self.all_products_cache
         
         for p in source_list:
             p_name = str(p.get('Product_Name', '')).lower()
@@ -288,7 +314,7 @@ class CreditNoteForm(QWidget):
 
         if not matches:
             self.selected_product = None
-            self.lbl_product_name.setText("❌ Produit introuvable" + (" (dans ce Bon)" if self.current_reception_mode else ""))
+            self.lbl_product_name.setText("❌ Produit introuvable" + (" (dans ce Bon)" if reception_scoped else ""))
             self.clear_entry_fields(keep_search=True)
             return
 
@@ -319,7 +345,7 @@ class CreditNoteForm(QWidget):
                 self.date_expiry.setDate(expiry_date)
             except: pass
         
-        if self.current_reception_mode:
+        if self.is_reception_scoped():
             self.txt_lot.setText(lot)
             self.txt_lot.setReadOnly(True)
             self.txt_lot.setStyleSheet("background-color: #ecf0f1; color: #7f8c8d;")
@@ -341,7 +367,7 @@ class CreditNoteForm(QWidget):
         is_return = (self.combo_type.currentData() == "Return_Goods")
         self.txt_lot.setEnabled(is_return)
         self.date_expiry.setEnabled(is_return)
-        if self.current_reception_mode:
+        if self.is_reception_scoped():
             self.txt_lot.setReadOnly(True)
 
     def load_line_data(self, row, col):
@@ -353,7 +379,7 @@ class CreditNoteForm(QWidget):
         product_data = item_id.data(Qt.UserRole)
         if not product_data:
             p_id = int(item_id.text())
-            source = self.reception_batches_cache if self.current_reception_mode else self.all_products_cache
+            source = self.reception_batches_cache if self.is_reception_scoped() else self.all_products_cache
             product_data = next((p for p in source if p['Product_ID'] == p_id), None)
         
         if product_data:
@@ -495,12 +521,12 @@ class CreditNoteForm(QWidget):
             self.lbl_product_name.setText("---")
             self.selected_product = None
         
-        if not self.current_reception_mode:
+        if not self.is_reception_scoped():
             self.txt_lot.clear()
         
         self.spin_qty.setValue(0)
         
-        if not self.current_reception_mode:
+        if not self.is_reception_scoped():
             self.spin_price.setValue(0)
             
         self.txt_search.setFocus()
@@ -546,20 +572,7 @@ class CreditNoteForm(QWidget):
                 QMessageBox.warning(self, "Vide", "Cette réception ne contient aucun produit.")
                 return
 
-            self.current_reception_mode = True
-            self.reception_batches_cache = batches
-            self.linked_br_id = header.get('BR_ID')
-            
-            # ملء المورد وقفله فقط (لأنه ثابت من وصل الاستلام)
-            supplier_id = header.get('Supplier_ID')
-            idx = self.combo_supplier.findData(supplier_id)
-            if idx >= 0: 
-                self.combo_supplier.setCurrentIndex(idx)
-                self.combo_supplier.setEnabled(False)
-
-            invoice_ref = header.get('Supplier_Invoice_Ref') or header.get('Supplier_BL_Ref') or str(header.get('BR_ID'))
-            self.txt_search_br.setText(invoice_ref)
-            
+            self.apply_reception_scope(data)
             # [تعديل] تصفير حقل المرجع ليتم إدخاله يدوياً من الورقة
             self.txt_ref.setText("") 
             self.txt_ref.setPlaceholderText("Saisissez la Réf Avoir ici...")
@@ -567,11 +580,7 @@ class CreditNoteForm(QWidget):
             idx_type = self.combo_type.findData("Return_Goods")
             self.combo_type.setCurrentIndex(idx_type)
 
-            self.update_completer(self.reception_batches_cache)
             self.lbl_search_info.setText(f"Recherche (Limité au Bon #{header.get('BR_ID')}):")
-            self.lbl_search_info.setStyleSheet("color: #d35400; font-weight: bold;")
-            
-            self.txt_search_br.setStyleSheet("border: 2px solid #27ae60; background-color: #e8f8f5;")
 
             QMessageBox.information(self, "Liaison Réussie", 
                 f"L'Avoir a été lié au Bon de Réception #{self.linked_br_id}.\n"
@@ -617,10 +626,14 @@ class CreditNoteForm(QWidget):
             if idx_type >= 0: self.combo_type.setCurrentIndex(idx_type)
 
             if self.linked_br_id:
-                reception_info = self.manager.reception.get_reception_by_id(self.linked_br_id)
-                if reception_info:
-                    br_ref = reception_info.get('Supplier_Invoice_Ref') or reception_info.get('Supplier_BL_Ref')
-                    self.txt_search_br.setText(br_ref)
+                br_data = self.manager.reception.get_reception_with_batches_by_id(self.linked_br_id)
+                if br_data:
+                    self.apply_reception_scope(br_data)
+                else:
+                    reception_info = self.manager.reception.get_reception_by_id(self.linked_br_id)
+                    if reception_info:
+                        br_ref = reception_info.get('Supplier_Invoice_Ref') or reception_info.get('Supplier_BL_Ref')
+                        self.txt_search_br.setText(br_ref)
 
             for item in details:
                 row = self.table.rowCount()
