@@ -44,6 +44,9 @@ class InvoiceEditorWidget(QWidget):
         self.current_transfer_batch_ids = set()
         self.current_transfer_qty_by_batch = {}
         self.current_transfer_details = []
+        self.is_loading_transfer = False
+        self.is_persisting_transfer = False
+        self.last_persist_signature = None
         
         self.init_ui()
         self.apply_internal_styles()
@@ -179,20 +182,9 @@ class InvoiceEditorWidget(QWidget):
         self.lbl_total = QLabel("0.00 DA")
         self.lbl_total.setStyleSheet("font-size: 26px; font-weight: bold; color: #c0392b;")
         
-        self.btn_save = QPushButton("  VALIDER ET ENREGISTRER")
-        self.btn_save.setIcon(qta.icon("fa5s.save", color="white"))
-        self.btn_save.setMinimumHeight(50)
-        self.btn_save.setCursor(Qt.PointingHandCursor)
-        self.btn_save.setStyleSheet("""
-            QPushButton { background-color: #007572; color: white; border-radius: 25px; padding: 0 40px; font-size: 15px; font-weight: bold; }
-            QPushButton:hover { background-color: #005f5c; }
-        """)
-        self.btn_save.clicked.connect(self.save_invoice)
-
         footer_layout.addWidget(QLabel("<b>MONTANT TOTAL À PAYER :</b>"))
         footer_layout.addWidget(self.lbl_total)
         footer_layout.addStretch()
-        footer_layout.addWidget(self.btn_save)
         layout.addWidget(footer_frame)
         self.barcode_input.textChanged.connect(self.check_instant_barcode)
 
@@ -217,6 +209,7 @@ class InvoiceEditorWidget(QWidget):
             if details is None:
                 details = mgr.get_transfer_details(transfer_id)
             self.table.setRowCount(0)
+            self.is_loading_transfer = True
             
             for item in details:
                 batch_data = next((b for b in self.batches_cache if b['Batch_ID'] == item['Batch_ID']), None)
@@ -231,8 +224,11 @@ class InvoiceEditorWidget(QWidget):
                     self.table.cellWidget(last_row, 2).setValue(float(item['Unit_Price']))
                     self.table.cellWidget(last_row, 3).setText(item.get('Line_Note', ''))
             
+            self.is_loading_transfer = False
             self.calc_totals()
+            self.last_persist_signature = self.items_signature(self.build_items_data())
         except Exception as e:
+            self.is_loading_transfer = False
             logging.error(f"Error loading: {e}", exc_info=True)
 
     def prepare_transfer_scope(self, transfer_id):
@@ -255,6 +251,7 @@ class InvoiceEditorWidget(QWidget):
         """تحميل الواجهة وتحديد هل نحتاج للمنتجات الصفرية أم لا."""
         self.current_id = transfer_id
         self.table.setRowCount(0)
+        self.last_persist_signature = None
         
         # إذا كان هناك ID، فهذا يعني "تعديل"، لذا نحتاج لجلب المنتجات الصفرية
         self.prepare_transfer_scope(transfer_id)
@@ -401,8 +398,8 @@ class InvoiceEditorWidget(QWidget):
     def on_search_selected(self, text):
         batch = self.search_map.get(text)
         if batch:
-            self.add_batch_to_invoice(batch)
-            QTimer.singleShot(0, self.barcode_input.clear)
+            if self.add_batch_to_invoice(batch):
+                QTimer.singleShot(0, self.barcode_input.clear)
 
 
     def show_scan_feedback(self, success):
@@ -435,8 +432,7 @@ class InvoiceEditorWidget(QWidget):
 
         if match:
             # إضافة المنتج للجدول
-            self.add_batch_to_invoice(match)
-            self.show_scan_feedback(True)
+            self.show_scan_feedback(self.add_batch_to_invoice(match))
         else:
             # إشعار المستخدم بعدم وجود المنتج
             self.show_scan_feedback(False)
@@ -444,7 +440,81 @@ class InvoiceEditorWidget(QWidget):
         self.barcode_input.clear()
         self.barcode_input.setFocus()
         
+    def build_items_data(self):
+        items = []
+        for r in range(self.table.rowCount()):
+            table_item = self.table.item(r, 0)
+            if not table_item:
+                continue
+
+            meta = table_item.data(Qt.UserRole)
+            items.append({
+                'product_id': meta['id'],
+                'batch_id': meta['batch_id'],
+                'qty': self.table.cellWidget(r, 1).value(),
+                'price': self.table.cellWidget(r, 2).value(),
+                'note': self.table.cellWidget(r, 3).text()
+            })
+        return items
+
+    def items_signature(self, items):
+        return tuple(
+            (
+                item['product_id'],
+                item['batch_id'],
+                float(item['qty']),
+                float(item['price']),
+                item.get('note', '')
+            )
+            for item in items
+        )
+
+    def update_current_transfer_scope_from_items(self, items):
+        self.current_transfer_batch_ids = {item['batch_id'] for item in items}
+        self.current_transfer_qty_by_batch = {
+            item['batch_id']: float(item['qty'])
+            for item in items
+        }
+
+    def on_line_changed(self):
+        self.calc_totals()
+        self.persist_current_transfer()
+
+    def persist_current_transfer(self):
+        if self.is_loading_transfer or self.is_persisting_transfer:
+            return True
+
+        if not self.save_header_only(show_message=False):
+            return False
+
+        items = self.build_items_data()
+        signature = self.items_signature(items)
+        if signature == self.last_persist_signature:
+            return True
+
+        self.is_persisting_transfer = True
+        try:
+            success, result = self.manager.external_transfers.save_and_sync_stock(
+                self.current_id,
+                self.combo_partner.currentData(),
+                items,
+                self.get_current_user_id()
+            )
+        finally:
+            self.is_persisting_transfer = False
+
+        if not success:
+            QMessageBox.critical(self, "Erreur", f"Echec de l'enregistrement : {result}")
+            return False
+
+        self.last_persist_signature = signature
+        self.update_current_transfer_scope_from_items(items)
+        self.refresh_batches_cache(include_zero=bool(self.current_id))
+        return True
+
     def add_batch_to_invoice(self, batch, initial_qty=1):
+        if not self.is_loading_transfer and not self.save_header_only(show_message=False):
+            return False
         """إضافة المنتج للجدول مع تصحيح أخطاء sb_qty وربط الحسابات"""
         # منع التكرار وزيادة الكمية فقط
         for r in range(self.table.rowCount()):
@@ -455,7 +525,9 @@ class InvoiceEditorWidget(QWidget):
                     sb = self.table.cellWidget(r, 1)
                     if sb and sb.value() < sb.maximum():
                         sb.setValue(sb.value() + 1)
-                    return
+                        self.persist_current_transfer()
+                        return True
+                    return False
 
         # استخراج حالة الفوترة والبيانات
         is_billable = batch.get('Is_Billable', False)
@@ -480,7 +552,7 @@ class InvoiceEditorWidget(QWidget):
         max_allowed = current_stock + previous_qty
         if max_allowed <= 0:
             QMessageBox.warning(self, "Stock insuffisant", "Ce lot n'est pas disponible pour cette transaction.")
-            return
+            return False
         if initial_qty > max_allowed:
             initial_qty = max_allowed
         
@@ -510,17 +582,27 @@ class InvoiceEditorWidget(QWidget):
         self.table.setCellWidget(row, 5, btn_del)
 
         # ربط الإشارات بالحسابات بعد بناء الصف
-        sb_qty.valueChanged.connect(self.calc_totals)
-        sb_price.valueChanged.connect(self.calc_totals)
+        sb_qty.valueChanged.connect(self.on_line_changed)
+        sb_price.valueChanged.connect(self.on_line_changed)
+        txt_obs.editingFinished.connect(self.persist_current_transfer)
 
         self.calc_totals()
+        if not self.persist_current_transfer():
+            self.table.removeRow(row)
+            self.calc_totals()
+            return False
+        return True
 
     def remove_row_at_btn(self, btn):
+        removed = False
         for r in range(self.table.rowCount()):
             if self.table.cellWidget(r, 5) == btn:
                 self.table.removeRow(r)
+                removed = True
                 break
         self.calc_totals()
+        if removed:
+            self.persist_current_transfer()
 
     def format_id(self, raw_id):
         # إذا لم يتوفر التاريخ، نستخدم السنة الحالية
@@ -571,6 +653,15 @@ class InvoiceEditorWidget(QWidget):
             return
 
         # 3. تجميع البيانات من الواجهة
+        if self.persist_current_transfer():
+            QMessageBox.information(
+                self,
+                "Succes",
+                "La transaction a ete enregistree et le stock mis a jour avec succes."
+            )
+            self.request_back.emit()
+        return
+
         items = []
         for r in range(self.table.rowCount()):
             table_item = self.table.item(r, 0)
