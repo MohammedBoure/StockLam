@@ -22,9 +22,13 @@ class AutoBackupWorker(QThread):
 
     def run(self):
         # مهم جداً: إعادة تعيين المتغير إلى True في حال تم عمل Restart للـ Thread من الإعدادات
-        self.running = True  
+        self.running = True
+        if not self.data_manager or not getattr(self.data_manager, 'db', None):
+            logging.info("Auto-backup worker skipped: no database connection is available.")
+            return
+
         logging.info("🔄 Auto-backup worker started in background.")
-        
+
         while self.running:
             try:
                 # 1. قراءة الإعدادات

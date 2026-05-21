@@ -5,6 +5,7 @@ import os
 from contextlib import contextmanager
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 
 from .config import get_env_bool, get_external_path
 
@@ -54,8 +55,14 @@ class Database:
                 raise
 
         try:
-            db_url = (f"mysql+mysqlconnector://{self.db_config['user']}:{self.db_config['password']}"
-                      f"@{self.db_config['host']}:{self.db_config['port']}/{self.db_config['database']}")
+            db_url = URL.create(
+                "mysql+mysqlconnector",
+                username=self.db_config['user'],
+                password=self.db_config['password'],
+                host=self.db_config['host'],
+                port=self.db_config['port'],
+                database=self.db_config['database']
+            )
             self.engine = create_engine(
                 db_url,
                 connect_args={'use_pure': True, 'auth_plugin': 'mysql_native_password'},
@@ -68,8 +75,12 @@ class Database:
             "DB_SCHEMA_CHECK_ON_STARTUP",
             default=False
         )
+        schema_missing = self._schema_missing()
         is_local = self.db_config['host'] in ['127.0.0.1', 'localhost']
-        if is_local and self.schema_check_on_startup:
+        if schema_missing:
+            logging.info("Database schema is missing. Running initial schema setup.")
+            self._initialize_schema()
+        elif is_local and self.schema_check_on_startup:
             self._initialize_schema()
         else:
             logging.info(
@@ -86,13 +97,24 @@ class Database:
 
             with mysql.connector.connect(**conn_config) as conn:
                 cursor = conn.cursor()
+                escaped_db_name = db_name.replace("`", "``")
                 cursor.execute(
-                    f"CREATE DATABASE IF NOT EXISTS {db_name} "
+                    f"CREATE DATABASE IF NOT EXISTS `{escaped_db_name}` "
                     f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
                 )
         except mysql.connector.Error as err:
             logging.error(f"❌ Could not verify/create database: {err}")
             raise
+
+    def _schema_missing(self):
+        try:
+            with self.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SHOW TABLES LIKE 'Users'")
+                return cursor.fetchone() is None
+        except mysql.connector.Error as err:
+            logging.warning(f"Could not verify database schema presence: {err}")
+            return False
 
     @contextmanager
     def get_db_connection(self):

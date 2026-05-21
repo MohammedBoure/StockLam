@@ -90,7 +90,7 @@ class SettingsTab(QWidget):
         self.tab_system = QWidget()
         self._setup_system_tab()
 
-        self.tab_system_logs = SystemLogsTab(self.data_manager)
+        self.tab_system_logs = SystemLogsTab(self.data_manager) if self.data_manager else QWidget()
         self.tab_pdf_config = PdfConfigWidget(self.settings)
 
         main_layout.addWidget(self.tabs)
@@ -420,10 +420,11 @@ class SettingsTab(QWidget):
             # إعادة تشغيل مؤقت الحفظ التلقائي في الخلفية بالإعدادات الجديدة
             try:
                 main_window = self.window()
-                if hasattr(main_window, 'auto_backup_thread'):
-                    main_window.auto_backup_thread.stop()
-                    main_window.auto_backup_thread.wait(500) 
-                    main_window.auto_backup_thread.start()
+                auto_backup_thread = getattr(main_window, 'auto_backup_thread', None)
+                if auto_backup_thread:
+                    auto_backup_thread.stop()
+                    auto_backup_thread.wait(500)
+                    auto_backup_thread.start()
             except Exception as thread_err:
                 logging.error(f"Erreur thread: {thread_err}")
 

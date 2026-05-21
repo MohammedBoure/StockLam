@@ -121,8 +121,10 @@ class MainWindow(QMainWindow):
                     self.nav_group.button(first_permitted_page).setChecked(True)
             else:
                 logging.warning("User has no permitted pages to display.")
-        self.auto_backup_thread = AutoBackupWorker(self.data_manager)
-        self.auto_backup_thread.start()
+        self.auto_backup_thread = None
+        if self.data_manager and not self.connection_error:
+            self.auto_backup_thread = AutoBackupWorker(self.data_manager)
+            self.auto_backup_thread.start()
 
                 
 
@@ -384,7 +386,7 @@ class MainWindow(QMainWindow):
         # إذا وافق المستخدم على الخروج
         if reply == QMessageBox.Yes:
             # إيقاف خيط النسخ الاحتياطي التلقائي إن وجد
-            if hasattr(self, 'auto_backup_thread') and self.auto_backup_thread.isRunning():
+            if self.auto_backup_thread and self.auto_backup_thread.isRunning():
                 logging.info("Stopping auto-backup thread...")
                 self.auto_backup_thread.stop()
             
@@ -434,7 +436,7 @@ class MainWindow(QMainWindow):
             self.close()
 
     def _init_placeholders(self):
-        for i in range(8):
+        for i in range(9):
             self.content_area.addWidget(QWidget())
 
     def has_permission(self, perm_key):
@@ -531,6 +533,9 @@ class MainWindow(QMainWindow):
         # --- 4. Settings (Paramètres) ---
         elif page_id == 4:
             widget = SettingsTab(self.data_manager)
+            if self.connection_error:
+                widget.tabs.addTab(widget.tab_db, "Base de données")
+                widget.tabs.setCurrentWidget(widget.tab_db)
             if self.has_permission("tab_config"):
                 widget.tabs.addTab(widget.tab_general, "🏢 Général / Gestion des données")
             if self.has_permission("tab_set_db"):
@@ -601,7 +606,7 @@ class MainWindow(QMainWindow):
             4: "nav_settings"
         }
         
-        required_perm = mapping.get(page_id)
+        required_perm = None if self.connection_error and page_id == 4 else mapping.get(page_id)
         # التحقق: إذا كانت الصفحة تتطلب صلاحية والمستخدم لا يملكها، امنع الدخول
         if required_perm and not self.has_permission(required_perm):
             logging.warning(f"Unauthorized access attempt to page {page_id}")
