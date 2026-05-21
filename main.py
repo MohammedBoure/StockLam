@@ -5,6 +5,8 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 import traceback
+import socket
+import time
 from datetime import datetime
 import branding
 
@@ -29,9 +31,18 @@ except ValueError as e:
 
 import pandas as pd
 
-from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
+from dotenv import dotenv_values
+from PySide6.QtWidgets import (
+    QApplication,
+    QMessageBox,
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QTextEdit,
+    QProgressBar,
+)
 from PySide6.QtCore import Qt, QSettings, QLockFile, QDir 
-from database.base import Database
+from database.base import Database, get_external_path
 from database import LabDataManager
 from ui.main_window import MainWindow
 from ui.login_dialog import LoginDialog 
@@ -64,6 +75,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DB_CONNECTION_ATTEMPTS = 12
+DB_CONNECTION_RETRY_SECONDS = 5
+DB_SOCKET_TIMEOUT_SECONDS = 3
+
 # =========================================================================
 # 2. صائد الأخطاء المفاجئة (Global Crash Handler)
 # =========================================================================
@@ -80,12 +95,158 @@ sys.excepthook = global_exception_handler
 # =========================================================================
 def check_env_file():
     """التحقق من وجود ملف إعدادات البيئة"""
-    if not os.path.exists(".env"):
-        logger.critical("FATAL: .env file not found.")
+    env_path = get_external_path(".env")
+    if not os.path.exists(env_path):
+        logger.critical(f"FATAL: .env file not found at {env_path}.")
         app = QApplication(sys.argv)
-        QMessageBox.critical(None, "Erreur Fatale", "Le fichier .env est introuvable.\nVeuillez configurer la base de données.")
+        QMessageBox.critical(
+            None,
+            "Erreur Fatale",
+            f"Le fichier .env est introuvable:\n{env_path}\n\nVeuillez configurer la base de donnees."
+        )
         return False
     return True
+
+
+class DatabaseConnectionDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Connexion a la base de donnees")
+        self.setMinimumSize(700, 420)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        self.status_label = QLabel("Preparation du test de connexion...")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, DB_CONNECTION_ATTEMPTS)
+        self.progress.setValue(0)
+        layout.addWidget(self.progress)
+
+        self.details = QTextEdit()
+        self.details.setReadOnly(True)
+        self.details.setMinimumHeight(280)
+        layout.addWidget(self.details)
+
+    def set_status(self, text):
+        self.status_label.setText(text)
+        QApplication.processEvents()
+
+    def append_line(self, text, level=logging.INFO):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        line = f"[{timestamp}] {text}"
+        self.details.append(line)
+        logger.log(level, text)
+        QApplication.processEvents()
+
+    def set_attempt(self, attempt):
+        self.progress.setValue(max(0, min(attempt - 1, DB_CONNECTION_ATTEMPTS)))
+        self.set_status(f"Tentative {attempt}/{DB_CONNECTION_ATTEMPTS}...")
+
+    def mark_success(self):
+        self.progress.setValue(DB_CONNECTION_ATTEMPTS)
+        self.set_status("Connexion reussie.")
+
+
+def _get_runtime_db_config():
+    env_path = get_external_path(".env")
+    values = dotenv_values(env_path) if os.path.exists(env_path) else {}
+
+    port_value = values.get("DB_PORT") or "3306"
+    try:
+        port = int(port_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"DB_PORT invalide dans .env: {port_value}") from exc
+
+    config = {
+        "host": values.get("DB_HOST") or "localhost",
+        "port": port,
+        "user": values.get("DB_USER"),
+        "password": values.get("DB_PASSWORD"),
+        "database": values.get("DB_NAME"),
+    }
+    missing = [key for key in ("user", "password", "database") if not config.get(key)]
+    if missing:
+        raise ValueError(f"Variables DB manquantes dans .env: {', '.join(missing)}")
+    return env_path, config
+
+
+def _probe_tcp_connection(host, port):
+    start = time.monotonic()
+    with socket.create_connection((host, port), timeout=DB_SOCKET_TIMEOUT_SECONDS):
+        pass
+    return int((time.monotonic() - start) * 1000)
+
+
+def _format_connection_error(error):
+    parts = [f"{error.__class__.__name__}: {error}"]
+    for attr in ("errno", "sqlstate", "msg"):
+        value = getattr(error, attr, None)
+        if value:
+            parts.append(f"{attr}: {value}")
+    return "\n".join(parts)
+
+
+def connect_to_database_with_retry(app):
+    dialog = DatabaseConnectionDialog()
+    dialog.show()
+    QApplication.processEvents()
+
+    last_error = None
+    for attempt in range(1, DB_CONNECTION_ATTEMPTS + 1):
+        dialog.set_attempt(attempt)
+        try:
+            Database.reset_connection_state()
+            env_path, db_config = _get_runtime_db_config()
+            dialog.append_line(f"Lecture configuration: {env_path}")
+            dialog.append_line(
+                "Cible MySQL: "
+                f"{db_config['host']}:{db_config['port']} / "
+                f"base={db_config['database']} / utilisateur={db_config['user']}"
+            )
+
+            elapsed_ms = _probe_tcp_connection(db_config["host"], db_config["port"])
+            dialog.append_line(f"Test reseau TCP OK ({elapsed_ms} ms).")
+
+            db = Database()
+            data_manager = LabDataManager(db)
+            dialog.append_line("Connexion MySQL et initialisation application OK.")
+            dialog.mark_success()
+            time.sleep(0.2)
+            dialog.accept()
+            return data_manager, None
+
+        except Exception as error:
+            Database.reset_connection_state()
+            last_error = _format_connection_error(error)
+            dialog.append_line(f"Echec tentative {attempt}: {last_error}", logging.WARNING)
+            logger.error("Database connection attempt failed.", exc_info=True)
+
+            if attempt < DB_CONNECTION_ATTEMPTS:
+                for remaining in range(DB_CONNECTION_RETRY_SECONDS, 0, -1):
+                    dialog.set_status(
+                        "Connexion impossible pour le moment. "
+                        f"Nouvelle tentative dans {remaining} s..."
+                    )
+                    app.processEvents()
+                    time.sleep(1)
+
+    detailed_error = (
+        "Impossible de se connecter a la base de donnees apres plusieurs tentatives.\n\n"
+        f"{last_error or 'Erreur inconnue'}\n\n"
+        f"Journal detaille: {log_file_path}"
+    )
+    dialog.append_line("Toutes les tentatives de connexion ont echoue.", logging.ERROR)
+    QMessageBox.critical(
+        dialog,
+        "Connexion base de donnees impossible",
+        detailed_error + "\n\nLe programme va ouvrir les parametres de connexion.",
+    )
+    dialog.accept()
+    return None, detailed_error
+
 
 # =========================================================================
 # 4. الدالة الرئيسية (Main)
@@ -142,12 +303,7 @@ def main():
         current_user = None
 
         # محاولة الاتصال بقاعدة البيانات
-        try:
-            db = Database()
-            data_manager = LabDataManager(db)
-        except Exception as e:
-            connection_error = str(e)
-            logger.error(f"Database connection failed: {e}")
+        data_manager, connection_error = connect_to_database_with_retry(app)
 
         # التحقق من الجلسة المحفوظة (Auto-Login)
         saved_user = settings.value("saved_username")

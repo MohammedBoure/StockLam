@@ -9,11 +9,12 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QGroupBox, QFormLayout, 
                                QSpinBox, QMessageBox, QFileDialog, QTabWidget,
                                QComboBox, QInputDialog, QCheckBox, QDoubleSpinBox,
-                               QListWidget)
+                               QListWidget, QTextEdit)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 import mysql.connector
 import sys
+from dotenv import dotenv_values
 
 from .pdf_config_tab import PdfConfigWidget 
 from .system_logs_tab import SystemLogsTab
@@ -70,6 +71,7 @@ class SettingsTab(QWidget):
         }
         
         self.load_settings()
+        self.load_database_settings_from_env()
         self.init_ui()
 
     def init_ui(self):
@@ -259,6 +261,16 @@ class SettingsTab(QWidget):
         btn_test = QPushButton("🔌 Tester la connexion")
         btn_test.clicked.connect(self.test_db_connection)
         layout.addWidget(btn_test)
+
+        self.grp_connection_error = QGroupBox("Derniere erreur de connexion")
+        error_layout = QVBoxLayout(self.grp_connection_error)
+        self.txt_connection_error = QTextEdit()
+        self.txt_connection_error.setReadOnly(True)
+        self.txt_connection_error.setMinimumHeight(130)
+        error_layout.addWidget(self.txt_connection_error)
+        self.grp_connection_error.setVisible(False)
+        layout.addWidget(self.grp_connection_error)
+
         layout.addStretch()
 
     def _setup_printer_tab(self):
@@ -372,6 +384,26 @@ class SettingsTab(QWidget):
         else:
             logging.warning("⚠️ Fichier config.json introuvable, utilisation des paramètres par défaut.")
 
+    def load_database_settings_from_env(self):
+        if not os.path.exists(ENV_FILE):
+            return
+        try:
+            env_values = dotenv_values(ENV_FILE)
+            env_mapping = {
+                "DB_HOST": "db_host",
+                "DB_USER": "db_user",
+                "DB_PASSWORD": "db_password",
+                "DB_NAME": "db_name",
+            }
+            for env_key, setting_key in env_mapping.items():
+                if env_values.get(env_key) is not None:
+                    self.settings[setting_key] = env_values[env_key]
+
+            if env_values.get("DB_PORT") is not None:
+                self.settings["db_port"] = int(env_values["DB_PORT"])
+        except Exception as e:
+            logging.warning(f"Impossible de lire les parametres DB depuis .env: {e}")
+
     def save_settings(self):
         # 1. جلب إعدادات PDF أولاً (الخطوة الحاسمة لعدم مسح البيانات الجديدة)
         if hasattr(self, 'tab_pdf_config'):
@@ -466,6 +498,12 @@ class SettingsTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Erreur", str(e))
 
+    def set_connection_error(self, error_text):
+        if not hasattr(self, 'grp_connection_error'):
+            return
+        self.txt_connection_error.setPlainText(str(error_text))
+        self.grp_connection_error.setVisible(True)
+
     def test_db_connection(self):
         logging.info(f"🚀 Tentative de connexion à {self.txt_db_host.text()}...")
         try:
@@ -476,20 +514,27 @@ class SettingsTab(QWidget):
                 password=self.txt_db_pass.text(),
                 database=self.txt_db_name.text(),
                 use_pure=True,
-                auth_plugin='mysql_native_password'
+                auth_plugin='mysql_native_password',
+                connection_timeout=5
             )
             if conn.is_connected():
+                cursor = conn.cursor()
+                cursor.execute("SELECT VERSION()")
+                version = cursor.fetchone()[0]
                 msg = "✅ Connexion réussie ! Authentification validée."
+                msg = f"{msg}\nVersion MySQL: {version}"
                 logging.info(msg)
                 QMessageBox.information(self, "Succès", msg)
                 conn.close()
         except mysql.connector.Error as err:
             error_msg = f"❌ Erreur base de données : {err.msg} (Code : {err.errno})"
             logging.error(error_msg)
+            self.set_connection_error(error_msg)
             QMessageBox.critical(self, "Échec", error_msg)
         except Exception as e:
             error_msg = f"⚠️ Erreur inattendue : {str(e)}"
             logging.error(error_msg)
+            self.set_connection_error(error_msg)
             QMessageBox.critical(self, "Échec", error_msg)
     
     def perform_backup(self):

@@ -533,6 +533,8 @@ class MainWindow(QMainWindow):
         # --- 4. Settings (Paramètres) ---
         elif page_id == 4:
             widget = SettingsTab(self.data_manager)
+            if self.connection_error and hasattr(widget, 'set_connection_error'):
+                widget.set_connection_error(self.connection_error)
             if self.connection_error:
                 widget.tabs.addTab(widget.tab_db, "Base de données")
                 widget.tabs.setCurrentWidget(widget.tab_db)

@@ -20,11 +20,11 @@ class Database:
         return cls._instance
 
     def __init__(self):
-        if hasattr(self, 'db_config'):
+        if getattr(self, '_initialized', False):
             return
 
         env_path = get_external_path(".env")
-        load_dotenv(env_path)
+        load_dotenv(env_path, override=True)
 
         self.db_config = {
             'host': os.getenv('DB_HOST', 'localhost'),
@@ -49,7 +49,7 @@ class Database:
                     auth_plugin='mysql_native_password',
                     **self.db_config
                 )
-                logging.info("🚀 Connection Pool initialized successfully (Size: 3).")
+                logging.info("Connection pool initialized successfully (Size: 32).")
             except Exception as e:
                 logging.error(f"❌ Failed to initialize Connection Pool: {e}")
                 raise
@@ -70,6 +70,7 @@ class Database:
             )
         except Exception as e:
             logging.error(f"Failed to create SQLAlchemy engine: {e}")
+            raise
 
         self.schema_check_on_startup = get_env_bool(
             "DB_SCHEMA_CHECK_ON_STARTUP",
@@ -87,6 +88,26 @@ class Database:
                 "Schema startup checks skipped. Set DB_SCHEMA_CHECK_ON_STARTUP=true "
                 "in .env to run migrations."
             )
+        self._initialized = True
+
+    @classmethod
+    def reset_connection_state(cls):
+        instance = cls._instance
+        if instance is not None:
+            engine = getattr(instance, 'engine', None)
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    logging.debug("Failed to dispose SQLAlchemy engine during reset.", exc_info=True)
+            for attr in ('db_config', 'engine', 'schema_check_on_startup', '_initialized'):
+                if hasattr(instance, attr):
+                    try:
+                        delattr(instance, attr)
+                    except Exception:
+                        pass
+        cls._pool = None
+        cls._instance = None
 
     def _ensure_database_exists(self):
         try:
