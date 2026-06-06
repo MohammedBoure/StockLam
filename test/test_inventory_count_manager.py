@@ -106,6 +106,36 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
         self.assertEqual(result["status"], "INVALID")
         self.assertEqual(result["message"], "Quantity must be positive.")
 
+    def test_scan_barcode_replace_counted_uses_physical_quantity(self):
+        cursor = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {
+                    "Line_ID": 12,
+                    "Session_ID": 99,
+                    "Batch_ID": 34,
+                    "Internal_Barcode": "ABC-123",
+                    "Program_Qty_Snapshot": Decimal("10"),
+                    "Counted_Qty": Decimal("4"),
+                },
+            ]
+        )
+        manager = make_manager(FakeDb(FakeConnection(cursor)))
+
+        result = manager.scan_barcode(
+            session_id=99,
+            barcode="ABC-123",
+            qty=7,
+            user_id=5,
+            replace_counted=True,
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["status"], "MATCHED")
+        self.assertEqual(result["line"]["Counted_Qty"], Decimal("7"))
+        self.assertEqual(result["line"]["Difference_Qty"], Decimal("-3"))
+        self.assertEqual(result["line"]["Line_Status"], "SHORT")
+
     def test_build_snapshot_uses_signed_difference_expression(self):
         cursor = FakeCursor(
             [

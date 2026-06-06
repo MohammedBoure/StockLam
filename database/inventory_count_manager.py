@@ -231,12 +231,12 @@ class InventoryCountManager:
             logging.error(f"Error building inventory count snapshot: {err}", exc_info=True)
             return False
 
-    def scan_barcode(self, session_id, barcode, qty=1, user_id=None) -> Dict:
+    def scan_barcode(self, session_id, barcode, qty=1, user_id=None, replace_counted=False) -> Dict:
         barcode = self._normalize_barcode(barcode)
         qty_decimal = self._to_decimal(qty)
         if not barcode:
             return {"success": False, "status": "INVALID", "message": "Barcode is empty.", "line": None}
-        if qty_decimal <= 0:
+        if qty_decimal < 0 or (qty_decimal == 0 and not replace_counted):
             return {"success": False, "status": "INVALID", "message": "Quantity must be positive.", "line": None}
 
         try:
@@ -267,7 +267,10 @@ class InventoryCountManager:
                 line = cursor.fetchone()
 
                 if line:
-                    counted_qty = self._to_decimal(line["Counted_Qty"]) + qty_decimal
+                    if replace_counted:
+                        counted_qty = qty_decimal
+                    else:
+                        counted_qty = self._to_decimal(line["Counted_Qty"]) + qty_decimal
                     difference = self._difference(line["Program_Qty_Snapshot"], counted_qty)
                     status = self._line_status(line["Program_Qty_Snapshot"], counted_qty)
                     cursor.execute(
