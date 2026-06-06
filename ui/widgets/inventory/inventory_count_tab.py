@@ -13,11 +13,14 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QGridLayout,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -28,6 +31,109 @@ from PySide6.QtWidgets import (
 from ui.formatting import format_money, format_quantity
 
 from .inventory_count_scan_dialog import InventoryCountScanDialog
+
+
+INVENTORY_STYLE = """
+QWidget#inventoryCountPage {
+    background: #f5f7fb;
+    color: #243447;
+}
+QFrame#inventoryHeader,
+QFrame#inventoryFilters {
+    background: #ffffff;
+    border: 1px solid #dfe6ee;
+    border-radius: 8px;
+}
+QLabel#inventoryTitle {
+    color: #1f2d3d;
+    font-size: 22px;
+    font-weight: 800;
+}
+QLabel#inventoryContext {
+    color: #607080;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton {
+    background: #eef3f7;
+    border: 1px solid #cfd9e2;
+    border-radius: 5px;
+    color: #243447;
+    font-weight: 700;
+    min-height: 30px;
+    padding: 5px 10px;
+}
+QPushButton:hover {
+    background: #e2ebf2;
+}
+QPushButton:disabled {
+    background: #f4f6f8;
+    color: #95a5a6;
+}
+QPushButton#primaryAction {
+    background: #007572;
+    border-color: #00615f;
+    color: white;
+}
+QPushButton#successAction {
+    background: #238b55;
+    border-color: #1f784b;
+    color: white;
+}
+QPushButton#dangerAction {
+    background: #c0392b;
+    border-color: #a93226;
+    color: white;
+}
+QPushButton#warningAction {
+    background: #d68910;
+    border-color: #b9770e;
+    color: white;
+}
+QLineEdit,
+QComboBox,
+QTextEdit {
+    background: #ffffff;
+    border: 1px solid #cfd9e2;
+    border-radius: 5px;
+    color: #243447;
+    min-height: 28px;
+    padding: 5px 8px;
+}
+QTableWidget {
+    background: #ffffff;
+    alternate-background-color: #f8fafc;
+    border: 1px solid #dfe6ee;
+    gridline-color: #edf1f5;
+    selection-background-color: #d7f0ee;
+    selection-color: #1f2d3d;
+}
+QHeaderView::section {
+    background: #eef3f7;
+    border: 0;
+    border-right: 1px solid #dfe6ee;
+    border-bottom: 1px solid #dfe6ee;
+    color: #52616f;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 6px;
+}
+QFrame#summaryCard {
+    background: #ffffff;
+    border: 1px solid #dfe6ee;
+    border-radius: 8px;
+}
+QLabel#summaryTitle {
+    color: #697b8c;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#summaryValue {
+    color: #1f2d3d;
+    font-size: 18px;
+    font-weight: 900;
+}
+"""
 
 
 class NewInventorySessionDialog(QDialog):
@@ -43,10 +149,15 @@ class NewInventorySessionDialog(QDialog):
         self.product_search_limit = 80
         self.product_search_min_chars = 2
         self.setWindowTitle("Nouvelle session inventaire")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(480)
+        self.resize(620, 420)
+        self.setStyleSheet(INVENTORY_STYLE)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         form = QFormLayout()
+        form.setSpacing(10)
 
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Inventaire mensuel")
@@ -60,7 +171,7 @@ class NewInventorySessionDialog(QDialog):
         self.scope_selector = QComboBox()
         self.scope_selector.setEditable(True)
         self.scope_selector.setInsertPolicy(QComboBox.NoInsert)
-        self.scope_selector.setMinimumWidth(420)
+        self.scope_selector.setMinimumWidth(320)
         self.scope_selector.lineEdit().setPlaceholderText("Rechercher et choisir...")
         completer = self.scope_selector.completer()
         if completer:
@@ -206,17 +317,20 @@ class NewInventorySessionDialog(QDialog):
 
 
 class SummaryCard(QFrame):
-    def __init__(self, title):
+    def __init__(self, title, accent="#007572"):
         super().__init__()
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet("QFrame { border: 1px solid #dfe6e9; border-radius: 6px; background: #ffffff; }")
+        self.setObjectName("summaryCard")
+        self.setMinimumHeight(64)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(2)
 
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet("color: #607d8b; font-size: 11px;")
+        self.title_label.setObjectName("summaryTitle")
         self.value_label = QLabel("0")
-        self.value_label.setStyleSheet("color: #2c3e50; font-size: 18px; font-weight: 800;")
+        self.value_label.setObjectName("summaryValue")
+        self.value_label.setStyleSheet(f"color: {accent};")
         layout.addWidget(self.title_label)
         layout.addWidget(self.value_label)
 
@@ -237,16 +351,32 @@ class InventoryCountTab(QWidget):
         self.load_sessions()
 
     def init_ui(self):
+        self.setObjectName("inventoryCountPage")
+        self.setStyleSheet(INVENTORY_STYLE)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
-        header_layout = QHBoxLayout()
+        header_frame = QFrame()
+        header_frame.setObjectName("inventoryHeader")
+        header_layout = QVBoxLayout(header_frame)
+        header_layout.setContentsMargins(14, 12, 14, 12)
+        header_layout.setSpacing(10)
+
+        title_layout = QHBoxLayout()
         title = QLabel("Inventaire")
-        title.setObjectName("page_title")
-        title.setStyleSheet("font-size: 22px; font-weight: 700; color: #2c3e50;")
-        header_layout.addWidget(title)
-        header_layout.addStretch()
+        title.setObjectName("inventoryTitle")
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        self.session_context_label = QLabel("Aucune session")
+        self.session_context_label.setObjectName("inventoryContext")
+        title_layout.addWidget(self.session_context_label)
+        header_layout.addLayout(title_layout)
+
+        actions_layout = QGridLayout()
+        actions_layout.setHorizontalSpacing(8)
+        actions_layout.setVerticalSpacing(8)
 
         self.btn_new = QPushButton("Nouvelle session")
         self.btn_scan = QPushButton("Scanner")
@@ -264,7 +394,13 @@ class InventoryCountTab(QWidget):
         self.btn_export.clicked.connect(self.export_session)
         self.btn_refresh.clicked.connect(self.load_sessions)
 
-        for button in (
+        self.btn_new.setObjectName("primaryAction")
+        self.btn_scan.setObjectName("primaryAction")
+        self.btn_apply.setObjectName("successAction")
+        self.btn_cancel.setObjectName("dangerAction")
+        self.btn_review.setObjectName("warningAction")
+
+        action_buttons = (
             self.btn_new,
             self.btn_scan,
             self.btn_review,
@@ -272,34 +408,50 @@ class InventoryCountTab(QWidget):
             self.btn_cancel,
             self.btn_export,
             self.btn_refresh,
-        ):
-            header_layout.addWidget(button)
-        layout.addLayout(header_layout)
+        )
+        for index, button in enumerate(action_buttons):
+            button.setMinimumWidth(118)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            actions_layout.addWidget(button, index // 4, index % 4)
+        header_layout.addLayout(actions_layout)
+        layout.addWidget(header_frame)
 
         summary_layout = QGridLayout()
+        summary_layout.setHorizontalSpacing(10)
+        summary_layout.setVerticalSpacing(10)
         self.summary_cards = {
-            "OK": SummaryCard("OK"),
-            "SHORT": SummaryCard("Manquant"),
-            "EXCESS": SummaryCard("Excedent"),
-            "NOT_COUNTED": SummaryCard("Non compte"),
-            "UNKNOWN": SummaryCard("Inconnu"),
-            "Estimated_Variance_Value": SummaryCard("Valeur ecart"),
+            "OK": SummaryCard("OK", "#238b55"),
+            "SHORT": SummaryCard("Manquant", "#c0392b"),
+            "EXCESS": SummaryCard("Excedent", "#d68910"),
+            "NOT_COUNTED": SummaryCard("Non compte", "#607080"),
+            "UNKNOWN": SummaryCard("Inconnu", "#8e44ad"),
+            "Estimated_Variance_Value": SummaryCard("Valeur ecart", "#007572"),
         }
         for index, card in enumerate(self.summary_cards.values()):
-            summary_layout.addWidget(card, 0, index)
+            summary_layout.addWidget(card, index // 3, index % 3)
+            summary_layout.setColumnStretch(index % 3, 1)
         layout.addLayout(summary_layout)
 
-        filters_layout = QHBoxLayout()
+        filters_frame = QFrame()
+        filters_frame.setObjectName("inventoryFilters")
+        filters_layout = QGridLayout(filters_frame)
+        filters_layout.setContentsMargins(10, 10, 10, 10)
+        filters_layout.setHorizontalSpacing(10)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Rechercher produit, code-barres, lot, emplacement")
         self.search_input.textChanged.connect(self.load_lines)
-        filters_layout.addWidget(self.search_input, 1)
+        filters_layout.addWidget(self.search_input, 0, 0)
 
         self.status_filter = QComboBox()
         self.status_filter.addItems(["Tous", "OK", "SHORT", "EXCESS", "NOT_COUNTED", "UNKNOWN"])
+        self.status_filter.setMinimumWidth(160)
         self.status_filter.currentTextChanged.connect(self.load_lines)
-        filters_layout.addWidget(self.status_filter)
-        layout.addLayout(filters_layout)
+        filters_layout.addWidget(self.status_filter, 0, 1)
+        filters_layout.setColumnStretch(0, 1)
+        layout.addWidget(filters_frame)
+
+        table_splitter = QSplitter(Qt.Vertical)
+        table_splitter.setChildrenCollapsible(False)
 
         self.sessions_table = QTableWidget(0, 5)
         self.sessions_table.setHorizontalHeaderLabels([
@@ -312,7 +464,9 @@ class InventoryCountTab(QWidget):
         self.sessions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.sessions_table.itemSelectionChanged.connect(self.load_current_session)
-        layout.addWidget(self.sessions_table)
+        self.sessions_table.setMaximumHeight(178)
+        self._configure_sessions_table()
+        table_splitter.addWidget(self.sessions_table)
 
         self.lines_table = QTableWidget(0, 10)
         self.lines_table.setHorizontalHeaderLabels([
@@ -329,7 +483,38 @@ class InventoryCountTab(QWidget):
         ])
         self.lines_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.lines_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        layout.addWidget(self.lines_table)
+        self._configure_lines_table()
+        table_splitter.addWidget(self.lines_table)
+        table_splitter.setStretchFactor(0, 1)
+        table_splitter.setStretchFactor(1, 4)
+        layout.addWidget(table_splitter, 1)
+
+    def _configure_table(self, table):
+        table.setAlternatingRowColors(True)
+        table.setShowGrid(True)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(28)
+        table.horizontalHeader().setHighlightSections(False)
+        table.setWordWrap(False)
+        table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+
+    def _configure_sessions_table(self):
+        self._configure_table(self.sessions_table)
+        header = self.sessions_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+
+    def _configure_lines_table(self):
+        self._configure_table(self.lines_table)
+        header = self.lines_table.horizontalHeader()
+        header.setMinimumSectionSize(84)
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        for column in range(1, 9):
+            header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(9, QHeaderView.Stretch)
 
     def _manager(self):
         return getattr(self.data_manager, "inventory_counts", None)
@@ -382,6 +567,11 @@ class InventoryCountTab(QWidget):
         has_session = self.current_session_id is not None
         status = (self.current_session or {}).get("Status")
         is_open = status in {"Counting", "Review"}
+        if has_session:
+            name = (self.current_session or {}).get("Session_Name") or f"Session #{self.current_session_id}"
+            self.session_context_label.setText(f"#{self.current_session_id} - {name} - {status or '-'}")
+        else:
+            self.session_context_label.setText("Aucune session")
         self.btn_scan.setEnabled(has_session and is_open)
         self.btn_review.setEnabled(has_session and status == "Counting")
         self.btn_apply.setEnabled(has_session and is_open)

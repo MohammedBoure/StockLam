@@ -5,13 +5,16 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QFormLayout,
+    QFrame,
     QGridLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -19,6 +22,103 @@ from PySide6.QtWidgets import (
 )
 
 from ui.formatting import format_quantity, quantity_to_int
+
+
+SCAN_STYLE = """
+QDialog#inventoryScanner {
+    background: #f5f7fb;
+    color: #243447;
+}
+QFrame#scannerTopPanel,
+QFrame#productSummary {
+    background: #ffffff;
+    border: 1px solid #dfe6ee;
+    border-radius: 8px;
+}
+QLabel#fieldLabel {
+    color: #52616f;
+    font-size: 11px;
+    font-weight: 800;
+}
+QLabel#productTitle {
+    color: #1f2d3d;
+    font-size: 20px;
+    font-weight: 900;
+}
+QLabel#productMeta {
+    color: #607080;
+    font-size: 12px;
+    font-weight: 600;
+}
+QLineEdit,
+QSpinBox {
+    background: #ffffff;
+    border: 1px solid #cfd9e2;
+    border-radius: 6px;
+    color: #1f2d3d;
+    min-height: 34px;
+    padding: 6px 10px;
+}
+QLineEdit#barcodeInput {
+    border: 2px solid #007572;
+    font-size: 20px;
+    font-weight: 900;
+    min-height: 44px;
+}
+QPushButton {
+    background: #eef3f7;
+    border: 1px solid #cfd9e2;
+    border-radius: 5px;
+    color: #243447;
+    font-weight: 800;
+    min-height: 32px;
+    padding: 6px 14px;
+}
+QPushButton#validateButton {
+    background: #007572;
+    border-color: #00615f;
+    color: #ffffff;
+}
+QGroupBox {
+    background: #ffffff;
+    border: 1px solid #dfe6ee;
+    border-radius: 8px;
+    color: #52616f;
+    font-weight: 800;
+    margin-top: 10px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 4px;
+}
+QLabel#detailTitle {
+    color: #52616f;
+    font-weight: 800;
+}
+QLabel#detailValue {
+    color: #243447;
+    font-weight: 600;
+}
+QTableWidget {
+    background: #ffffff;
+    alternate-background-color: #f8fafc;
+    border: 1px solid #dfe6ee;
+    gridline-color: #edf1f5;
+    selection-background-color: #d7f0ee;
+    selection-color: #1f2d3d;
+}
+QHeaderView::section {
+    background: #eef3f7;
+    border: 0;
+    border-right: 1px solid #dfe6ee;
+    border-bottom: 1px solid #dfe6ee;
+    color: #52616f;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 6px;
+}
+"""
 
 
 class InventoryCountScanDialog(QDialog):
@@ -35,42 +135,77 @@ class InventoryCountScanDialog(QDialog):
         self.detail_labels = {}
 
         self.setWindowTitle("Scanner inventaire")
-        self.resize(1040, 720)
+        self.setObjectName("inventoryScanner")
+        self.setMinimumSize(720, 520)
+        self.resize(980, 680)
+        self.setStyleSheet(SCAN_STYLE)
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 22, 22, 22)
-        layout.setSpacing(14)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
 
-        form = QFormLayout()
-        form.setSpacing(12)
+        scan_panel = QFrame()
+        scan_panel.setObjectName("scannerTopPanel")
+        form = QGridLayout(scan_panel)
+        form.setContentsMargins(12, 10, 12, 12)
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(6)
 
+        barcode_label = QLabel("Code-barres")
+        barcode_label.setObjectName("fieldLabel")
+        form.addWidget(barcode_label, 0, 0, 1, 2)
         self.barcode_input = QLineEdit()
+        self.barcode_input.setObjectName("barcodeInput")
         self.barcode_input.setPlaceholderText("Scanner ou saisir un code-barres")
-        self.barcode_input.setMinimumHeight(48)
-        self.barcode_input.setStyleSheet("font-size: 20px; font-weight: 700; padding: 6px 10px;")
         self.barcode_input.returnPressed.connect(self.load_barcode_details)
         self.barcode_input.textChanged.connect(self.schedule_barcode_lookup)
-        form.addRow("Code-barres", self.barcode_input)
+        form.addWidget(self.barcode_input, 1, 0, 1, 2)
 
         self.barcode_lookup_timer = QTimer(self)
         self.barcode_lookup_timer.setSingleShot(True)
         self.barcode_lookup_timer.timeout.connect(self.load_barcode_details)
 
+        qty_label = QLabel("Quantite")
+        qty_label.setObjectName("fieldLabel")
+        form.addWidget(qty_label, 0, 2)
         self.qty_input = QSpinBox()
         self.qty_input.setRange(0, 999999)
         self.qty_input.setSingleStep(1)
         self.qty_input.setValue(1)
-        self.qty_input.setMinimumHeight(38)
         self.qty_input.lineEdit().returnPressed.connect(self.record_current_quantity)
-        form.addRow("Quantite", self.qty_input)
-        layout.addLayout(form)
+        form.addWidget(self.qty_input, 1, 2)
+
+        self.record_btn = QPushButton("Valider")
+        self.record_btn.setObjectName("validateButton")
+        self.record_btn.clicked.connect(self.record_current_quantity)
+        form.addWidget(self.record_btn, 1, 3)
+        form.setColumnStretch(0, 2)
+        form.setColumnStretch(1, 2)
+        form.setColumnStretch(2, 1)
+        layout.addWidget(scan_panel)
+
+        self.product_summary = QFrame()
+        self.product_summary.setObjectName("productSummary")
+        product_summary_layout = QVBoxLayout(self.product_summary)
+        product_summary_layout.setContentsMargins(12, 10, 12, 10)
+        product_summary_layout.setSpacing(3)
+        self.product_title_label = QLabel("Pret a scanner")
+        self.product_title_label.setObjectName("productTitle")
+        self.product_title_label.setWordWrap(True)
+        self.product_meta_label = QLabel("-")
+        self.product_meta_label.setObjectName("productMeta")
+        self.product_meta_label.setWordWrap(True)
+        product_summary_layout.addWidget(self.product_title_label)
+        product_summary_layout.addWidget(self.product_meta_label)
+        layout.addWidget(self.product_summary)
 
         details_group = QGroupBox("Produit scanne")
         details_layout = QGridLayout(details_group)
-        details_layout.setHorizontalSpacing(18)
-        details_layout.setVerticalSpacing(8)
+        details_layout.setContentsMargins(12, 14, 12, 10)
+        details_layout.setHorizontalSpacing(14)
+        details_layout.setVerticalSpacing(6)
         detail_fields = [
             ("Produit", "Product_Name"),
             ("Famille", "Family_Name"),
@@ -98,17 +233,27 @@ class InventoryCountScanDialog(QDialog):
             row = index // 2
             col = (index % 2) * 2
             title = QLabel(f"{label}:")
-            title.setStyleSheet("font-weight: 700; color: #34495e;")
+            title.setObjectName("detailTitle")
             value = QLabel("-")
+            value.setObjectName("detailValue")
             value.setWordWrap(True)
             value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            value.setStyleSheet("color: #2c3e50;")
+            value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             details_layout.addWidget(title, row, col)
             details_layout.addWidget(value, row, col + 1)
             self.detail_labels[key] = value
-        layout.addWidget(details_group)
+        details_layout.setColumnStretch(1, 1)
+        details_layout.setColumnStretch(3, 1)
+
+        details_scroll = QScrollArea()
+        details_scroll.setWidgetResizable(True)
+        details_scroll.setFrameShape(QFrame.NoFrame)
+        details_scroll.setMaximumHeight(250)
+        details_scroll.setWidget(details_group)
+        layout.addWidget(details_scroll)
 
         self.result_label = QLabel("Pret a scanner.")
+        self.result_label.setObjectName("scanResult")
         self.result_label.setMinimumHeight(54)
         self.result_label.setWordWrap(True)
         self.result_label.setAlignment(Qt.AlignVCenter)
@@ -122,13 +267,19 @@ class InventoryCountScanDialog(QDialog):
         self.scan_table.setHorizontalHeaderLabels(["Barcode", "Qty", "Status", "Time", "Message"])
         self.scan_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.scan_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        layout.addWidget(self.scan_table)
+        self.scan_table.setAlternatingRowColors(True)
+        self.scan_table.verticalHeader().setVisible(False)
+        self.scan_table.verticalHeader().setDefaultSectionSize(28)
+        self.scan_table.horizontalHeader().setHighlightSections(False)
+        self.scan_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.scan_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.scan_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.scan_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.scan_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        layout.addWidget(self.scan_table, 1)
 
         footer = QHBoxLayout()
         footer.addStretch()
-        self.record_btn = QPushButton("Valider")
-        self.record_btn.clicked.connect(self.record_current_quantity)
-        footer.addWidget(self.record_btn)
         self.close_btn = QPushButton("Fermer")
         self.close_btn.clicked.connect(self.accept)
         footer.addWidget(self.close_btn)
@@ -149,16 +300,19 @@ class InventoryCountScanDialog(QDialog):
         if status in {"READY", "MATCHED"}:
             color = "#1e8449"
             border = "#82e0aa"
+            background = "#eef9f1"
         elif status == "UNKNOWN":
             color = "#b9770e"
             border = "#f5c542"
+            background = "#fff8e6"
         else:
             color = "#c0392b"
             border = "#f5b7b1"
+            background = "#fff0f0"
 
         self.result_label.setStyleSheet(
             f"font-size: 18px; font-weight: 800; color: {color}; "
-            f"padding: 10px; border: 1px solid {border}; border-radius: 6px;"
+            f"background: {background}; padding: 10px; border: 1px solid {border}; border-radius: 6px;"
         )
         self.result_label.setText(f"{status}: {message}")
 
@@ -223,6 +377,17 @@ class InventoryCountScanDialog(QDialog):
 
         for key, label in self.detail_labels.items():
             label.setText(str(values.get(key, "-")))
+
+        self.product_title_label.setText(str(values.get("Product_Name", "Inconnu")))
+        meta_values = [
+            f"Lot {values.get('Lot_Number', '-')}",
+            f"Emplacement {values.get('Location_Name', '-')}",
+            f"Programme {values.get('Program_Qty_Snapshot', '0')}",
+            f"Compte {values.get('Counted_Qty', '0')}",
+            f"Ecart {values.get('Difference_Qty', '0')}",
+            f"Statut {values.get('Line_Status', '-')}",
+        ]
+        self.product_meta_label.setText(" | ".join(meta_values))
 
     def _find_line_for_barcode(self, barcode):
         manager = self._manager()
