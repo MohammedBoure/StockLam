@@ -135,6 +135,10 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
         self.assertEqual(result["line"]["Counted_Qty"], Decimal("7"))
         self.assertEqual(result["line"]["Difference_Qty"], Decimal("-3"))
         self.assertEqual(result["line"]["Line_Status"], "SHORT")
+        match_query = cursor.executed[1][0]
+        self.assertIn("p.Barcode = %s", match_query)
+        self.assertIn("p.Manuf_Cat_No = %s", match_query)
+        self.assertIn("ORDER BY", match_query)
 
     def test_build_snapshot_uses_signed_difference_expression(self):
         cursor = FakeCursor(

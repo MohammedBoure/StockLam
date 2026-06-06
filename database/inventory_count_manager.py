@@ -255,14 +255,54 @@ class InventoryCountManager:
 
                 cursor.execute(
                     """
-                    SELECT *
-                    FROM Inventory_Count_Lines
-                    WHERE Session_ID = %s
-                      AND Internal_Barcode = %s
-                      AND Batch_ID IS NOT NULL
+                    SELECT
+                        l.*,
+                        p.Product_Name,
+                        p.Barcode AS Product_Barcode,
+                        p.Manuf_Cat_No,
+                        p.Stock_Unit,
+                        p.Ordering_Unit,
+                        p.Usage_Unit,
+                        p.Usage_Qty_Per_Stock_Unit,
+                        p.Minimum_Stock_Level,
+                        p.Storage_Temp_Req,
+                        pf.Family_Name,
+                        m.Manuf_Name,
+                        a.Automate_Name,
+                        b.Lot_Number,
+                        b.Expiry_Date,
+                        b.Quantity_Current,
+                        b.Quantity_Initial,
+                        b.Status AS Batch_Status,
+                        b.Reception_Note,
+                        b.Unit_Price_Received,
+                        loc.Location_Name
+                    FROM Inventory_Count_Lines l
+                    LEFT JOIN Inventory_Batches b ON l.Batch_ID = b.Batch_ID
+                    LEFT JOIN Products_Master p ON COALESCE(l.Product_ID, b.Product_ID) = p.Product_ID
+                    LEFT JOIN Product_Families pf ON p.Family_ID = pf.Family_ID
+                    LEFT JOIN Manufacturers m ON p.Manuf_ID = m.Manuf_ID
+                    LEFT JOIN Automates a ON p.Preferred_Automate_ID = a.Automate_ID
+                    LEFT JOIN Locations loc ON b.Location_ID = loc.Location_ID
+                    WHERE l.Session_ID = %s
+                      AND l.Batch_ID IS NOT NULL
+                      AND (
+                            l.Internal_Barcode = %s OR
+                            p.Barcode = %s OR
+                            p.Manuf_Cat_No = %s
+                      )
+                    ORDER BY
+                        CASE
+                            WHEN l.Internal_Barcode = %s THEN 0
+                            WHEN p.Barcode = %s THEN 1
+                            WHEN p.Manuf_Cat_No = %s THEN 2
+                            ELSE 3
+                        END,
+                        b.Expiry_Date ASC,
+                        b.Batch_ID ASC
                     LIMIT 1
                     """,
-                    (session_id, barcode)
+                    (session_id, barcode, barcode, barcode, barcode, barcode, barcode)
                 )
                 line = cursor.fetchone()
 
@@ -443,12 +483,17 @@ class InventoryCountManager:
                 (
                     p.Product_Name LIKE %s OR
                     l.Internal_Barcode LIKE %s OR
+                    p.Barcode LIKE %s OR
+                    p.Manuf_Cat_No LIKE %s OR
                     b.Lot_Number LIKE %s OR
-                    loc.Location_Name LIKE %s
+                    loc.Location_Name LIKE %s OR
+                    pf.Family_Name LIKE %s OR
+                    m.Manuf_Name LIKE %s OR
+                    a.Automate_Name LIKE %s
                 )
                 """
             )
-            params.extend([like, like, like, like])
+            params.extend([like, like, like, like, like, like, like, like, like])
 
         try:
             with self.db.get_db_connection() as conn:
@@ -458,15 +503,31 @@ class InventoryCountManager:
                     SELECT
                         l.*,
                         p.Product_Name,
+                        p.Barcode AS Product_Barcode,
+                        p.Manuf_Cat_No,
                         p.Stock_Unit,
+                        p.Ordering_Unit,
+                        p.Usage_Unit,
+                        p.Usage_Qty_Per_Stock_Unit,
+                        p.Minimum_Stock_Level,
+                        p.Storage_Temp_Req,
+                        pf.Family_Name,
+                        m.Manuf_Name,
+                        a.Automate_Name,
                         b.Lot_Number,
                         b.Expiry_Date,
                         b.Quantity_Current,
+                        b.Quantity_Initial,
+                        b.Status AS Batch_Status,
+                        b.Reception_Note,
                         b.Unit_Price_Received,
                         loc.Location_Name
                     FROM Inventory_Count_Lines l
                     LEFT JOIN Inventory_Batches b ON l.Batch_ID = b.Batch_ID
                     LEFT JOIN Products_Master p ON COALESCE(l.Product_ID, b.Product_ID) = p.Product_ID
+                    LEFT JOIN Product_Families pf ON p.Family_ID = pf.Family_ID
+                    LEFT JOIN Manufacturers m ON p.Manuf_ID = m.Manuf_ID
+                    LEFT JOIN Automates a ON p.Preferred_Automate_ID = a.Automate_ID
                     LEFT JOIN Locations loc ON b.Location_ID = loc.Location_ID
                     WHERE {" AND ".join(clauses)}
                     ORDER BY
