@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 import mysql.connector
 import pandas as pd
 
+from .base.schema_initializer import INDEX_QUERIES, SCHEMA_QUERIES
 from .stock_movement_log_manager import StockMovementLogManager
 from .system_logger import log_methods
 
@@ -15,6 +16,8 @@ from .system_logger import log_methods
 class InventoryCountManager:
     """Manage physical inventory count sessions, scans, review, and application."""
 
+    _schema_checked = False
+
     VALID_SCOPE_TYPES = {"ALL", "LOCATION", "FAMILY", "PRODUCT"}
     OPEN_STATUSES = {"Counting", "Review"}
     FINAL_STATUSES = {"Applied", "Cancelled"}
@@ -22,6 +25,7 @@ class InventoryCountManager:
     def __init__(self, db_instance):
         self.db = db_instance
         self.stock_movement_log = StockMovementLogManager(db_instance)
+        self._ensure_schema()
 
     @staticmethod
     def _normalize_barcode(barcode) -> str:
@@ -60,6 +64,38 @@ class InventoryCountManager:
         if importlib.util.find_spec("openpyxl"):
             return "openpyxl"
         return None
+
+    def _ensure_schema(self):
+        if InventoryCountManager._schema_checked:
+            return
+
+        schema_queries = [query for query in SCHEMA_QUERIES if "Inventory_Count_" in query]
+        index_queries = [query for query in INDEX_QUERIES if "Inventory_Count_" in query]
+
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                for query in schema_queries:
+                    try:
+                        cursor.execute(query)
+                        while cursor.nextset():
+                            pass
+                    except mysql.connector.Error as err:
+                        if err.errno not in (1060, 1061, 1826):
+                            raise
+
+                for query in index_queries:
+                    try:
+                        cursor.execute(query)
+                        while cursor.nextset():
+                            pass
+                    except mysql.connector.Error as err:
+                        if err.errno != 1061:
+                            raise
+
+            InventoryCountManager._schema_checked = True
+        except mysql.connector.Error as err:
+            logging.error(f"Error ensuring inventory count schema: {err}", exc_info=True)
 
     def _fetch_session(self, cursor, session_id) -> Optional[Dict]:
         cursor.execute(
