@@ -83,6 +83,28 @@ class BackupManagerMixin:
             return self.restore_database_excel(input_zip_path, password=password)
         return False, "Unsupported backup format. The ZIP must contain CSV or Excel files."
 
+    @staticmethod
+    def _quote_identifier(identifier):
+        return f"`{str(identifier).replace('`', '``')}`"
+
+    def _drop_inventory_global_barcode_unique(self, conn):
+        cursor = None
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SHOW INDEX FROM `Inventory_Batches` WHERE Key_name = %s",
+                ("uq_inventory_internal_barcode",)
+            )
+            if cursor.fetchone():
+                cursor.execute("ALTER TABLE `Inventory_Batches` DROP INDEX `uq_inventory_internal_barcode`")
+                conn.commit()
+                logging.info("Dropped obsolete unique index Inventory_Batches.uq_inventory_internal_barcode.")
+        except Exception as e:
+            logging.warning(f"Could not drop obsolete barcode unique index: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+
     # -------------------------------------------------------------------------
     # CSV BACKUP
     # -------------------------------------------------------------------------
@@ -169,6 +191,7 @@ class BackupManagerMixin:
         """
         temp_dir = 'temp_restore_csv'
         conn = None
+        cursor = None
         try:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
@@ -179,17 +202,28 @@ class BackupManagerMixin:
                 return False, extract_msg
 
             conn = self.get_raw_connection()
+            self._drop_inventory_global_barcode_unique(conn)
             conn.start_transaction()
             cursor = conn.cursor()
             cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
 
-            backup_files = [f for f in os.listdir(temp_dir) if f.endswith('.csv')]
+            cursor.execute("SHOW TABLES")
+            existing_db_tables = [row[0] for row in cursor.fetchall()]
+            existing_table_by_lower = {table.lower(): table for table in existing_db_tables}
+
+            backup_files = [f for f in os.listdir(temp_dir) if f.lower().endswith('.csv')]
+            csv_file_by_table = {}
             tables_to_restore_data = []
 
             logging.info("🔍 Pre-checking backup files...")
 
             for file_name in backup_files:
-                table_name = file_name.replace('.csv', '')
+                table_name = os.path.splitext(file_name)[0]
+                table_match = existing_table_by_lower.get(table_name.lower())
+                if not table_match:
+                    logging.warning(f"Backup file '{file_name}' does not match an existing table. Skipping.")
+                    continue
+
                 csv_path = os.path.join(temp_dir, file_name)
                 try:
                     df_check = pd.read_csv(csv_path, nrows=1)
@@ -199,7 +233,8 @@ class BackupManagerMixin:
                             f"Skipping restore for this table to preserve current data."
                         )
                         continue
-                    tables_to_restore_data.append(table_name)
+                    tables_to_restore_data.append(table_match)
+                    csv_file_by_table[table_match] = csv_path
                 except Exception as e:
                     logging.warning(f"⚠️ Error checking file {file_name}: {e}")
                     continue
@@ -211,28 +246,32 @@ class BackupManagerMixin:
 
             logging.info(f"🧹 Cleaning existing data for {len(tables_to_restore_data)} tables...")
 
-            cursor.execute("SHOW TABLES")
-            existing_db_tables = [row[0] for row in cursor.fetchall()]
-
             for table_to_clean in tables_to_restore_data:
-                match = next(
-                    (t for t in existing_db_tables if t.lower() == table_to_clean.lower()), None
-                )
-                if match:
-                    try:
-                        cursor.execute(f"DELETE FROM `{match}`")
-                        logging.info(f"   - Cleared table: {match}")
-                    except Exception as e:
-                        logging.warning(f"   - Failed to clear {match}: {e}")
+                try:
+                    cursor.execute(f"DELETE FROM {self._quote_identifier(table_to_clean)}")
+                    logging.info(f"   - Cleared table: {table_to_clean}")
+                except Exception as e:
+                    logging.warning(f"   - Failed to clear {table_to_clean}: {e}")
 
             logging.info("📥 Restoring data...")
 
-            ordered_tables = [t for t in TABLE_IMPORT_ORDER if t in tables_to_restore_data]
-            remaining_tables = [t for t in tables_to_restore_data if t not in TABLE_IMPORT_ORDER]
+            tables_by_lower = {table.lower(): table for table in tables_to_restore_data}
+            ordered_tables = [
+                tables_by_lower[t.lower()]
+                for t in TABLE_IMPORT_ORDER
+                if t.lower() in tables_by_lower
+            ]
+            ordered_lower = {table.lower() for table in ordered_tables}
+            remaining_tables = [
+                table for table in tables_to_restore_data
+                if table.lower() not in ordered_lower
+            ]
             final_restore_list = ordered_tables + remaining_tables
 
             for table_name in final_restore_list:
-                csv_file = os.path.join(temp_dir, f"{table_name}.csv")
+                csv_file = csv_file_by_table.get(table_name)
+                if not csv_file:
+                    continue
                 try:
                     df = pd.read_csv(
                         csv_file, keep_default_na=False, na_values=['<NULL>', 'nan', 'NaN']
@@ -246,7 +285,7 @@ class BackupManagerMixin:
 
                 with self.engine.connect() as conn_inner:
                     try:
-                        result = conn_inner.execute(text(f"SHOW COLUMNS FROM `{table_name}`"))
+                        result = conn_inner.execute(text(f"SHOW COLUMNS FROM {self._quote_identifier(table_name)}"))
                         db_columns = [row[0] for row in result.fetchall()]
                     except Exception:
                         continue
@@ -258,7 +297,7 @@ class BackupManagerMixin:
                 df = df[common_cols]
                 cols = ",".join([f"`{col}`" for col in common_cols])
                 placeholders = ",".join(["%s"] * len(common_cols))
-                sql = f"INSERT INTO `{table_name}` ({cols}) VALUES ({placeholders})"
+                sql = f"INSERT INTO {self._quote_identifier(table_name)} ({cols}) VALUES ({placeholders})"
 
                 cleaned_data = []
                 for row in df.values.tolist():
@@ -287,6 +326,8 @@ class BackupManagerMixin:
             logging.error(f"❌ Restore failed: {e}")
             return False, str(e)
         finally:
+            if cursor:
+                cursor.close()
             if conn and conn.is_connected():
                 conn.close()
             if os.path.exists(temp_dir):

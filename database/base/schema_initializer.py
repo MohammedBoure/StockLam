@@ -344,6 +344,8 @@ SCHEMA_QUERIES = [
         FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL ON UPDATE CASCADE
     );""",
 
+    """ALTER TABLE Inventory_Batches DROP INDEX uq_inventory_internal_barcode;""",
+
     """CREATE TABLE IF NOT EXISTS Inventory_Count_Sessions (
         Session_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         Session_Name VARCHAR(150) NOT NULL,
@@ -532,7 +534,6 @@ INDEX_QUERIES = [
     "CREATE INDEX idx_batch_expiry ON Inventory_Batches(Expiry_Date);",
     "CREATE INDEX idx_batch_lot ON Inventory_Batches(Lot_Number);",
     "CREATE INDEX idx_internal_barcode ON Inventory_Batches(Internal_Barcode);",
-    "CREATE UNIQUE INDEX uq_inventory_internal_barcode ON Inventory_Batches(Internal_Barcode);",
     "CREATE UNIQUE INDEX idx_barcode_location ON Inventory_Batches(Internal_Barcode, Location_ID);",
     "CREATE INDEX idx_inventory_count_session_status ON Inventory_Count_Sessions(Status);",
     "CREATE INDEX idx_inventory_count_session_started ON Inventory_Count_Sessions(Started_At);",
@@ -594,7 +595,8 @@ class SchemaInitializerMixin:
                         # Log but ignore errors related to ALTER TABLE if column already exists
                         # Error 1060: Duplicate column name
                         # Error 1061/1826: Duplicate key/foreign-key name.
-                        if err.errno in (1060, 1061, 1826):
+                        # Error 1091: Key does not exist during DROP INDEX migrations.
+                        if err.errno in (1060, 1061, 1091, 1826):
                             pass
                         else:
                             logging.warning(f"Schema warning during query '{query[:30]}...': {err}")
