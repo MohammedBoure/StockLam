@@ -25,6 +25,7 @@ TABLE_IMPORT_ORDER = [
     'Manufacturers', 'Suppliers', 'External_Partners', 'Locations', 'Automates', 'Waste_Reasons',
     'Products_Master', 'Product_Documents', 'Purchase_Orders', 'PO_Details',
     'Reception_Log', 'Reception_Details', 'Inventory_Batches',
+    'Inventory_Count_Sessions', 'Inventory_Count_Lines', 'Inventory_Count_Scans',
     'Active_Containers', 'External_Transfer_Log', 'External_Transfer_Details', 'Stock_Movement_Log',
     'Supplier_Credit_Notes', 'Credit_Note_Details', 'Supplier_Payments', 'SystemLogs' # <-- تمت الإضافة هنا
 ]

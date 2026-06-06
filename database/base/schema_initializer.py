@@ -344,6 +344,57 @@ SCHEMA_QUERIES = [
         FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL ON UPDATE CASCADE
     );""",
 
+    """CREATE TABLE IF NOT EXISTS Inventory_Count_Sessions (
+        Session_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        Session_Name VARCHAR(150) NOT NULL,
+        Scope_Type ENUM('ALL', 'LOCATION', 'FAMILY', 'PRODUCT') NOT NULL DEFAULT 'ALL',
+        Scope_ID BIGINT UNSIGNED NULL,
+        Status ENUM('Draft', 'Counting', 'Review', 'Applied', 'Cancelled') NOT NULL DEFAULT 'Draft',
+        Started_At DATETIME DEFAULT CURRENT_TIMESTAMP,
+        Completed_At DATETIME NULL,
+        Applied_At DATETIME NULL,
+        Created_By INT UNSIGNED NULL,
+        Applied_By INT UNSIGNED NULL,
+        Notes TEXT NULL,
+        FOREIGN KEY (Created_By) REFERENCES Users(User_ID) ON DELETE SET NULL ON UPDATE CASCADE,
+        FOREIGN KEY (Applied_By) REFERENCES Users(User_ID) ON DELETE SET NULL ON UPDATE CASCADE
+    );""",
+
+    """ALTER TABLE Inventory_Count_Sessions ADD COLUMN Applied_At DATETIME NULL;""",
+    """ALTER TABLE Inventory_Count_Sessions ADD COLUMN Applied_By INT UNSIGNED NULL;""",
+
+    """CREATE TABLE IF NOT EXISTS Inventory_Count_Lines (
+        Line_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        Session_ID BIGINT UNSIGNED NOT NULL,
+        Batch_ID BIGINT UNSIGNED NULL,
+        Product_ID INT UNSIGNED NULL,
+        Internal_Barcode VARCHAR(100) NULL,
+        Program_Qty_Snapshot DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        Counted_Qty DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        Difference_Qty DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        Line_Status ENUM('OK', 'SHORT', 'EXCESS', 'NOT_COUNTED', 'UNKNOWN') NOT NULL DEFAULT 'NOT_COUNTED',
+        Last_Scanned_At DATETIME NULL,
+        Comment TEXT NULL,
+        FOREIGN KEY (Session_ID) REFERENCES Inventory_Count_Sessions(Session_ID) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON DELETE SET NULL ON UPDATE CASCADE,
+        FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON DELETE SET NULL ON UPDATE CASCADE,
+        UNIQUE KEY uq_inventory_count_line_batch (Session_ID, Batch_ID)
+    );""",
+
+    """CREATE TABLE IF NOT EXISTS Inventory_Count_Scans (
+        Scan_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        Session_ID BIGINT UNSIGNED NOT NULL,
+        Line_ID BIGINT UNSIGNED NULL,
+        Scanned_Barcode VARCHAR(100) NOT NULL,
+        Qty DECIMAL(15, 2) NOT NULL DEFAULT 1,
+        Scan_Status ENUM('MATCHED', 'UNKNOWN', 'IGNORED') NOT NULL DEFAULT 'MATCHED',
+        Scanned_At DATETIME DEFAULT CURRENT_TIMESTAMP,
+        Scanned_By INT UNSIGNED NULL,
+        FOREIGN KEY (Session_ID) REFERENCES Inventory_Count_Sessions(Session_ID) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (Line_ID) REFERENCES Inventory_Count_Lines(Line_ID) ON DELETE SET NULL ON UPDATE CASCADE,
+        FOREIGN KEY (Scanned_By) REFERENCES Users(User_ID) ON DELETE SET NULL ON UPDATE CASCADE
+    );""",
+
     """CREATE TABLE IF NOT EXISTS Active_Containers (
         Container_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         Parent_Batch_ID BIGINT UNSIGNED NOT NULL,
@@ -483,6 +534,13 @@ INDEX_QUERIES = [
     "CREATE INDEX idx_internal_barcode ON Inventory_Batches(Internal_Barcode);",
     "CREATE UNIQUE INDEX uq_inventory_internal_barcode ON Inventory_Batches(Internal_Barcode);",
     "CREATE UNIQUE INDEX idx_barcode_location ON Inventory_Batches(Internal_Barcode, Location_ID);",
+    "CREATE INDEX idx_inventory_count_session_status ON Inventory_Count_Sessions(Status);",
+    "CREATE INDEX idx_inventory_count_session_started ON Inventory_Count_Sessions(Started_At);",
+    "CREATE INDEX idx_inventory_count_line_session_status ON Inventory_Count_Lines(Session_ID, Line_Status);",
+    "CREATE INDEX idx_inventory_count_line_barcode ON Inventory_Count_Lines(Internal_Barcode);",
+    "CREATE INDEX idx_inventory_count_line_batch ON Inventory_Count_Lines(Batch_ID);",
+    "CREATE INDEX idx_inventory_count_scan_session_status ON Inventory_Count_Scans(Session_ID, Scan_Status);",
+    "CREATE INDEX idx_inventory_count_scan_barcode ON Inventory_Count_Scans(Scanned_Barcode);",
     "CREATE INDEX idx_reception_invoice_ref ON Reception_Log(Supplier_Invoice_Ref);",
     "CREATE INDEX idx_reception_po_id ON Reception_Log(PO_ID);",
     "CREATE INDEX idx_movement_date ON Stock_Movement_Log(Transaction_Date);",

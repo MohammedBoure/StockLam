@@ -249,7 +249,7 @@ class InventoryCountTab(QWidget):
         self.btn_scan.setEnabled(has_session and is_open)
         self.btn_review.setEnabled(has_session and status == "Counting")
         self.btn_apply.setEnabled(has_session and is_open)
-        self.btn_cancel.setEnabled(has_session and status != "Applied")
+        self.btn_cancel.setEnabled(has_session and status not in {"Applied", "Cancelled"})
         self.btn_export.setEnabled(has_session)
 
     def load_sessions(self):
@@ -396,6 +396,10 @@ class InventoryCountTab(QWidget):
         if not manager or not self.current_session_id:
             QMessageBox.warning(self, "Inventaire", "Selectionnez une session.")
             return
+        status = (self.current_session or {}).get("Status")
+        if status not in {"Counting", "Review"}:
+            QMessageBox.warning(self, "Inventaire", "Cette session n'est pas ouverte au comptage.")
+            return
         session_id = self.current_session_id
         dialog = InventoryCountScanDialog(self.data_manager, session_id, self.current_user, self)
         dialog.scan_recorded.connect(self.on_scan_recorded)
@@ -427,6 +431,10 @@ class InventoryCountTab(QWidget):
         manager = self._manager()
         if not manager or not self.current_session_id:
             QMessageBox.warning(self, "Inventaire", "Selectionnez une session.")
+            return
+        status = (self.current_session or {}).get("Status")
+        if status not in {"Counting", "Review"}:
+            QMessageBox.warning(self, "Inventaire", "Cette session ne peut pas etre appliquee.")
             return
 
         allow_unknown = False
@@ -469,6 +477,10 @@ class InventoryCountTab(QWidget):
         manager = self._manager()
         if not manager or not self.current_session_id:
             QMessageBox.warning(self, "Inventaire", "Selectionnez une session.")
+            return
+        status = (self.current_session or {}).get("Status")
+        if status in {"Applied", "Cancelled"}:
+            QMessageBox.warning(self, "Inventaire", "Cette session ne peut pas etre annulee.")
             return
         confirm = QMessageBox.question(
             self,
