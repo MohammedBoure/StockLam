@@ -50,6 +50,10 @@ class InventoryCountManager:
         return InventoryCountManager._to_decimal(counted_qty) - InventoryCountManager._to_decimal(snapshot_qty)
 
     @staticmethod
+    def _can_apply_status(status) -> bool:
+        return status in InventoryCountManager.OPEN_STATUSES
+
+    @staticmethod
     def _excel_writer_engine() -> Optional[str]:
         if importlib.util.find_spec("xlsxwriter"):
             return "xlsxwriter"
@@ -571,7 +575,7 @@ class InventoryCountManager:
                     "conflicts": [],
                     "message": "Cancelled sessions cannot be applied.",
                 }
-            if session_status not in self.OPEN_STATUSES:
+            if not self._can_apply_status(session_status):
                 conn.rollback()
                 return {
                     "success": False,
