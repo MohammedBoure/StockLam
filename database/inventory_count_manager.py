@@ -1,3 +1,4 @@
+import importlib.util
 import logging
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -47,6 +48,14 @@ class InventoryCountManager:
     @staticmethod
     def _difference(snapshot_qty, counted_qty) -> Decimal:
         return InventoryCountManager._to_decimal(counted_qty) - InventoryCountManager._to_decimal(snapshot_qty)
+
+    @staticmethod
+    def _excel_writer_engine() -> Optional[str]:
+        if importlib.util.find_spec("xlsxwriter"):
+            return "xlsxwriter"
+        if importlib.util.find_spec("openpyxl"):
+            return "openpyxl"
+        return None
 
     def _fetch_session(self, cursor, session_id) -> Optional[Dict]:
         cursor.execute(
@@ -777,33 +786,95 @@ class InventoryCountManager:
                 conn.close()
 
     def export_session_to_excel(self, session_id, output_path) -> Dict:
-        output_path = Path(output_path)
         try:
-            lines = self.get_session_lines(session_id)
-            summary = self.get_session_summary(session_id)
+            if not output_path:
+                return {"success": False, "message": "Output path is required."}
+            output_path = Path(output_path)
+            engine = self._excel_writer_engine()
+            if not engine:
+                return {
+                    "success": False,
+                    "message": "Excel export requires xlsxwriter or openpyxl.",
+                }
 
             with self.db.get_db_connection() as conn:
-                scans_df = pd.read_sql(
+                cursor = conn.cursor(dictionary=True)
+                session = self._fetch_session(cursor, session_id)
+                if not session:
+                    return {"success": False, "message": "Inventory count session not found."}
+
+                lines = self.get_session_lines(session_id)
+                summary = self.get_session_summary(session_id)
+
+                cursor.execute(
                     """
                     SELECT
                         s.Scanned_Barcode,
                         s.Qty,
                         s.Scan_Status,
                         s.Scanned_At,
-                        u.Full_Name AS Scanned_By_Name
+                        s.Scanned_By
                     FROM Inventory_Count_Scans s
-                    LEFT JOIN Users u ON s.Scanned_By = u.User_ID
                     WHERE s.Session_ID = %s
                     ORDER BY s.Scanned_At DESC
                     """,
-                    conn,
-                    params=(session_id,)
+                    (session_id,)
                 )
+                scans = cursor.fetchall()
 
-            lines_df = pd.DataFrame(lines)
-            summary_df = pd.DataFrame([summary])
-            with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
-                summary_df.to_excel(writer, sheet_name="Resume", index=False)
+            def excel_value(value):
+                if isinstance(value, Decimal):
+                    return float(value)
+                return value
+
+            summary_df = pd.DataFrame(
+                [
+                    {
+                        "Session_ID": session.get("Session_ID"),
+                        "Session_Name": session.get("Session_Name"),
+                        "Status": session.get("Status"),
+                        "Started_At": session.get("Started_At"),
+                        "Applied_At": session.get("Applied_At"),
+                        "OK count": summary.get("OK", 0),
+                        "SHORT count": summary.get("SHORT", 0),
+                        "EXCESS count": summary.get("EXCESS", 0),
+                        "NOT_COUNTED count": summary.get("NOT_COUNTED", 0),
+                        "UNKNOWN count": summary.get("UNKNOWN", 0),
+                        "estimated variance value": excel_value(summary.get("Estimated_Variance_Value", 0)),
+                    }
+                ]
+            )
+
+            line_columns = [
+                "Product_Name",
+                "Internal_Barcode",
+                "Lot_Number",
+                "Expiry_Date",
+                "Location_Name",
+                "Program_Qty_Snapshot",
+                "Counted_Qty",
+                "Difference_Qty",
+                "Line_Status",
+                "Comment",
+            ]
+            lines_df = pd.DataFrame(
+                [
+                    {column: excel_value(line.get(column)) for column in line_columns}
+                    for line in lines
+                ],
+                columns=line_columns,
+            )
+
+            scan_columns = ["Scanned_Barcode", "Qty", "Scan_Status", "Scanned_At", "Scanned_By"]
+            scans_df = pd.DataFrame(
+                [
+                    {column: excel_value(scan.get(column)) for column in scan_columns}
+                    for scan in scans
+                ],
+                columns=scan_columns,
+            )
+            with pd.ExcelWriter(output_path, engine=engine) as writer:
+                summary_df.to_excel(writer, sheet_name="Résumé", index=False)
                 lines_df.to_excel(writer, sheet_name="Lignes", index=False)
                 scans_df.to_excel(writer, sheet_name="Scans", index=False)
 
