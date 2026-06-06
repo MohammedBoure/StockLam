@@ -17,6 +17,7 @@ from .widgets.procurement.procurement_tabs import ProcurementTab
 from .widgets.supplier.supplier_stats_tab import SupplierStatsTab
 from .widgets.supplier.supplier_financial_view import SupplierFinancialView 
 from .widgets.inventory.inventory_tabs import InventoryTab
+from .widgets.inventory.inventory_count_tab import InventoryCountTab
 from .widgets.master_data.manufacturers_tab import ManufacturersTab
 from .widgets.master_data.locations_tab import LocationsTab
 from .widgets.master_data.automates_tab import AutomatesTab
@@ -98,6 +99,7 @@ class MainWindow(QMainWindow):
                 1: "nav_data",
                 2: "nav_procurement",
                 3: "nav_inventory",
+                9: "nav_inventaire",
                 8: "nav_finance",
                 6: "nav_services",
                 7: "nav_history",
@@ -275,6 +277,7 @@ class MainWindow(QMainWindow):
             (1, "Données de Base", "fa5s.layer-group"),
             (2, "Achats & Entrées", "fa5s.shopping-cart"), 
             (3, "Stock & Magasin",  "fa5s.boxes"),
+            (9, "Inventaire", "fa5s.clipboard-list"),
             (8, "États Fournisseurs", "fa5s.file-invoice-dollar"), 
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
             (7, "Traçabilité",      "fa5s.history"),
@@ -406,6 +409,7 @@ class MainWindow(QMainWindow):
             1: "nav_data",
             2: "nav_procurement",
             3: "nav_inventory",
+            9: "nav_inventaire",
             8: "nav_finance",
             6: "nav_services",
             7: "nav_history",  # واجهة السجل المستقلة
@@ -436,7 +440,7 @@ class MainWindow(QMainWindow):
             self.close()
 
     def _init_placeholders(self):
-        for i in range(9):
+        for i in range(10):
             self.content_area.addWidget(QWidget())
 
     def has_permission(self, perm_key):
@@ -530,6 +534,9 @@ class MainWindow(QMainWindow):
             if self.has_permission("tab_inv_dispatch"): 
                 widget.tabs.addTab(widget.dispatch_tab, "🚚 2. Transfert & Consommation")
 
+        elif page_id == 9:
+            widget = InventoryCountTab(self.data_manager, self.current_user)
+
         # --- 4. Settings (Paramètres) ---
         elif page_id == 4:
             widget = SettingsTab(self.data_manager)
@@ -601,6 +608,7 @@ class MainWindow(QMainWindow):
             1: "nav_data",
             2: "nav_procurement",
             3: "nav_inventory",
+            9: "nav_inventaire",
             8: "nav_finance",
             6: "nav_services",
             7: "nav_history",

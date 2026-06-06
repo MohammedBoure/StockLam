@@ -16,6 +16,7 @@ _ALL_PERMISSIONS = [
     "nav_finance", 
     "nav_services", 
     "nav_history",    
+    "nav_inventaire",
     "nav_settings",
     "nav_market",
 
