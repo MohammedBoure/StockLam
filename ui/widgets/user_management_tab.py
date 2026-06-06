@@ -63,6 +63,18 @@ SYSTEM_PERMISSIONS = {
             "tab_inv_financials": "Voir les valeurs financières (Prix/Total)" 
         }
     },
+    "4a. INVENTAIRE": {
+        "label": "Inventaire",
+        "icon": "fa5s.clipboard-list",
+        "perms": {
+            "nav_inventaire": "Acces a l'inventaire",
+            "act_inventory_create": "Creer une session",
+            "act_inventory_scan": "Scanner les articles",
+            "act_inventory_apply": "Appliquer les ecarts",
+            "act_inventory_cancel": "Annuler une session",
+            "act_inventory_export": "Exporter vers Excel"
+        }
+    },
     "5. FINANCE_FOURNISSEURS": {
         "label": "💰 États Fournisseurs",
         "icon": "fa5s.file-invoice-dollar",
