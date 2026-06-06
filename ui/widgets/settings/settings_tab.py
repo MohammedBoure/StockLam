@@ -552,18 +552,45 @@ class SettingsTab(QWidget):
         confirm = QMessageBox.warning(
             self, 
             "Attention - Restauration", 
-            "Toutes les données actuelles seront supprimées et remplaçées par celles du fichier Excel ! \n\nÊtes-vous sûr ?", 
+            "Toutes les données actuelles seront supprimées et remplaçées par celles du fichier de sauvegarde ! \n\nÊtes-vous sûr ?",
             QMessageBox.Yes | QMessageBox.No
         )
         if confirm == QMessageBox.Yes:
-            path, _ = QFileDialog.getOpenFileName(self, "Sélectionner le fichier de sauvegarde Excel", "", "Fichiers ZIP (*.zip)")
+            path, _ = QFileDialog.getOpenFileName(self, "Sélectionner le fichier de sauvegarde", "", "Fichiers ZIP (*.zip)")
             if path:
-                if hasattr(self.data_manager.db, 'restore_database_excel'):
-                    success, msg = self.data_manager.db.restore_database_excel(path)
+                db_ref = self.data_manager.db
+                password = None
+
+                try:
+                    if hasattr(db_ref, 'backup_zip_requires_password') and db_ref.backup_zip_requires_password(path):
+                        password, ok = QInputDialog.getText(
+                            self,
+                            "Mot de passe sauvegarde",
+                            "Cette sauvegarde est protégée. Entrez le mot de passe ZIP :",
+                            QLineEdit.EchoMode.Password,
+                            str(self.settings.get("auto_backup_password", ""))
+                        )
+                        if not ok:
+                            return
+                except Exception as e:
+                    logging.warning(f"Impossible de vérifier le mot de passe de sauvegarde: {e}")
+
+                if hasattr(db_ref, 'restore_database_backup'):
+                    success, msg = db_ref.restore_database_backup(path, password=password)
+                    if not success and str(msg).startswith("BACKUP_PASSWORD_REQUIRED"):
+                        QMessageBox.warning(self, "Mot de passe requis", "Cette sauvegarde est chiffrée. Veuillez entrer le mot de passe.")
+                        return
+                    if not success and str(msg).startswith("BACKUP_BAD_PASSWORD"):
+                        QMessageBox.critical(self, "Mot de passe incorrect", "Le mot de passe de la sauvegarde est incorrect.")
+                        return
+                    if success: QMessageBox.information(self, "Terminé", "Restauration terminée avec succès.")
+                    else: QMessageBox.critical(self, "Échec", msg)
+                elif hasattr(db_ref, 'restore_database_excel'):
+                    success, msg = db_ref.restore_database_excel(path, password=password)
                     if success: QMessageBox.information(self, "Terminé", "Restauration terminée avec succès.")
                     else: QMessageBox.critical(self, "Échec", msg)
                 else:
-                    QMessageBox.critical(self, "Erreur", "La fonction de restauration Excel est introuvable.")
+                    QMessageBox.critical(self, "Erreur", "La fonction de restauration est introuvable.")
 
     def perform_archive_logs(self):
         days, ok = QInputDialog.getInt(self, "Archiver les historiques", 

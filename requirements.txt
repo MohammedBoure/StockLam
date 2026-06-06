@@ -9,3 +9,4 @@ python-barcode
 Pillow
 reportlab
 xlsxwriter
+pyzipper

@@ -14,6 +14,75 @@ from .config import TABLE_IMPORT_ORDER
 class BackupManagerMixin:
     """Mixin that provides CSV/Excel backup and restore methods to the Database class."""
 
+    @staticmethod
+    def _zip_info_is_encrypted(zip_info):
+        return bool(zip_info.flag_bits & 0x1) or zip_info.compress_type == 99
+
+    def _get_backup_zip_infos(self, input_zip_path):
+        with zipfile.ZipFile(input_zip_path, 'r') as zip_ref:
+            return zip_ref.infolist()
+
+    def backup_zip_requires_password(self, input_zip_path):
+        try:
+            return any(self._zip_info_is_encrypted(info) for info in self._get_backup_zip_infos(input_zip_path))
+        except Exception as e:
+            logging.warning(f"Could not inspect backup zip encryption: {e}")
+            return False
+
+    def detect_backup_zip_format(self, input_zip_path):
+        try:
+            names = [info.filename.lower() for info in self._get_backup_zip_infos(input_zip_path)]
+        except Exception as e:
+            logging.warning(f"Could not inspect backup zip content: {e}")
+            return "unknown"
+
+        if any(name.endswith('.xlsx') for name in names):
+            return "excel"
+        if any(name.endswith('.csv') for name in names):
+            return "csv"
+        return "unknown"
+
+    def _extract_backup_zip(self, input_zip_path, temp_dir, password=None):
+        password_bytes = password.encode('utf-8') if password else None
+        try:
+            infos = self._get_backup_zip_infos(input_zip_path)
+            encrypted = any(self._zip_info_is_encrypted(info) for info in infos)
+            uses_aes = any(info.compress_type == 99 for info in infos)
+
+            if encrypted and not password_bytes:
+                return False, "BACKUP_PASSWORD_REQUIRED: this backup is encrypted."
+
+            if uses_aes:
+                try:
+                    import pyzipper
+                except ImportError:
+                    return False, "pyzipper is required to restore encrypted AES backups. Install it with pip install pyzipper."
+
+                with pyzipper.AESZipFile(input_zip_path, 'r') as zip_ref:
+                    if password_bytes:
+                        zip_ref.setpassword(password_bytes)
+                    zip_ref.extractall(temp_dir, pwd=password_bytes)
+            else:
+                with zipfile.ZipFile(input_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir, pwd=password_bytes)
+
+            return True, ""
+        except RuntimeError as e:
+            msg = str(e)
+            if "password" in msg.lower() or "bad password" in msg.lower():
+                return False, "BACKUP_BAD_PASSWORD: invalid or missing backup password."
+            return False, msg
+        except Exception as e:
+            return False, str(e)
+
+    def restore_database_backup(self, input_zip_path, password=None):
+        backup_format = self.detect_backup_zip_format(input_zip_path)
+        if backup_format == "csv":
+            return self.restore_database_csv(input_zip_path, password=password)
+        if backup_format == "excel":
+            return self.restore_database_excel(input_zip_path, password=password)
+        return False, "Unsupported backup format. The ZIP must contain CSV or Excel files."
+
     # -------------------------------------------------------------------------
     # CSV BACKUP
     # -------------------------------------------------------------------------
@@ -94,7 +163,7 @@ class BackupManagerMixin:
     # CSV RESTORE
     # -------------------------------------------------------------------------
 
-    def restore_database_csv(self, input_zip_path):
+    def restore_database_csv(self, input_zip_path, password=None):
         """
         استعادة آمنة: لا تقوم بمسح البيانات إلا إذا كان الملف البديل يحتوي على بيانات فعلاً.
         """
@@ -105,8 +174,9 @@ class BackupManagerMixin:
                 shutil.rmtree(temp_dir)
             os.makedirs(temp_dir)
 
-            with zipfile.ZipFile(input_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_dir)
+            extracted, extract_msg = self._extract_backup_zip(input_zip_path, temp_dir, password=password)
+            if not extracted:
+                return False, extract_msg
 
             conn = self.get_raw_connection()
             conn.start_transaction()
@@ -264,7 +334,7 @@ class BackupManagerMixin:
     # EXCEL RESTORE
     # -------------------------------------------------------------------------
 
-    def restore_database_excel(self, input_zip_path):
+    def restore_database_excel(self, input_zip_path, password=None):
         """
         استعادة قاعدة البيانات من ملفات Excel مع معالجة ذكية للقيم الفارغة (NULL).
         """
@@ -275,8 +345,9 @@ class BackupManagerMixin:
                 shutil.rmtree(temp_dir)
             os.makedirs(temp_dir)
 
-            with zipfile.ZipFile(input_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_dir)
+            extracted, extract_msg = self._extract_backup_zip(input_zip_path, temp_dir, password=password)
+            if not extracted:
+                return False, extract_msg
 
             conn = self.get_raw_connection()
             conn.start_transaction()
@@ -284,6 +355,13 @@ class BackupManagerMixin:
             cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
 
             excel_files = [f for f in os.listdir(temp_dir) if f.endswith('.xlsx')]
+            if not excel_files:
+                csv_files = [f for f in os.listdir(temp_dir) if f.endswith('.csv')]
+                cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+                conn.rollback()
+                if csv_files:
+                    return False, "This backup contains CSV files. Use restore_database_backup for automatic restore."
+                return False, "No Excel files were found in this backup."
 
             EXCEL_IMPORT_ORDER = [
                 'Users', 'Location_Types', 'Product_Families', 'Packaging_Units',
