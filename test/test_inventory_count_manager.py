@@ -140,6 +140,28 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
         self.assertIn("p.Manuf_Cat_No = %s", match_query)
         self.assertIn("ORDER BY", match_query)
 
+    def test_get_session_line_by_barcode_uses_exact_priority_lookup(self):
+        cursor = FakeCursor(
+            [
+                {
+                    "Line_ID": 12,
+                    "Session_ID": 99,
+                    "Internal_Barcode": "ABC-123",
+                    "Product_Name": "Produit test",
+                },
+            ]
+        )
+        manager = make_manager(FakeDb(FakeConnection(cursor)))
+
+        result = manager.get_session_line_by_barcode(session_id=99, barcode=" ABC-123 ")
+
+        self.assertEqual(result["Line_ID"], 12)
+        query, params = cursor.executed[0]
+        self.assertIn("l.Internal_Barcode = %s", query)
+        self.assertIn("p.Barcode = %s", query)
+        self.assertIn("p.Manuf_Cat_No = %s", query)
+        self.assertEqual(params, (99, "ABC-123", "ABC-123", "ABC-123", "ABC-123", "ABC-123", "ABC-123"))
+
     def test_build_snapshot_uses_signed_difference_expression(self):
         cursor = FakeCursor(
             [

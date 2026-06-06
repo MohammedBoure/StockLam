@@ -2,7 +2,7 @@ import json
 import logging
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -40,6 +40,8 @@ class NewInventorySessionDialog(QDialog):
             "FAMILY": [],
             "PRODUCT": [],
         }
+        self.product_search_limit = 80
+        self.product_search_min_chars = 2
         self.setWindowTitle("Nouvelle session inventaire")
         self.setMinimumWidth(560)
 
@@ -65,7 +67,12 @@ class NewInventorySessionDialog(QDialog):
             completer.setCompletionMode(QCompleter.PopupCompletion)
             completer.setFilterMode(Qt.MatchContains)
             completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.scope_selector.lineEdit().textEdited.connect(self.schedule_scope_search)
         form.addRow("Choix", self.scope_selector)
+
+        self.scope_search_timer = QTimer(self)
+        self.scope_search_timer.setSingleShot(True)
+        self.scope_search_timer.timeout.connect(self.load_product_scope_options)
 
         self.notes_input = QTextEdit()
         self.notes_input.setFixedHeight(80)
@@ -105,19 +112,56 @@ class NewInventorySessionDialog(QDialog):
         except Exception as exc:
             logging.error(f"Unable to load inventory scope families: {exc}", exc_info=True)
 
+        self.scope_options["PRODUCT"] = []
+
+    def _product_scope_label(self, product):
+        name = product.get("Product_Name") or f"Product #{product.get('Product_ID')}"
+        family = product.get("Family_Name") or "-"
+        barcode = product.get("Barcode") or product.get("Manuf_Cat_No") or "-"
+        return f"{name} | {family} | {barcode}"
+
+    def _populate_scope_selector(self, options, preserve_text=None):
+        self.scope_selector.blockSignals(True)
+        self.scope_selector.clear()
+        for label, value in options:
+            self.scope_selector.addItem(label, value)
+        self.scope_selector.setCurrentIndex(-1)
+        if preserve_text is not None:
+            self.scope_selector.lineEdit().setText(preserve_text)
+        self.scope_selector.blockSignals(False)
+
+    def schedule_scope_search(self, text):
+        if self.scope_combo.currentText() != "PRODUCT":
+            return
+
+        search_text = text.strip()
+        if len(search_text) < self.product_search_min_chars:
+            self.scope_search_timer.stop()
+            self.scope_options["PRODUCT"] = []
+            return
+
+        self.scope_search_timer.start(280)
+
+    def load_product_scope_options(self):
+        if not self.data_manager or self.scope_combo.currentText() != "PRODUCT":
+            return
+
+        search_text = self.scope_selector.currentText().strip()
+        if len(search_text) < self.product_search_min_chars:
+            return
+
         try:
-            products = self.data_manager.products.get_all_products()
-            product_options = []
-            for product in products:
-                name = product.get("Product_Name") or f"Product #{product.get('Product_ID')}"
-                family = product.get("Family_Name") or "-"
-                barcode = product.get("Barcode") or product.get("Manuf_Cat_No") or "-"
-                product_options.append((f"{name} | {family} | {barcode}", product.get("Product_ID")))
+            products = self.data_manager.products.search_products(search_text, limit=self.product_search_limit)
             self.scope_options["PRODUCT"] = [
-                item for item in product_options if item[1] is not None
+                (self._product_scope_label(product), product.get("Product_ID"))
+                for product in products
+                if product.get("Product_ID") is not None
             ]
+            self._populate_scope_selector(self.scope_options["PRODUCT"], preserve_text=search_text)
+            if self.scope_options["PRODUCT"]:
+                self.scope_selector.showPopup()
         except Exception as exc:
-            logging.error(f"Unable to load inventory scope products: {exc}", exc_info=True)
+            logging.error(f"Unable to search inventory scope products: {exc}", exc_info=True)
 
     def update_scope_selector(self, scope_type):
         self.scope_selector.clear()
@@ -127,6 +171,12 @@ class NewInventorySessionDialog(QDialog):
             return
 
         self.scope_selector.setEnabled(True)
+        if scope_type == "PRODUCT":
+            self.scope_options["PRODUCT"] = []
+            self.scope_selector.lineEdit().setPlaceholderText("Tapez au moins 2 caracteres...")
+            self.scope_selector.setCurrentIndex(-1)
+            return
+
         self.scope_selector.lineEdit().setPlaceholderText("Rechercher et choisir...")
         for label, value in self.scope_options.get(scope_type, []):
             self.scope_selector.addItem(label, value)

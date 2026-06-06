@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -31,6 +31,7 @@ class InventoryCountScanDialog(QDialog):
         self.current_user = current_user or {}
         self.pending_barcode = ""
         self.pending_line = None
+        self.last_loaded_barcode = ""
         self.detail_labels = {}
 
         self.setWindowTitle("Scanner inventaire")
@@ -50,7 +51,12 @@ class InventoryCountScanDialog(QDialog):
         self.barcode_input.setMinimumHeight(48)
         self.barcode_input.setStyleSheet("font-size: 20px; font-weight: 700; padding: 6px 10px;")
         self.barcode_input.returnPressed.connect(self.load_barcode_details)
+        self.barcode_input.textChanged.connect(self.schedule_barcode_lookup)
         form.addRow("Code-barres", self.barcode_input)
+
+        self.barcode_lookup_timer = QTimer(self)
+        self.barcode_lookup_timer.setSingleShot(True)
+        self.barcode_lookup_timer.timeout.connect(self.load_barcode_details)
 
         self.qty_input = QSpinBox()
         self.qty_input.setRange(0, 999999)
@@ -223,6 +229,12 @@ class InventoryCountScanDialog(QDialog):
         if not manager:
             return None
 
+        exact_lookup = getattr(manager, "get_session_line_by_barcode", None)
+        if callable(exact_lookup):
+            line = exact_lookup(self.session_id, barcode)
+            if line:
+                return line
+
         lines = manager.get_session_lines(self.session_id, search=barcode)
         normalized = self._normalize_code(barcode)
         compact = self._compact_code(barcode)
@@ -277,10 +289,33 @@ class InventoryCountScanDialog(QDialog):
             self.scan_table.removeRow(self.scan_table.rowCount() - 1)
         self.scan_table.resizeColumnsToContents()
 
+    def schedule_barcode_lookup(self, text):
+        barcode = text.strip()
+        if not barcode:
+            self.barcode_lookup_timer.stop()
+            self.pending_barcode = ""
+            self.pending_line = None
+            self.last_loaded_barcode = ""
+            return
+
+        if barcode == self.last_loaded_barcode:
+            return
+
+        if len(barcode) < 3:
+            self.barcode_lookup_timer.stop()
+            return
+
+        self.barcode_lookup_timer.start(220)
+
     def load_barcode_details(self):
         barcode = self.barcode_input.text().strip()
         if not barcode:
             self.barcode_input.setFocus()
+            return
+
+        if barcode == self.last_loaded_barcode:
+            self.qty_input.setFocus()
+            self.qty_input.selectAll()
             return
 
         manager = self._manager()
@@ -301,6 +336,7 @@ class InventoryCountScanDialog(QDialog):
             self.barcode_input.setFocus()
             return
 
+        self.last_loaded_barcode = barcode
         self._set_details(self.pending_line, barcode)
         self.qty_input.setValue(self._default_quantity_for_line(self.pending_line))
         self.qty_input.setFocus()
@@ -350,6 +386,7 @@ class InventoryCountScanDialog(QDialog):
 
         self.pending_barcode = ""
         self.pending_line = result.get("line")
+        self.last_loaded_barcode = ""
         self.barcode_input.clear()
         self.qty_input.setValue(1)
         self.barcode_input.setFocus()

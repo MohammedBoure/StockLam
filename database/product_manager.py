@@ -213,11 +213,19 @@ class ProductManager:
             logging.error(f"Erreur delete_product {product_id}: {err}", exc_info=True)
             return False
 
-    def search_products(self, search_term: str) -> List[Dict]:
-        if search_term is None: return self.get_all_products()
+    def search_products(self, search_term: str, limit=None) -> List[Dict]:
+        if search_term is None:
+            products = self.get_all_products()
+            if limit:
+                try:
+                    return products[:max(1, int(limit))]
+                except (TypeError, ValueError):
+                    return products
+            return products
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
+                params = []
                 query = """
                     SELECT p.*, m.Manuf_Name, pf.Family_Name, a.Automate_Name
                     FROM Products_Master p
@@ -235,7 +243,15 @@ class ProductManager:
                     ORDER BY p.Product_Name
                 """
                 term = f"%{search_term}%"
-                cursor.execute(query, (term, term, term, term, term))
+                params.extend([term, term, term, term, term])
+                if limit:
+                    try:
+                        limit_value = max(1, min(int(limit), 500))
+                        query += " LIMIT %s"
+                        params.append(limit_value)
+                    except (TypeError, ValueError):
+                        pass
+                cursor.execute(query, tuple(params))
                 return cursor.fetchall()
         except mysql.connector.Error as err:
             logging.error(f"Erreur search_products: {err}", exc_info=True)
