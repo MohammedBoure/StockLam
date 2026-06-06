@@ -5,7 +5,6 @@ from decimal import Decimal
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -18,13 +17,14 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+from .inventory_count_scan_dialog import InventoryCountScanDialog
 
 
 class NewInventorySessionDialog(QDialog):
@@ -67,80 +67,6 @@ class NewInventorySessionDialog(QDialog):
             "scope_id": int(scope_id_text) if scope_id_text.isdigit() else None,
             "notes": self.notes_input.toPlainText().strip() or None,
         }
-
-
-class InventoryScanDialog(QDialog):
-    def __init__(self, manager, session_id, user_id=None, parent=None):
-        super().__init__(parent)
-        self.manager = manager
-        self.session_id = session_id
-        self.user_id = user_id
-        self.scan_count = 0
-        self.setWindowTitle("Scanner inventaire")
-        self.resize(640, 420)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        form = QFormLayout()
-
-        self.barcode_input = QLineEdit()
-        self.barcode_input.setPlaceholderText("Scanner ou saisir un code-barres")
-        self.barcode_input.returnPressed.connect(self.scan_current_barcode)
-        form.addRow("Code-barres", self.barcode_input)
-
-        self.qty_input = QSpinBox()
-        self.qty_input.setRange(1, 999999)
-        self.qty_input.setValue(1)
-        form.addRow("Quantite", self.qty_input)
-        layout.addLayout(form)
-
-        self.result_label = QLabel("Pret.")
-        self.result_label.setWordWrap(True)
-        self.result_label.setStyleSheet("font-weight: 700; color: #2c3e50;")
-        layout.addWidget(self.result_label)
-
-        self.scan_table = QTableWidget(0, 4)
-        self.scan_table.setHorizontalHeaderLabels(["Code-barres", "Quantite", "Statut", "Message"])
-        self.scan_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.scan_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        layout.addWidget(self.scan_table)
-
-        close_btn = QPushButton("Fermer")
-        close_btn.clicked.connect(self.accept)
-        layout.addWidget(close_btn, alignment=Qt.AlignRight)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.barcode_input.setFocus()
-
-    def scan_current_barcode(self):
-        barcode = self.barcode_input.text().strip()
-        qty = self.qty_input.value()
-        if not barcode:
-            self.barcode_input.setFocus()
-            return
-
-        result = self.manager.scan_barcode(self.session_id, barcode, qty, self.user_id)
-        status = result.get("status", "ERROR")
-        message = result.get("message", "")
-
-        if status == "MATCHED":
-            self.result_label.setStyleSheet("font-weight: 700; color: #1e8449;")
-        elif status == "UNKNOWN":
-            self.result_label.setStyleSheet("font-weight: 700; color: #b9770e;")
-        else:
-            self.result_label.setStyleSheet("font-weight: 700; color: #c0392b;")
-        self.result_label.setText(f"{status}: {message}")
-
-        self.scan_table.insertRow(0)
-        for column, value in enumerate([barcode, qty, status, message]):
-            self.scan_table.setItem(0, column, QTableWidgetItem(str(value)))
-        self.scan_table.resizeColumnsToContents()
-
-        self.scan_count += 1
-        self.barcode_input.clear()
-        self.barcode_input.setFocus()
 
 
 class SummaryCard(QFrame):
@@ -470,10 +396,17 @@ class InventoryCountTab(QWidget):
         if not manager or not self.current_session_id:
             QMessageBox.warning(self, "Inventaire", "Selectionnez une session.")
             return
-        dialog = InventoryScanDialog(manager, self.current_session_id, self._user_id(), self)
+        session_id = self.current_session_id
+        dialog = InventoryCountScanDialog(self.data_manager, session_id, self.current_user, self)
+        dialog.scan_recorded.connect(self.on_scan_recorded)
         dialog.exec()
+        self.current_session_id = session_id
         self.load_sessions()
-        self._select_session(self.current_session_id)
+        self._select_session(session_id)
+        self.load_lines()
+        self.refresh_summary()
+
+    def on_scan_recorded(self):
         self.load_lines()
         self.refresh_summary()
 
