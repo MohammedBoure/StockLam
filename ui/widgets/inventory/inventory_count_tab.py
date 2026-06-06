@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QCompleter,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -30,10 +31,17 @@ from .inventory_count_scan_dialog import InventoryCountScanDialog
 
 
 class NewInventorySessionDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, data_manager=None, parent=None):
         super().__init__(parent)
+        self.data_manager = data_manager
+        self.scope_options = {
+            "ALL": [],
+            "LOCATION": [],
+            "FAMILY": [],
+            "PRODUCT": [],
+        }
         self.setWindowTitle("Nouvelle session inventaire")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(560)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -44,11 +52,20 @@ class NewInventorySessionDialog(QDialog):
 
         self.scope_combo = QComboBox()
         self.scope_combo.addItems(["ALL", "LOCATION", "FAMILY", "PRODUCT"])
+        self.scope_combo.currentTextChanged.connect(self.update_scope_selector)
         form.addRow("Scope", self.scope_combo)
 
-        self.scope_id_input = QLineEdit()
-        self.scope_id_input.setPlaceholderText("Optionnel")
-        form.addRow("Scope ID", self.scope_id_input)
+        self.scope_selector = QComboBox()
+        self.scope_selector.setEditable(True)
+        self.scope_selector.setInsertPolicy(QComboBox.NoInsert)
+        self.scope_selector.setMinimumWidth(420)
+        self.scope_selector.lineEdit().setPlaceholderText("Rechercher et choisir...")
+        completer = self.scope_selector.completer()
+        if completer:
+            completer.setCompletionMode(QCompleter.PopupCompletion)
+            completer.setFilterMode(Qt.MatchContains)
+            completer.setCaseSensitivity(Qt.CaseInsensitive)
+        form.addRow("Choix", self.scope_selector)
 
         self.notes_input = QTextEdit()
         self.notes_input.setFixedHeight(80)
@@ -61,12 +78,79 @@ class NewInventorySessionDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        self.load_scope_options()
+        self.update_scope_selector(self.scope_combo.currentText())
+
+    def load_scope_options(self):
+        if not self.data_manager:
+            return
+
+        try:
+            locations = self.data_manager.locations.get_all_locations()
+            self.scope_options["LOCATION"] = [
+                (loc.get("Location_Name") or f"Location #{loc.get('Location_ID')}", loc.get("Location_ID"))
+                for loc in locations
+                if loc.get("Location_ID") is not None
+            ]
+        except Exception as exc:
+            logging.error(f"Unable to load inventory scope locations: {exc}", exc_info=True)
+
+        try:
+            families = self.data_manager.families.get_all_families()
+            self.scope_options["FAMILY"] = [
+                (family.get("Family_Name") or f"Family #{family.get('Family_ID')}", family.get("Family_ID"))
+                for family in families
+                if family.get("Family_ID") is not None
+            ]
+        except Exception as exc:
+            logging.error(f"Unable to load inventory scope families: {exc}", exc_info=True)
+
+        try:
+            products = self.data_manager.products.get_all_products()
+            product_options = []
+            for product in products:
+                name = product.get("Product_Name") or f"Product #{product.get('Product_ID')}"
+                family = product.get("Family_Name") or "-"
+                barcode = product.get("Barcode") or product.get("Manuf_Cat_No") or "-"
+                product_options.append((f"{name} | {family} | {barcode}", product.get("Product_ID")))
+            self.scope_options["PRODUCT"] = [
+                item for item in product_options if item[1] is not None
+            ]
+        except Exception as exc:
+            logging.error(f"Unable to load inventory scope products: {exc}", exc_info=True)
+
+    def update_scope_selector(self, scope_type):
+        self.scope_selector.clear()
+        if scope_type == "ALL":
+            self.scope_selector.addItem("Tout le stock", None)
+            self.scope_selector.setEnabled(False)
+            return
+
+        self.scope_selector.setEnabled(True)
+        self.scope_selector.lineEdit().setPlaceholderText("Rechercher et choisir...")
+        for label, value in self.scope_options.get(scope_type, []):
+            self.scope_selector.addItem(label, value)
+        self.scope_selector.setCurrentIndex(-1)
+
+    def selected_scope_id(self):
+        scope_type = self.scope_combo.currentText()
+        if scope_type == "ALL":
+            return None
+
+        text = self.scope_selector.currentText().strip()
+        if not text:
+            return None
+
+        exact_index = self.scope_selector.findText(text, Qt.MatchFixedString)
+        if exact_index < 0:
+            return None
+        return self.scope_selector.itemData(exact_index)
+
     def values(self):
-        scope_id_text = self.scope_id_input.text().strip()
         return {
             "name": self.name_input.text().strip(),
             "scope_type": self.scope_combo.currentText(),
-            "scope_id": int(scope_id_text) if scope_id_text.isdigit() else None,
+            "scope_id": self.selected_scope_id(),
             "notes": self.notes_input.toPlainText().strip() or None,
         }
 
@@ -364,13 +448,16 @@ class InventoryCountTab(QWidget):
             QMessageBox.warning(self, "Inventaire", "Le gestionnaire d'inventaire n'est pas disponible.")
             return
 
-        dialog = NewInventorySessionDialog(self)
+        dialog = NewInventorySessionDialog(self.data_manager, self)
         if dialog.exec() != QDialog.Accepted:
             return
 
         values = dialog.values()
         if not values["name"]:
             QMessageBox.warning(self, "Inventaire", "Le nom de la session est obligatoire.")
+            return
+        if values["scope_type"] != "ALL" and values["scope_id"] is None:
+            QMessageBox.warning(self, "Inventaire", "Veuillez choisir un element valide pour le scope.")
             return
 
         session_id = manager.create_session(
