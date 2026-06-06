@@ -73,7 +73,12 @@ _ALL_PERMISSIONS = [
     "act_create_po", 
     "act_approve_po", 
     "act_receive_po", 
-    "act_add_payment"
+    "act_add_payment",
+    "act_inventory_create",
+    "act_inventory_scan",
+    "act_inventory_apply",
+    "act_inventory_cancel",
+    "act_inventory_export"
 ]
 # =============================================================================
 # 2. SCHEMA QUERIES (With Inline Alters)
