@@ -531,11 +531,38 @@ class InventoryCountManager:
             conn.start_transaction()
             cursor = conn.cursor(dictionary=True)
 
-            session = self._fetch_session(cursor, session_id)
+            cursor.execute(
+                """
+                SELECT *
+                FROM Inventory_Count_Sessions
+                WHERE Session_ID = %s
+                FOR UPDATE
+                """,
+                (session_id,)
+            )
+            session = cursor.fetchone()
             if not session:
                 conn.rollback()
                 return {"success": False, "applied_count": 0, "conflicts": [], "message": "Session not found."}
-            if session.get("Status") not in self.OPEN_STATUSES:
+
+            session_status = session.get("Status")
+            if session_status == "Applied":
+                conn.rollback()
+                return {
+                    "success": False,
+                    "applied_count": 0,
+                    "conflicts": [],
+                    "message": "Session is already applied.",
+                }
+            if session_status == "Cancelled":
+                conn.rollback()
+                return {
+                    "success": False,
+                    "applied_count": 0,
+                    "conflicts": [],
+                    "message": "Cancelled sessions cannot be applied.",
+                }
+            if session_status not in self.OPEN_STATUSES:
                 conn.rollback()
                 return {
                     "success": False,
@@ -546,21 +573,53 @@ class InventoryCountManager:
 
             cursor.execute(
                 """
-                SELECT COUNT(*) AS Unknown_Count
+                SELECT COUNT(*) AS Total_Lines
+                FROM Inventory_Count_Lines
+                WHERE Session_ID = %s
+                """,
+                (session_id,)
+            )
+            total_lines = (cursor.fetchone() or {}).get("Total_Lines") or 0
+            if total_lines == 0:
+                conn.rollback()
+                return {
+                    "success": False,
+                    "applied_count": 0,
+                    "conflicts": [],
+                    "message": "Session has no count lines to apply.",
+                }
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS Unknown_Lines
                 FROM Inventory_Count_Lines
                 WHERE Session_ID = %s
                   AND Line_Status = 'UNKNOWN'
                 """,
                 (session_id,)
             )
-            unknown_count = (cursor.fetchone() or {}).get("Unknown_Count") or 0
-            if unknown_count and not allow_unknown:
+            unknown_lines = (cursor.fetchone() or {}).get("Unknown_Lines") or 0
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS Unknown_Scans
+                FROM Inventory_Count_Scans
+                WHERE Session_ID = %s
+                  AND Scan_Status = 'UNKNOWN'
+                """,
+                (session_id,)
+            )
+            unknown_scans = (cursor.fetchone() or {}).get("Unknown_Scans") or 0
+            if (unknown_lines or unknown_scans) and not allow_unknown:
                 conn.rollback()
                 return {
                     "success": False,
                     "applied_count": 0,
                     "conflicts": [],
-                    "message": "Unknown scanned barcodes must be resolved or explicitly ignored.",
+                    "message": (
+                        "Unknown scanned barcodes must be resolved or explicitly ignored. "
+                        f"Lines: {unknown_lines}, scans: {unknown_scans}."
+                    ),
                 }
 
             cursor.execute(
@@ -576,6 +635,7 @@ class InventoryCountManager:
             )
             lines = cursor.fetchall()
             conflicts = []
+            adjustments = []
 
             for line in lines:
                 cursor.execute(
@@ -622,6 +682,15 @@ class InventoryCountManager:
                             "reason": "Stock changed after snapshot.",
                         }
                     )
+                    continue
+
+                adjustments.append(
+                    {
+                        "batch": batch,
+                        "current_qty": current_qty,
+                        "counted_qty": counted_qty,
+                    }
+                )
 
             if conflicts:
                 conn.rollback()
@@ -633,25 +702,10 @@ class InventoryCountManager:
                 }
 
             applied_count = 0
-            for line in lines:
-                cursor.execute(
-                    """
-                    SELECT
-                        b.Batch_ID,
-                        b.Product_ID,
-                        b.Quantity_Current,
-                        b.Status,
-                        p.Stock_Unit
-                    FROM Inventory_Batches b
-                    JOIN Products_Master p ON b.Product_ID = p.Product_ID
-                    WHERE b.Batch_ID = %s
-                    FOR UPDATE
-                    """,
-                    (line["Batch_ID"],)
-                )
-                batch = cursor.fetchone()
-                current_qty = self._to_decimal(batch["Quantity_Current"])
-                counted_qty = self._to_decimal(line["Counted_Qty"])
+            for adjustment_item in adjustments:
+                batch = adjustment_item["batch"]
+                current_qty = adjustment_item["current_qty"]
+                counted_qty = adjustment_item["counted_qty"]
                 adjustment = counted_qty - current_qty
                 if adjustment == 0:
                     continue
@@ -678,7 +732,7 @@ class InventoryCountManager:
                     qty_change=adjustment,
                     unit_used=batch.get("Stock_Unit") or "Unit",
                     batch_id=batch["Batch_ID"],
-                    notes=f"Inventaire #{session_id}",
+                    notes=f"Inventaire #{session_id} - ajustement apres comptage",
                     user_id=user_id,
                     external_cursor=cursor
                 )
