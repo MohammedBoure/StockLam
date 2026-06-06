@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor
 # استيراد المكونات المساعدة (تأكد من وجودها في مسارها الصحيح)
 from .dialogs import BarcodeLineEdit, NumericSpinBox
 from .location_tree_combo import LocationTreeComboBox
+from ui.formatting import format_quantity, quantity_to_int
 
 class ConsumptionTab(QWidget):
     data_changed = Signal()
@@ -166,7 +167,7 @@ class ConsumptionTab(QWidget):
 
         # إعداد حد الكمية
         try:
-            max_qty = float(batch.get('Quantity_Current', 0))
+            max_qty = quantity_to_int(batch.get('Quantity_Current', 0))
         except:
             max_qty = 0
             
@@ -236,7 +237,7 @@ class ConsumptionTab(QWidget):
             
             # 3. تجاهل الدفعات التي رصيدها صفر
             try:
-                qty = float(b.get('Quantity_Current', 0))
+                qty = quantity_to_int(b.get('Quantity_Current', 0))
                 if qty <= 0: continue
             except: continue
             
@@ -296,7 +297,7 @@ class ConsumptionTab(QWidget):
                     f"✅ <b>Lot Recommandé (Expire Bientôt):</b><br>"
                     f"Lot : {oldest_batch.get('Lot_Number')} | Exp : <span style='color:green'>{old_str}</span><br>"
                     f"Emplacement : <b>{oldest_batch.get('Location_Name')}</b><br>"
-                    f"Qté Dispo : {oldest_batch.get('Quantity_Current')}"
+                    f"Qté Dispo : {format_quantity(oldest_batch.get('Quantity_Current'))}"
                 )
                 msg.setInformativeText(info_text)
                 
@@ -353,9 +354,9 @@ class ConsumptionTab(QWidget):
                     if str(target_batch.get('Batch_ID')) != str(batch.get('Batch_ID')):
                         swapped_count += 1
                         # التحقق من توفر الكمية في الدفعة الجديدة (القديمة زمنياً)
-                        avail = float(target_batch.get('Quantity_Current', 0))
+                        avail = quantity_to_int(target_batch.get('Quantity_Current', 0))
                         if qty > avail:
-                            errors.append(f"Stock insuffisant sur le lot ancien ({avail}) pour {target_batch.get('Product_Name')}")
+                            errors.append(f"Stock insuffisant sur le lot ancien ({format_quantity(avail)}) pour {target_batch.get('Product_Name')}")
                             continue
 
                     # تنفيذ الاستهلاك على target_batch (سواء كان الأصلي أو المستبدل)

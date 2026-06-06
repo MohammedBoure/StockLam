@@ -1,6 +1,6 @@
 import importlib.util
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -52,6 +52,10 @@ class InventoryCountManager:
     @staticmethod
     def _difference(snapshot_qty, counted_qty) -> Decimal:
         return InventoryCountManager._to_decimal(counted_qty) - InventoryCountManager._to_decimal(snapshot_qty)
+
+    @staticmethod
+    def _quantity_to_int(value) -> int:
+        return int(InventoryCountManager._to_decimal(value).to_integral_value(rounding=ROUND_HALF_UP))
 
     @staticmethod
     def _can_apply_status(status) -> bool:
@@ -867,6 +871,18 @@ class InventoryCountManager:
                     return float(value)
                 return value
 
+            quantity_columns = {
+                "Program_Qty_Snapshot",
+                "Counted_Qty",
+                "Difference_Qty",
+                "Qty",
+            }
+
+            def excel_line_value(column, value):
+                if column in quantity_columns:
+                    return self._quantity_to_int(value)
+                return excel_value(value)
+
             summary_df = pd.DataFrame(
                 [
                     {
@@ -899,7 +915,7 @@ class InventoryCountManager:
             ]
             lines_df = pd.DataFrame(
                 [
-                    {column: excel_value(line.get(column)) for column in line_columns}
+                    {column: excel_line_value(column, line.get(column)) for column in line_columns}
                     for line in lines
                 ],
                 columns=line_columns,
@@ -908,7 +924,7 @@ class InventoryCountManager:
             scan_columns = ["Scanned_Barcode", "Qty", "Scan_Status", "Scanned_At", "Scanned_By"]
             scans_df = pd.DataFrame(
                 [
-                    {column: excel_value(scan.get(column)) for column in scan_columns}
+                    {column: excel_line_value(column, scan.get(column)) for column in scan_columns}
                     for scan in scans
                 ],
                 columns=scan_columns,

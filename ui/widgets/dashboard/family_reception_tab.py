@@ -19,6 +19,8 @@ from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle, SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
+from ui.formatting import format_quantity
+
 class FamilyReceptionTab(QWidget):
     def __init__(self, data_manager):
         super().__init__()
@@ -188,7 +190,7 @@ class FamilyReceptionTab(QWidget):
             months_list = self.get_month_list(dt_start, dt_end)
             
             # 4. رسم الجدول
-            self.lbl_summary.setText(f"📦 Total Reçu ({self.combo_unit.currentText()}) : {self.grand_total_all:,.2f}")
+            self.lbl_summary.setText(f"📦 Total Reçu ({self.combo_unit.currentText()}) : {format_quantity(self.grand_total_all)}")
             self.table.setColumnCount(len(months_list) + 3)
             self.table.setHorizontalHeaderLabels(["Produit", "Unité"] + months_list + ["TOTAL"])
             
@@ -271,9 +273,7 @@ class FamilyReceptionTab(QWidget):
             QMessageBox.critical(self, "Erreur", f"Erreur lors du chargement: {str(e)}")
 
     def _format_qty(self, qty):
-        if qty == 0: return "-"
-        if qty.is_integer(): return f"{int(qty)}"
-        return f"{qty:.2f}"
+        return format_quantity(qty, dash_zero=True)
 
     def export_to_excel(self):
         if self.table.rowCount() == 0:

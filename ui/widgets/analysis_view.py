@@ -8,6 +8,8 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtCharts import QChart, QChartView, QPieSeries, QPieSlice
 
+from ui.formatting import format_money, format_quantity
+
 # =============================================================================
 # 1. TAB: VALORISATION DU STOCK (Jard)
 # يعرض قيمة المخزون الحالية بالتفصيل (عدد العلب + عدد الفحوصات + القيمة المالية)
@@ -55,13 +57,13 @@ class StockValuationTab(QWidget):
                 
                 # 2. Stock Boxes (Stock Unit)
                 box_unit = item['Stock_Unit'] or "U"
-                boxes = float(item['total_boxes'])
-                self.table.setItem(row, 1, QTableWidgetItem(f"{boxes:g} {box_unit}"))
+                boxes = item['total_boxes']
+                self.table.setItem(row, 1, QTableWidgetItem(format_quantity(boxes, box_unit)))
                 
                 # 3. Usage Units (Tests) - ميزة قوية للمختبرات
                 usage_unit = item['Usage_Unit'] or "Tests"
-                tests = float(item['total_tests'])
-                item_tests = QTableWidgetItem(f"{tests:g} {usage_unit}")
+                tests = item['total_tests']
+                item_tests = QTableWidgetItem(format_quantity(tests, usage_unit))
                 item_tests.setForeground(QColor("#2980b9")) # أزرق
                 item_tests.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 self.table.setItem(row, 2, item_tests)
@@ -69,11 +71,11 @@ class StockValuationTab(QWidget):
                 # 4. Financial Value
                 val = float(item['total_value_ht'])
                 total_value += val
-                item_val = QTableWidgetItem("{:,.2f}".format(val))
+                item_val = QTableWidgetItem(format_money(val))
                 item_val.setForeground(QColor("#27ae60")) # أخضر
                 self.table.setItem(row, 3, item_val)
 
-            self.lbl_summary.setText(f"💰 Valeur Totale du Stock : {total_value:,.2f} DA")
+            self.lbl_summary.setText(f"💰 Valeur Totale du Stock : {format_money(total_value, 'DA')}")
             self.table.setSortingEnabled(True)
             
         except Exception as e:
@@ -137,7 +139,7 @@ class WasteAnalysisTab(QWidget):
                 self.table.setItem(row, 0, QTableWidgetItem(reason))
                 self.table.setItem(row, 1, QTableWidgetItem(str(freq)))
                 
-                val_item = QTableWidgetItem("{:,.2f}".format(loss))
+                val_item = QTableWidgetItem(format_money(loss))
                 val_item.setForeground(QColor("#c0392b")) # أحمر
                 self.table.setItem(row, 2, val_item)
                 
@@ -193,11 +195,11 @@ class FullConsumptionTab(QWidget):
                 self.table.setItem(row, 0, QTableWidgetItem(str(item['Product_Name'])))
                 self.table.setItem(row, 1, QTableWidgetItem(str(item['Usage_Unit'])))
                 
-                qty = float(item['total_qty_consumed'])
-                self.table.setItem(row, 2, QTableWidgetItem(f"{qty:g}"))
+                qty = item['total_qty_consumed']
+                self.table.setItem(row, 2, QTableWidgetItem(format_quantity(qty)))
                 
                 cost = float(item['total_cost_ttc'])
-                cost_item = QTableWidgetItem("{:,.2f}".format(cost))
+                cost_item = QTableWidgetItem(format_money(cost))
                 cost_item.setForeground(QColor("#007572"))
                 cost_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 self.table.setItem(row, 3, cost_item)

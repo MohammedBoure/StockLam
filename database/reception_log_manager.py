@@ -1064,7 +1064,7 @@ class ReceptionLogManager:
                     # === التغيير الجذري هنا: تسجيل الفرق كحركة جديدة ===
                     if abs(qty_delta) > 0.0001:
                         # صياغة ملاحظة توضح أن هذا تعديل
-                        note = f"Correction BR #{br_id}: {old_initial:g} -> {new_initial:g}"
+                        note = f"Correction BR #{br_id}: {int(round(old_initial))} -> {int(round(new_initial))}"
                         if item.get('Line_Note'): note += f" | {item.get('Line_Note')}"
                         
                         # إنشاء سجل جديد بالفرق فقط!

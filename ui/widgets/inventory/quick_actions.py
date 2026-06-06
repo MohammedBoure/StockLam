@@ -2,6 +2,7 @@
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QDialogButtonBox, 
                                QSpinBox, QLabel, QMessageBox)
+from ui.formatting import quantity_to_int
 from .location_tree_combo import LocationTreeComboBox # تأكد من المسار الصحيح
 
 class QuickTransferDialog(QDialog):
@@ -34,7 +35,7 @@ class QuickTransferDialog(QDialog):
 
         # اختيار الكمية
         self.qty_spin = QSpinBox()
-        max_qty = int(float(batch_data.get('Quantity_Current', 0)))
+        max_qty = quantity_to_int(batch_data.get('Quantity_Current', 0))
         self.qty_spin.setRange(1, max_qty) # لا يمكن تجاوز الكمية المتوفرة
         self.qty_spin.setValue(1)
         self.qty_spin.setSuffix("")
@@ -77,7 +78,7 @@ class QuickConsumeDialog(QDialog):
         # 2. الكمية
         form = QFormLayout()
         self.qty_spin = QSpinBox()
-        max_qty = int(float(batch_data.get('Quantity_Current', 0)))
+        max_qty = quantity_to_int(batch_data.get('Quantity_Current', 0))
         self.qty_spin.setRange(1, max_qty)
         self.qty_spin.setValue(1)
         self.qty_spin.setSuffix("")

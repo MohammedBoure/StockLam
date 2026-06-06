@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QDate, Signal, QStringListModel, QTimer
 from PySide6.QtGui import QColor, QFont
 import qtawesome as qta
 
+from ui.formatting import quantity_to_int
+
 
 class BarcodeLineEdit(QLineEdit):
     """كلاس مخصص لدعم أجهزة المسح على لوحة مفاتيح AZERTY"""
@@ -362,7 +364,7 @@ class InvoiceEditorWidget(QWidget):
             self.barcode_map = {}
 
             for b in self.batches_cache:
-                qty = float(b['Quantity_Current'])
+                qty = quantity_to_int(b['Quantity_Current'])
                 batch_id = b.get('Batch_ID')
                 is_current_transfer_batch = batch_id in self.current_transfer_batch_ids
                 
@@ -390,7 +392,7 @@ class InvoiceEditorWidget(QWidget):
         scoped_batches = []
         for batch in batches:
             batch_id = batch.get('Batch_ID')
-            qty = float(batch.get('Quantity_Current') or 0)
+            qty = quantity_to_int(batch.get('Quantity_Current') or 0)
             if qty > 0 or batch_id in self.current_transfer_batch_ids:
                 scoped_batches.append(batch)
         return scoped_batches
@@ -547,8 +549,8 @@ class InvoiceEditorWidget(QWidget):
         self.table.setItem(row, 0, q_item)
 
         # بناء مربعات الإدخال
-        current_stock = int(float(batch.get('Quantity_Current', 0)))
-        previous_qty = int(float(self.current_transfer_qty_by_batch.get(batch['Batch_ID'], 0)))
+        current_stock = quantity_to_int(batch.get('Quantity_Current', 0))
+        previous_qty = quantity_to_int(self.current_transfer_qty_by_batch.get(batch['Batch_ID'], 0))
         max_allowed = current_stock + previous_qty
         if max_allowed <= 0:
             QMessageBox.warning(self, "Stock insuffisant", "Ce lot n'est pas disponible pour cette transaction.")

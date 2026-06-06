@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QBrush, QFont
 import qtawesome as qta
+from ui.formatting import format_quantity
 
 class ReclamationDialog(QDialog):
     """
@@ -131,7 +132,7 @@ class ReclamationDialog(QDialog):
             batch_id = item.get('Batch_ID')
             prod_name = f"{item.get('Product_Name')} (Code: {item.get('Internal_Barcode')})"
             lot = str(item.get('Lot_Number', ''))
-            qty = f"{float(item.get('Quantity_Initial', 0)):g} {item.get('Stock_Unit', 'U')}"
+            qty = format_quantity(item.get('Quantity_Initial', 0), item.get('Stock_Unit', 'U'))
             note = str(item.get('Reception_Note', ''))
             
             self.table.setItem(row, 0, QTableWidgetItem(str(batch_id)))

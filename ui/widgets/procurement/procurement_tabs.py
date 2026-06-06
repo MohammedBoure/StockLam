@@ -23,6 +23,7 @@ from .reception_history_tab import ReceptionHistoryTab
 from .avoir import CreditNoteTab
 from .reclamation_tab import ReclamationTab 
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
+from ui.formatting import format_quantity
 
 
 def get_resource_path(relative_path):
@@ -367,7 +368,7 @@ class PurchaseOrdersTab(QWidget):
                 table_data.append([
                     Paragraph(f"<b>{item.get('Product_Name')}</b>", styles["Normal"]),
                     item.get('Manuf_Name') or "---",
-                    str(item.get('Qty_Ordered')),
+                    format_quantity(item.get('Qty_Ordered')),
                     item.get('Ordering_Unit') or "U",
                     Paragraph(item.get('Item_Note') or "", styles["Normal"])
                 ])

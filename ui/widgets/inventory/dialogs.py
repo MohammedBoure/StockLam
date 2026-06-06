@@ -3,7 +3,7 @@
 import datetime
 from PySide6.QtWidgets import (
     QVBoxLayout, QFormLayout, QLineEdit, QTextEdit, QComboBox, 
-    QSpinBox, QDoubleSpinBox, QHBoxLayout, QPushButton, QLabel, 
+    QSpinBox, QHBoxLayout, QPushButton, QLabel, 
     QWidget, QMessageBox, QFrame, QTableWidget, QTableWidgetItem, 
     QHeaderView, QGroupBox, QAbstractItemView
 )
@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QFont
 
 # استيراد BaseDialog (تأكد من صحة المسار لديك)
 from ui.widgets.master_data.dialogs import BaseDialog
+from ui.formatting import format_money, format_quantity, quantity_to_int
 
 # استيراد LocationTreeComboBox (تأكد من صحة المسار لديك)
 # إذا كان الملف في نفس المجلد، استخدم: from .location_tree_combo import LocationTreeComboBox
@@ -86,7 +87,7 @@ class OpenPackDialog(BaseDialog):
         self.lbl_open_expiry.setStyleSheet("color: blue; font-weight: bold; font-size: 14px;")
 
         self.qty_spin = QSpinBox()
-        max_qty = int(float(self.batch.get('Quantity_Current', 0)))
+        max_qty = quantity_to_int(self.batch.get('Quantity_Current', 0))
         if max_qty == 0: max_qty = 1 
         self.qty_spin.setRange(1, max_qty)
         self.qty_spin.setValue(1)
@@ -145,15 +146,15 @@ class ConsumptionDialog(BaseDialog):
     def init_ui(self):
         layout = QFormLayout(self.form_widget)
         
-        current_rem = float(self.container.get('Remaining_Usage_Qty', 0))
+        current_rem = quantity_to_int(self.container.get('Remaining_Usage_Qty', 0))
         unit = self.container.get('Usage_Unit', 'Test')
         
         self.lbl_info = QLabel(f"{self.container.get('Product_Name')} (Lot: {self.container.get('Lot_Number')})")
         
-        self.usage_spin = QDoubleSpinBox()
-        self.usage_spin.setRange(0.01, current_rem) 
+        self.usage_spin = QSpinBox()
+        self.usage_spin.setRange(1, max(1, current_rem))
         self.usage_spin.setSuffix(f" {unit}")
-        self.usage_spin.setValue(1.00)
+        self.usage_spin.setValue(1)
         
         layout.addRow("Produit:", self.lbl_info)
         layout.addRow(f"Quantité Restante ({current_rem} {unit}):", self.usage_spin)
@@ -179,15 +180,15 @@ class WasteDialog(BaseDialog):
         layout = QFormLayout(self.form_widget)
         
         if self.source_type == 'Batch':
-            max_qty = float(self.item.get('Quantity_Current', 0))
-            if max_qty == 0: max_qty = float(self.item.get('Current_Stock_Qty', 0))
+            max_qty = quantity_to_int(self.item.get('Quantity_Current', 0))
+            if max_qty == 0: max_qty = quantity_to_int(self.item.get('Current_Stock_Qty', 0))
             unit = "Boîte/Kit"
         else:
-            max_qty = float(self.item.get('Remaining_Usage_Qty', 0))
+            max_qty = quantity_to_int(self.item.get('Remaining_Usage_Qty', 0))
             unit = self.item.get('Usage_Unit', 'Test')
 
-        self.qty_spin = QDoubleSpinBox()
-        self.qty_spin.setRange(0.01, max_qty)
+        self.qty_spin = QSpinBox()
+        self.qty_spin.setRange(1, max(1, max_qty))
         self.qty_spin.setSuffix(f" {unit}")
         self.qty_spin.setValue(max_qty)
         
@@ -225,14 +226,13 @@ class AdjustmentDialog(BaseDialog):
     def init_ui(self):
         layout = QFormLayout(self.form_widget)
         
-        current_qty = float(self.batch.get('Quantity_Current', 0))
+        current_qty = quantity_to_int(self.batch.get('Quantity_Current', 0))
         
-        self.lbl_current = QLabel(str(current_qty))
+        self.lbl_current = QLabel(format_quantity(current_qty))
         
-        self.spin_new_qty = QDoubleSpinBox()
+        self.spin_new_qty = QSpinBox()
         self.spin_new_qty.setRange(0, 999999)
         self.spin_new_qty.setValue(current_qty)
-        self.spin_new_qty.setDecimals(2)
         
         self.reason_combo = QComboBox()
         for r in self.reasons:
@@ -247,7 +247,7 @@ class AdjustmentDialog(BaseDialog):
         layout.addRow("Notes:", self.notes)
 
     def get_data(self):
-        current = float(self.lbl_current.text())
+        current = quantity_to_int(self.lbl_current.text())
         new_val = self.spin_new_qty.value()
         diff = new_val - current
         
@@ -303,8 +303,8 @@ class BatchDetailsDialog(BaseDialog):
         lbl_loc.setStyleSheet("font-size: 16px; font-weight: bold; color: #2980b9; background-color: #eaf2f8; padding: 5px; border-radius: 4px;")
         layout_stock.addRow(QLabel("<b>EMPLACEMENT :</b>"), lbl_loc)
 
-        add_row(layout_stock, "Quantité Actuelle", self.batch.get('Quantity_Current', 0), True, "#27ae60")
-        add_row(layout_stock, "Quantité Initiale", self.batch.get('Quantity_Initial', 0))
+        add_row(layout_stock, "Quantite Actuelle", format_quantity(self.batch.get('Quantity_Current', 0)), True, "#27ae60")
+        add_row(layout_stock, "Quantite Initiale", format_quantity(self.batch.get('Quantity_Initial', 0)))
         add_row(layout_stock, "N° Lot", self.batch.get('Lot_Number', '---'), True)
         
         exp_date = str(self.batch.get('Expiry_Date', '---'))
@@ -327,15 +327,15 @@ class BatchDetailsDialog(BaseDialog):
         layout_fin = QFormLayout(grp_financial)
         
         price_u = float(self.batch.get('Unit_Price_Received', 0))
-        qty_curr = float(self.batch.get('Quantity_Current', 0))
+        qty_curr = quantity_to_int(self.batch.get('Quantity_Current', 0))
         tva_pct = float(self.batch.get('Tax_Rate_Percent', 0))
         
         tva_amount = price_u * (tva_pct / 100)
         total_val_ttc = (price_u + tva_amount) * qty_curr
 
-        add_row(layout_fin, "Prix Unitaire (HT)", f"{price_u:,.2f} DA")
-        add_row(layout_fin, "TVA", f"{tva_amount:,.2f} DA ({tva_pct}%)")
-        add_row(layout_fin, "Valeur Totale (Stock Actuel)", f"{total_val_ttc:,.2f} DA (TTC)", True, "#2c3e50")
+        add_row(layout_fin, "Prix Unitaire (HT)", f"{format_money(price_u)} DA")
+        add_row(layout_fin, "TVA", f"{format_money(tva_amount)} DA ({tva_pct}%)")
+        add_row(layout_fin, "Valeur Totale (Stock Actuel)", f"{format_money(total_val_ttc)} DA (TTC)", True, "#2c3e50")
 
         layout_fin.addRow(QLabel("----------"), QLabel(""))
         add_row(layout_fin, "Réf. Bon de Commande (PO)", self.batch.get('PO_ID', '---'))
@@ -523,7 +523,7 @@ class InventoryDispatchDialog(BaseDialog):
 
         # Quantity SpinBox
         spin_qty = NumericSpinBox()
-        max_q = int(float(batch['Quantity_Current']))
+        max_q = quantity_to_int(batch['Quantity_Current'])
         spin_qty.setRange(1, max_q)
         spin_qty.setValue(1)
         self.stack_table.setCellWidget(row, 6, spin_qty)

@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.formatting import format_money, format_quantity
+
 from .inventory_count_scan_dialog import InventoryCountScanDialog
 
 
@@ -326,9 +328,9 @@ class InventoryCountTab(QWidget):
                     line.get("Lot_Number"),
                     line.get("Expiry_Date"),
                     line.get("Location_Name"),
-                    line.get("Program_Qty_Snapshot"),
-                    line.get("Counted_Qty"),
-                    line.get("Difference_Qty"),
+                    format_quantity(line.get("Program_Qty_Snapshot")),
+                    format_quantity(line.get("Counted_Qty")),
+                    format_quantity(line.get("Difference_Qty")),
                     line.get("Line_Status"),
                     line.get("Comment"),
                 ],
@@ -350,8 +352,10 @@ class InventoryCountTab(QWidget):
 
         for key, card in self.summary_cards.items():
             value = summary.get(key, 0)
-            if isinstance(value, Decimal):
-                value = f"{value:.2f}"
+            if key == "Estimated_Variance_Value":
+                value = format_money(value)
+            elif isinstance(value, Decimal):
+                value = format_quantity(value)
             card.set_value(value)
 
     def create_session(self):

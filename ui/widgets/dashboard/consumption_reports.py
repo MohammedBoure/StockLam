@@ -3,6 +3,8 @@ from PySide6.QtWidgets import (QFrame, QVBoxLayout, QLabel, QTableWidget, QTable
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QFont
 
+from ui.formatting import format_money, format_quantity
+
 class ConsumptionReportSection(QFrame):
     def __init__(self, stats_manager):
         super().__init__()
@@ -62,19 +64,14 @@ class ConsumptionReportSection(QFrame):
             self.table.setItem(row, 0, QTableWidgetItem(str(r['Product_Name'])))
             
             unit = str(r['Stock_Unit'] or "Unité") 
-            qty_val = float(r.get('total_qty_stock', 0))
-            
-            if qty_val.is_integer():
-                qty_str = f"{int(qty_val)} {unit}"
-            else:
-                qty_str = f"{qty_val:.2f} {unit}".rstrip('0').rstrip('.')
+            qty_str = format_quantity(r.get('total_qty_stock', 0), unit)
                 
             qty_item = QTableWidgetItem(qty_str)
             qty_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 1, qty_item)
             
             cost_val = r.get('total_cost_ttc', 0)
-            val_item = QTableWidgetItem("{:,.2f} DA".format(cost_val).replace(',', ' '))
+            val_item = QTableWidgetItem(format_money(cost_val, "DA").replace(',', ' '))
             val_item.setTextAlignment(Qt.AlignCenter)
             val_item.setForeground(QColor("#007572"))
             val_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))

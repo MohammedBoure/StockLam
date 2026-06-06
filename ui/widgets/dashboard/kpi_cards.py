@@ -3,6 +3,8 @@
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Qt
 
+from ui.formatting import format_money, format_quantity
+
 class KPICard(QFrame):
     # أضفنا معامل جديد sub_value (اختياري)
     def __init__(self, title, value, icon_char, color="#007572", sub_value=None):
@@ -75,24 +77,24 @@ class KPICardsSection(QWidget):
         
         # --- 1. VALEUR STOCK ---
         val_stock = stats.get('total_stock_value', 0)
-        stock_str = "{:,.2f} DA".format(val_stock).replace(',', ' ')
+        stock_str = format_money(val_stock, "DA").replace(',', ' ')
         
         # --- 2. CONSOMMATION ---
         val_consumed_money = stats.get('total_consumed_value', total_consumed_value)
-        cons_str = "{:,.2f} DA".format(val_consumed_money).replace(',', ' ')
+        cons_str = format_money(val_consumed_money, "DA").replace(',', ' ')
         
         # --- 3. SORTIES STOCK ---
         val_consumed_qty = stats.get('total_consumed_units', total_consumed_qty)
-        qty_str = "{:,.1f}".format(val_consumed_qty).replace(',', ' ').replace('.0', '')
+        qty_str = format_quantity(val_consumed_qty)
         
         # --- 4. PERTES & DÉCHETS ---
         waste_qty = stats.get('total_waste_units', 0.0)
         waste_val = stats.get('total_waste_value', 0)
         
         # الكمية (الرقم الكبير)
-        waste_qty_str = "{:,.1f}".format(waste_qty).replace(',', ' ').replace('.0', '')
+        waste_qty_str = format_quantity(waste_qty)
         # القيمة (الرقم الصغير بالأسفل)
-        waste_val_str = "{:,.2f} DA".format(waste_val).replace(',', ' ')
+        waste_val_str = format_money(waste_val, "DA").replace(',', ' ')
         
         # --- إنشاء البطاقات ---
         # البطاقات العادية (بدون قيمة سفلية)

@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, QDate, Signal
 import qtawesome as qta
 import json
 from branding import get_banner_path
+from ui.formatting import format_quantity
 
 # ReportLab Imports
 try:
@@ -364,15 +365,16 @@ class InvoicesListWidget(QWidget):
 
             for item in details_data:
                 is_billable = item.get('Is_Billable', False)
-                qty = float(item.get('Qty_Transferred', 0))
+                qty = item.get('Qty_Transferred', 0)
+                qty_numeric = float(qty or 0)
                 price = float(item.get('Unit_Price', 0))
-                line_val = (qty * price) if is_billable else 0.0
+                line_val = (qty_numeric * price) if is_billable else 0.0
                 grand_total += line_val
 
                 obs = f"{line_val:,.2f} DA" if is_billable else "<font color='red'>Gratuit</font>"
                 p_info = f"<b>{item.get('Product_Name', '-')}</b><br/><font size=8 color='grey'>Lot: {item.get('Lot_Number','-')}</font>"
                 
-                table_data.append([Paragraph(p_info, styles["Normal"]), f"{qty:,.0f}", Paragraph(obs, styles["Normal"])])
+                table_data.append([Paragraph(p_info, styles["Normal"]), format_quantity(qty), Paragraph(obs, styles["Normal"])])
 
             table_data.append([Paragraph("<b>MONTANT TOTAL À PAYER</b>", styles["Normal"]), "", f"{grand_total:,.2f} DA"])
 

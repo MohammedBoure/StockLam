@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QStringListModel
 from PySide6.QtGui import QColor, QFont,QAction
 
+from ui.formatting import format_quantity, quantity_to_int
+
 try:
     from .location_tree_combo import LocationTreeComboBox
 except ImportError:
@@ -252,7 +254,7 @@ class FEFOSelectionDialog(QDialog):
             self.table.setItem(row, 3, item_exp)
 
             # 4. Qté
-            qty_item = QTableWidgetItem(f"{float(batch.get('Quantity_Current', 0)):g}")
+            qty_item = QTableWidgetItem(format_quantity(batch.get('Quantity_Current', 0)))
             qty_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 4, qty_item)
             
@@ -415,11 +417,11 @@ class DispatchTab(QWidget):
             self.search_map = {}
             
             for b in self.all_inventory_pool:
-                qty = float(b.get('Quantity_Current', 0))
+                qty = quantity_to_int(b.get('Quantity_Current', 0))
                 if qty <= 0: continue
                 
                 loc_name = b.get('Location_Name', '---')
-                display_text = f"{b['Product_Name']} | Lot: {b['Lot_Number']} | 📍 {loc_name} (Qté: {qty:g})"
+                display_text = f"{b['Product_Name']} | Lot: {b['Lot_Number']} | 📍 {loc_name} (Qté: {format_quantity(qty)})"
                 
                 suggestions.append(display_text)
                 self.search_map[display_text] = b
@@ -453,7 +455,7 @@ class DispatchTab(QWidget):
         clean_input = raw_text.replace("-", "")
 
         for b in self.all_inventory_pool:
-            if float(b.get('Quantity_Current', 0)) <= 0: continue
+            if quantity_to_int(b.get('Quantity_Current', 0)) <= 0: continue
 
             internal = str(b.get('Internal_Barcode', '')).strip().lower()
             manuf = str(b.get('Barcode', '')).strip().lower()
@@ -503,8 +505,8 @@ class DispatchTab(QWidget):
         
         for b in batches_list:
             loc_name = b.get('Location_Name', 'Inconnu')
-            qty = float(b.get('Quantity_Current', 0))
-            item_text = f"{loc_name} (Dispo: {qty:g})"
+            qty = quantity_to_int(b.get('Quantity_Current', 0))
+            item_text = f"{loc_name} (Dispo: {format_quantity(qty)})"
             cb_source.addItem(item_text, b)
         
         self.table.setCellWidget(row, 2, cb_source)
@@ -533,7 +535,7 @@ class DispatchTab(QWidget):
             selected_batch = cb_source.itemData(index)
             if not selected_batch: return
             name_item.setData(Qt.UserRole, selected_batch)
-            max_qty = int(float(selected_batch.get('Quantity_Current', 0)))
+            max_qty = quantity_to_int(selected_batch.get('Quantity_Current', 0))
             qty_input.setRange(1, max_qty if max_qty > 0 else 1)
             qty_input.setValue(1)
             
@@ -594,7 +596,7 @@ class DispatchTab(QWidget):
         for b in self.all_inventory_pool:
             if str(b.get('Product_ID')) == str(product_id):
                 try:
-                    if float(b.get('Quantity_Current', 0)) > 0:
+                    if quantity_to_int(b.get('Quantity_Current', 0)) > 0:
                         batches.append(b)
                 except: continue
         
@@ -756,7 +758,7 @@ class DispatchTab(QWidget):
                         swapped_count += 1
                         final_batch = target_batch
                         
-                        avail = float(final_batch.get('Quantity_Current', 0))
+                        avail = quantity_to_int(final_batch.get('Quantity_Current', 0))
                         if qty > avail:
                             errors.append(f"Stock insuffisant sur le lot sélectionné ({avail}) pour {final_batch.get('Product_Name')}")
                             continue

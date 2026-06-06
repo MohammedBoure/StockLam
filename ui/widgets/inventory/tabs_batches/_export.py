@@ -9,6 +9,7 @@ from datetime import date
 
 from PySide6.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 from PySide6.QtCore import Qt
+from ui.formatting import quantity_to_int
 
 try:
     from reportlab.lib.pagesizes import A4, landscape
@@ -86,8 +87,8 @@ def print_batch_label(self):
 
         product_name  = data.get('Product_Name', 'Produit')
         lot_number    = data.get('Lot_Number', '')
-        current_qty   = float(data.get('Quantity_Current', 0))
-        default_copies = max(1, int(current_qty))
+        current_qty   = quantity_to_int(data.get('Quantity_Current', 0))
+        default_copies = max(1, current_qty)
 
         qty, ok = QInputDialog.getInt(
             self,

@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor, QBrush, QFont
 
 # استيراد حقل البحث المطور
 from .inventory.dialogs import BarcodeLineEdit 
+from ui.formatting import format_quantity
 
 # ==============================================================================
 # نافذة التفاصيل الكاملة (تظهر عند النقر المزدوج)
@@ -61,7 +62,7 @@ class MovementDetailsDialog(QDialog):
         movement_type = value('Movement_Type')
         qty_raw = self.data.get('Qty_Change')
         try:
-            qty_text = f"{float(qty_raw):g} {value('Unit_Used', default='')}".strip()
+            qty_text = format_quantity(qty_raw, value('Unit_Used', default=''))
         except (TypeError, ValueError):
             qty_text = value('Qty_Change')
 
@@ -427,7 +428,7 @@ class MovementHistoryTab(QWidget):
             
             # 5. الكمية
             qty = float(mov.get('Qty_Change', 0))
-            self.table.setItem(r, 5, item(f"{qty:g}", Qt.AlignCenter, "#c0392b" if qty < 0 else "#27ae60"))
+            self.table.setItem(r, 5, item(format_quantity(qty), Qt.AlignCenter, "#c0392b" if qty < 0 else "#27ae60"))
             
             # 6. رصيد الباركود (Batch Stock)
             batch_stock = mov.get('Batch_Historical_Stock')
@@ -436,7 +437,7 @@ class MovementHistoryTab(QWidget):
                 batch_stock = mov.get('Historical_Stock')
             
             # --- التصحيح هنا ---
-            stock_txt = f"{float(batch_stock):g}" if batch_stock is not None else "?"
+            stock_txt = format_quantity(batch_stock) if batch_stock is not None else "?"
             
             # تم استخدام المتغير الصحيح stock_txt
             s_item = item(stock_txt, font=QFont("Arial", 9, QFont.Bold))

@@ -10,6 +10,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QBrush
 from PySide6.QtCharts import QChart, QChartView, QPieSeries, QPieSlice
 
+from ui.formatting import format_money, format_quantity
+
 # =============================================================================
 # Helper: دالة البحث في الجدول (لتقليل تكرار الكود)
 # =============================================================================
@@ -80,13 +82,13 @@ class StockValuationTab(QWidget):
                 
                 # Stock (Boxes)
                 box_unit = item['Stock_Unit'] or "U"
-                boxes = float(item['total_boxes'])
-                self.table.setItem(row, 1, QTableWidgetItem(f"{boxes:g} {box_unit}"))
+                boxes = item['total_boxes']
+                self.table.setItem(row, 1, QTableWidgetItem(format_quantity(boxes, box_unit)))
                 
                 # Usage Units (Tests)
                 usage_unit = item['Usage_Unit'] or "Tests"
-                tests = float(item['total_tests'])
-                item_tests = QTableWidgetItem(f"{tests:g} {usage_unit}")
+                tests = item['total_tests']
+                item_tests = QTableWidgetItem(format_quantity(tests, usage_unit))
                 item_tests.setForeground(QColor("#2980b9"))
                 item_tests.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 self.table.setItem(row, 2, item_tests)
@@ -94,11 +96,11 @@ class StockValuationTab(QWidget):
                 # Value
                 val = float(item['total_value_ht'])
                 total_value += val
-                item_val = QTableWidgetItem("{:,.2f}".format(val))
+                item_val = QTableWidgetItem(format_money(val))
                 item_val.setForeground(QColor("#27ae60"))
                 self.table.setItem(row, 3, item_val)
 
-            self.lbl_summary.setText(f"💰 Valeur Totale : {total_value:,.2f} DA")
+            self.lbl_summary.setText(f"💰 Valeur Totale : {format_money(total_value, 'DA')}")
             self.table.setSortingEnabled(True)
             
             if self.txt_search.text():
@@ -150,11 +152,11 @@ class FullConsumptionTab(QWidget):
                 self.table.setItem(row, 0, QTableWidgetItem(str(item['Product_Name'])))
                 self.table.setItem(row, 1, QTableWidgetItem(str(item['Usage_Unit'])))
                 
-                qty = float(item['total_qty_consumed'])
-                self.table.setItem(row, 2, QTableWidgetItem(f"{qty:g}"))
+                qty = item['total_qty_consumed']
+                self.table.setItem(row, 2, QTableWidgetItem(format_quantity(qty)))
                 
                 cost = float(item['total_cost_ttc'])
-                cost_item = QTableWidgetItem("{:,.2f}".format(cost))
+                cost_item = QTableWidgetItem(format_money(cost))
                 cost_item.setForeground(QColor("#007572"))
                 cost_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 self.table.setItem(row, 3, cost_item)
@@ -221,7 +223,7 @@ class DeletedProductsAuditTab(QWidget):
                 self.table_zombie.insertRow(row)
                 self.table_zombie.setItem(row, 0, QTableWidgetItem(str(z['Product_Name'])))
                 self.table_zombie.setItem(row, 1, QTableWidgetItem(str(z['Lot_Number'])))
-                self.table_zombie.setItem(row, 2, QTableWidgetItem(str(z['Quantity_Current'])))
+                self.table_zombie.setItem(row, 2, QTableWidgetItem(format_quantity(z['Quantity_Current'])))
                 self.table_zombie.setItem(row, 3, QTableWidgetItem(str(z['Location_Name'])))
                 
                 item_action = QTableWidgetItem("VIDER LE STOCK (Waste)")
@@ -239,10 +241,10 @@ class DeletedProductsAuditTab(QWidget):
                 del_date = str(h['Deleted_At']) if h['Deleted_At'] else "N/A"
                 self.table_hist.setItem(row, 1, QTableWidgetItem(del_date))
                 
-                self.table_hist.setItem(row, 2, QTableWidgetItem(str(h['qty_consumed'])))
+                self.table_hist.setItem(row, 2, QTableWidgetItem(format_quantity(h['qty_consumed'])))
                 
                 val = float(h['value_consumed'])
-                self.table_hist.setItem(row, 3, QTableWidgetItem("{:,.2f}".format(val)))
+                self.table_hist.setItem(row, 3, QTableWidgetItem(format_money(val)))
                 
             if self.txt_search_audit.text():
                 filter_table_rows(self.table_hist, self.txt_search_audit.text())
@@ -354,7 +356,7 @@ class WasteAnalysisTab(QWidget):
                 freq_item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, 1, freq_item)
                 
-                val_item = QTableWidgetItem("{:,.2f} DA".format(loss).replace(',', ' '))
+                val_item = QTableWidgetItem(format_money(loss, "DA").replace(',', ' '))
                 val_item.setForeground(QColor("#c0392b")) # أحمر للخسارة
                 val_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
                 val_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -380,7 +382,7 @@ class WasteAnalysisTab(QWidget):
                 slice_0.setLabelVisible(True)
                 self.chart.setTitle("Aucune donnée pour cette période")
             else:
-                self.chart.setTitle(f"Répartition des Pertes (Total: {total_loss:,.2f} DA)")
+                self.chart.setTitle(f"Répartition des Pertes (Total: {format_money(total_loss, 'DA')})")
 
             self.chart.addSeries(series)
             self.table.setSortingEnabled(True)

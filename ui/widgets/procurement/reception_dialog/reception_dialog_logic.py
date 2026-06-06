@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor
 
 from ..bulk_barcode_selection_dialog import BulkBarcodeSelectionDialog
+from ui.formatting import format_quantity, quantity_to_int
 
 
 class ReceptionDialogLogicMixin:
@@ -78,7 +79,7 @@ class ReceptionDialogLogicMixin:
                 p_data  = self.cb_product.currentData()
                 stock_u = p_data.get('Stock_Unit', 'U') if p_data else 'U'
                 self.lbl_conversion_logic.setText(
-                    f"💡 {qty} {self.cb_unit_type.currentText()} = {int(qty*factor)} {stock_u} en stock."
+                    f"💡 {format_quantity(qty)} {self.cb_unit_type.currentText()} = {format_quantity(qty * factor)} {stock_u} en stock."
                 )
             else:
                 self.lbl_conversion_logic.setText("💡 Saisie directe en unité de stockage.")
@@ -299,7 +300,7 @@ class ReceptionDialogLogicMixin:
                 batch.get('Product_Name', '---'),
                 batch.get('Internal_Barcode', '---'),
                 batch.get('Stock_Unit', 'U'),
-                f"{qty:g}",
+                format_quantity(qty),
                 meta['Lot_Number'],
                 meta['Expiry_Date'],
                 batch.get('Location_Name', '---'),
@@ -423,8 +424,8 @@ class ReceptionDialogLogicMixin:
                     break
 
             factor      = float(meta.get('factor', 1.0))
-            qty_display = float(meta.get('Qty_Received', 0)) / factor
-            self.inp_qty.setValue(int(qty_display))
+            qty_display = quantity_to_int(float(meta.get('Qty_Received', 0)) / factor)
+            self.inp_qty.setValue(qty_display)
 
             idx_unit = self.cb_unit_type.findText(meta.get('Unit_Label', ''))
             if idx_unit >= 0:

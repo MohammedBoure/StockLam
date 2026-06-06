@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from ..dialogs import AdjustmentDialog, WasteDialog, BatchDetailsDialog
 from ui.widgets.procurement.reception_dialog import ReceptionDialog
 from ..quick_actions import QuickTransferDialog, QuickConsumeDialog
+from ui.formatting import format_quantity, quantity_to_int
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +56,7 @@ def check_fefo_compliance(self, current_batch):
         b for b in self.all_data
         if (b.get('Batch_ID') != current_batch.get('Batch_ID')
             and b.get('Product_ID') == product_id
-            and float(b.get('Quantity_Current', 0)) > 0
+            and quantity_to_int(b.get('Quantity_Current', 0)) > 0
             and _to_date(b.get('Expiry_Date')) is not None
             and _to_date(b.get('Expiry_Date')) < curr_date)
     ]
@@ -105,13 +106,13 @@ def direct_use_process(self):
     if not check_fefo_compliance(self, batch_data):
         return
 
-    max_qty = float(batch_data.get('Quantity_Current', 0))
+    max_qty = quantity_to_int(batch_data.get('Quantity_Current', 0))
     if max_qty <= 0:
         return
 
-    qty, ok = QInputDialog.getDouble(
+    qty, ok = QInputDialog.getInt(
         self, "Sortie",
-        f"Quantité (Max: {max_qty:g}):", 1.0, 0.01, max_qty, 2
+        f"Quantite (Max: {format_quantity(max_qty)}):", 1, 1, max_qty, 1
     )
     if ok:
         u_id = get_current_user_id(self)

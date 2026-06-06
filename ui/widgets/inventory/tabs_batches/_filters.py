@@ -6,6 +6,8 @@
 import logging
 from datetime import datetime, date
 
+from ui.formatting import format_money
+
 
 # ---------------------------------------------------------------------------
 # تحميل البيانات
@@ -194,7 +196,7 @@ def _update_total_label(self):
         except Exception:
             pass
 
-    self.lbl_total_value.setText(f"💰 Total Filtré : {total:,.2f} DA")
+    self.lbl_total_value.setText(f"💰 Total Filtré : {format_money(total)} DA")
     self.lbl_total_value.show()
 
 

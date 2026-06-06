@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QTableWidgetItem, QApplication
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 
+from ui.formatting import format_money, format_quantity
+
 
 # ---------------------------------------------------------------------------
 # مساعد بناء خلية والتحقق من الصلاحيات
@@ -143,7 +145,7 @@ def populate_table(self, data):
         self.lbl_total_value.hide()
     else:
         self.lbl_total_value.show()
-        self.lbl_total_value.setText(f"💰 Total Filtré : {total_value:,.2f} DA")
+        self.lbl_total_value.setText(f"💰 Total Filtré : {format_money(total_value)} DA")
 
 
 def _fill_row(table, r, b, hide_fin):
@@ -162,7 +164,7 @@ def _fill_row(table, r, b, hide_fin):
     table.setItem(r, 3,  _make_item(b.get('Automate_Name', '---')))
     table.setItem(r, 4,  _make_item(b.get('Supplier_Name', '---')))
     table.setItem(r, 5,  _make_item(
-        f"{qty:g}",
+        format_quantity(qty),
         color=QColor("#27ae60"),
         font=QFont("", -1, QFont.Bold)
     ))
@@ -171,7 +173,7 @@ def _fill_row(table, r, b, hide_fin):
     ))
     table.setItem(r, 7,  _make_item(b.get('Lot_Number', '---')))
     table.setItem(r, 8,  _make_item(str(b.get('Expiry_Date', ''))[:10]))
-    table.setItem(r, 9,  _make_item(f"{float(b.get('Quantity_Initial', 0)):g}"))
+    table.setItem(r, 9,  _make_item(format_quantity(b.get('Quantity_Initial', 0))))
     table.setItem(r, 10, _make_item(
         b.get('Internal_Barcode') or b.get('Barcode')
     ))
@@ -182,8 +184,8 @@ def _fill_row(table, r, b, hide_fin):
         d  = float(b.get('Discount_Percent', 0)) / 100.0
         t  = float(b.get('Tax_Rate_Percent', 0)) / 100.0
         lv = qty * p * (1 - d) * (1 + t)
-        table.setItem(r, 11, _make_item(f"{p:,.2f}"))
-        table.setItem(r, 12, _make_item(f"{lv:,.2f}"))
+        table.setItem(r, 11, _make_item(format_money(p)))
+        table.setItem(r, 12, _make_item(format_money(lv)))
     else:
         table.setItem(r, 11, QTableWidgetItem(""))
         table.setItem(r, 12, QTableWidgetItem(""))

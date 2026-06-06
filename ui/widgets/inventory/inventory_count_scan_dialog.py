@@ -5,16 +5,18 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
 )
+
+from ui.formatting import format_quantity
 
 
 class InventoryCountScanDialog(QDialog):
@@ -45,11 +47,10 @@ class InventoryCountScanDialog(QDialog):
         self.barcode_input.returnPressed.connect(self.scan_current_barcode)
         form.addRow("Code-barres", self.barcode_input)
 
-        self.qty_input = QDoubleSpinBox()
-        self.qty_input.setRange(0.01, 999999.00)
-        self.qty_input.setDecimals(2)
-        self.qty_input.setSingleStep(1.0)
-        self.qty_input.setValue(1.0)
+        self.qty_input = QSpinBox()
+        self.qty_input.setRange(1, 999999)
+        self.qty_input.setSingleStep(1)
+        self.qty_input.setValue(1)
         self.qty_input.setMinimumHeight(38)
         form.addRow("Quantite", self.qty_input)
         layout.addLayout(form)
@@ -107,7 +108,7 @@ class InventoryCountScanDialog(QDialog):
 
     def _prepend_scan_row(self, barcode, qty, status, message):
         self.scan_table.insertRow(0)
-        values = [barcode, qty, status, datetime.now().strftime("%H:%M:%S"), message]
+        values = [barcode, format_quantity(qty), status, datetime.now().strftime("%H:%M:%S"), message]
         for column, value in enumerate(values):
             item = QTableWidgetItem(str(value))
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
