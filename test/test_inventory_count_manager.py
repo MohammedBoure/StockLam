@@ -37,6 +37,13 @@ class FakeConnection:
         self.dictionary = dictionary
         return self.cursor_obj
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
     def commit(self):
         self.committed = True
 
@@ -55,6 +62,9 @@ class FakeDb:
         self.connection = connection
 
     def get_raw_connection(self):
+        return self.connection
+
+    def get_db_connection(self):
         return self.connection
 
 
@@ -95,6 +105,24 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertEqual(result["status"], "INVALID")
         self.assertEqual(result["message"], "Quantity must be positive.")
+
+    def test_build_snapshot_uses_signed_difference_expression(self):
+        cursor = FakeCursor(
+            [
+                {
+                    "Session_ID": 99,
+                    "Scope_Type": "ALL",
+                    "Scope_ID": None,
+                }
+            ]
+        )
+        manager = make_manager(FakeDb(FakeConnection(cursor)))
+
+        self.assertTrue(manager.build_snapshot(session_id=99))
+
+        insert_query = cursor.executed[-1][0]
+        self.assertIn("-CAST(b.Quantity_Current AS DECIMAL(15, 2))", insert_query)
+        self.assertNotIn("0 - b.Quantity_Current", insert_query)
 
     def test_apply_session_rejects_applied_status_without_modification(self):
         cursor = FakeCursor(

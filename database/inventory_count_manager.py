@@ -218,7 +218,7 @@ class InventoryCountManager:
                         b.Internal_Barcode,
                         b.Quantity_Current,
                         0,
-                        0 - b.Quantity_Current,
+                        -CAST(b.Quantity_Current AS DECIMAL(15, 2)),
                         'NOT_COUNTED'
                     FROM Inventory_Batches b
                     JOIN Products_Master p ON b.Product_ID = p.Product_ID
