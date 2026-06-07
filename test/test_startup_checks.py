@@ -312,13 +312,34 @@ class StartupChecksTests(unittest.TestCase):
         }
 
         with patch.object(main_window_module, "AutoBackupWorker", FakeAutoBackupWorker), \
-             patch.object(main_window_module.MainWindow, "switch_page", fake_switch_page):
+             patch.object(main_window_module.MainWindow, "switch_page", fake_switch_page), \
+             patch.object(QApplication, "exec", side_effect=AssertionError("startup smoke must not call app.exec()")):
             window = main_window_module.MainWindow(fake_data_manager, current_user, connection_error=None)
 
         self.assertEqual(switches, [4])
+        self.assertIsNotNone(getattr(window, "content_area", None), "MainWindow should create a content area.")
+        self.assertGreaterEqual(
+            window.content_area.count(),
+            10,
+            "MainWindow startup should initialize page placeholders in the content area.",
+        )
+        self.assertIsNotNone(getattr(window, "sidebar_container", None), "MainWindow should create the sidebar.")
+        self.assertTrue(
+            any(button.isVisibleTo(window) or not button.isHidden() for button in window.nav_group.buttons()),
+            "Fake valid user should have enough permissions to avoid a blank sidebar.",
+        )
+        window.resize(1400, 800)
+        self.app.processEvents()
+        self.assertGreaterEqual(window.width(), 1366)
+        self.assertGreaterEqual(window.height(), 768)
         self.assertIsInstance(window.auto_backup_thread, FakeAutoBackupWorker)
         self.assertTrue(window.auto_backup_thread.started)
         self.assertIs(window.auto_backup_thread.data_manager, fake_data_manager)
+
+        with patch.object(main_window_module.QMessageBox, "question", return_value=QMessageBox.Yes):
+            window.close()
+
+        self.assertTrue(window.auto_backup_thread.stopped)
         window.deleteLater()
 
     def test_main_window_database_unavailable_opens_settings_without_backup(self):
