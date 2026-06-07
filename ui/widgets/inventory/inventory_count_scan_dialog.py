@@ -260,6 +260,7 @@ class InventoryCountScanDialog(QDialog):
         details_scroll.setWidgetResizable(True)
         details_scroll.setFrameShape(QFrame.NoFrame)
         details_scroll.setWidget(details_group)
+        details_scroll.setMaximumWidth(620)
 
         self.scan_table = QTableWidget(0, 5)
         self.scan_table.setHorizontalHeaderLabels(["Barcode", "Qty", "Status", "Time", "Message"])
@@ -279,9 +280,9 @@ class InventoryCountScanDialog(QDialog):
         content_splitter.setChildrenCollapsible(False)
         content_splitter.addWidget(details_scroll)
         content_splitter.addWidget(self.scan_table)
-        content_splitter.setStretchFactor(0, 3)
+        content_splitter.setStretchFactor(0, 1)
         content_splitter.setStretchFactor(1, 2)
-        content_splitter.setSizes([700, 460])
+        content_splitter.setSizes([460, 820])
         layout.addWidget(content_splitter, 1)
 
         self.result_label = QLabel("Pret a scanner.")

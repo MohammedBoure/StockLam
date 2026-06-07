@@ -34,95 +34,95 @@ from .inventory_count_scan_dialog import InventoryCountScanDialog
 
 INVENTORY_STYLE = """
 QWidget#inventoryCountPage {
-    background: #ffffff;
-    color: #111111;
+    background: #f5f7fb;
+    color: #243447;
 }
 QFrame#inventorySidebar,
 QFrame#inventoryFilters {
     background: #ffffff;
-    border: 2px solid #111111;
-    border-radius: 0;
+    border: 1px solid #dfe6ee;
+    border-radius: 8px;
 }
 QLabel#inventoryContext {
-    color: #111111;
+    color: #607080;
+    font-size: 12px;
+    font-weight: 700;
+}
+QLabel#sidebarSectionTitle {
+    color: #607080;
     font-size: 12px;
     font-weight: 800;
 }
-QLabel#sidebarSectionTitle {
-    color: #111111;
-    font-size: 12px;
-    font-weight: 900;
-}
 QPushButton {
-    background: #ffffff;
-    border: 3px solid #111111;
-    border-radius: 7px;
-    color: #111111;
+    background: #eef3f7;
+    border: 1px solid #cfd9e2;
+    border-radius: 5px;
+    color: #243447;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 800;
     min-height: 32px;
-    padding: 4px 8px;
+    padding: 5px 9px;
     text-align: left;
 }
 QPushButton:hover {
-    background: #f2f2f2;
+    background: #e2ebf2;
 }
 QPushButton:disabled {
-    background: #f7f7f7;
-    border-color: #888888;
-    color: #888888;
+    background: #f4f6f8;
+    border-color: #d8e0e8;
+    color: #95a5a6;
 }
 QLineEdit,
 QComboBox,
 QTextEdit {
     background: #ffffff;
-    border: 2px solid #111111;
-    border-radius: 0;
-    color: #111111;
+    border: 1px solid #cfd9e2;
+    border-radius: 5px;
+    color: #243447;
     min-height: 26px;
-    padding: 3px 6px;
+    padding: 4px 7px;
 }
 QTableWidget {
     background: #ffffff;
-    alternate-background-color: #ffffff;
-    border: 2px solid #111111;
-    gridline-color: #111111;
-    selection-background-color: #dcecff;
-    selection-color: #111111;
+    alternate-background-color: #f8fafc;
+    border: 1px solid #dfe6ee;
+    gridline-color: #edf1f5;
+    selection-background-color: #d7f0ee;
+    selection-color: #1f2d3d;
     font-size: 12px;
 }
 QHeaderView::section {
-    background: #ffffff;
+    background: #eef3f7;
     border: 0;
-    border-right: 2px solid #111111;
-    border-bottom: 2px solid #111111;
-    color: #111111;
+    border-right: 1px solid #dfe6ee;
+    border-bottom: 1px solid #dfe6ee;
+    color: #52616f;
     font-size: 12px;
-    font-weight: 900;
+    font-weight: 800;
     padding: 6px 8px;
 }
 QSplitter::handle {
-    background: #111111;
+    background: #dfe6ee;
 }
 QSplitter::handle:horizontal {
-    width: 3px;
+    width: 5px;
 }
 QSplitter::handle:vertical {
-    height: 3px;
+    height: 5px;
 }
 QFrame#summaryRow {
     background: #ffffff;
     border: none;
 }
 QLabel#summaryTitle {
-    color: #111111;
+    color: #52616f;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 800;
 }
 QLabel#summaryValue {
-    color: #111111;
+    color: #243447;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 800;
 }
 """
 
@@ -443,16 +443,16 @@ class InventoryCountTab(QWidget):
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setLineWidth(2)
-        separator.setStyleSheet("background: #111111; min-height: 2px;")
+        separator.setStyleSheet("background: #dfe6ee; min-height: 1px;")
         sidebar_layout.addWidget(separator)
 
         self.summary_cards = {
-            "OK": SummaryCard("OK", "#111111"),
-            "SHORT": SummaryCard("Manquant", "#111111"),
-            "EXCESS": SummaryCard("excedent", "#111111"),
-            "NOT_COUNTED": SummaryCard("Non Compte", "#111111"),
-            "UNKNOWN": SummaryCard("Inconnu", "#111111"),
-            "Estimated_Variance_Value": SummaryCard("valeur ecart", "#111111"),
+            "OK": SummaryCard("OK", "#238b55"),
+            "SHORT": SummaryCard("Manquant", "#c0392b"),
+            "EXCESS": SummaryCard("excedent", "#d68910"),
+            "NOT_COUNTED": SummaryCard("Non Compte", "#607080"),
+            "UNKNOWN": SummaryCard("Inconnu", "#8e44ad"),
+            "Estimated_Variance_Value": SummaryCard("valeur ecart", "#007572"),
         }
         for card in self.summary_cards.values():
             sidebar_layout.addWidget(card)
