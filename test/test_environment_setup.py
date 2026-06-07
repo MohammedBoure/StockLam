@@ -12,6 +12,40 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEPENDENCY_GROUPS = [
+    ("Qt binding", ["pyside6"]),
+    ("MySQL connector", ["mysql-connector-python"]),
+    ("environment file loader", ["python-dotenv"]),
+    ("Excel export engine", ["pandas", "xlsxwriter"]),
+]
+CRITICAL_MODULES = [
+    "database",
+    "database.base.connection",
+    "ui.formatting",
+]
+
+
+def missing_dependency_messages(requirement_text, dependency_groups=DEPENDENCY_GROUPS):
+    normalized_text = str(requirement_text or "").lower()
+    messages = []
+    for feature, alternatives in dependency_groups:
+        if not any(dependency in normalized_text for dependency in alternatives):
+            messages.append(
+                f"requirements.txt is missing dependency for {feature}. "
+                f"Expected one of: {', '.join(alternatives)}"
+            )
+    return messages
+
+
+def import_critical_modules(module_names=CRITICAL_MODULES, importer=importlib.import_module):
+    failures = []
+    for module_name in module_names:
+        try:
+            importer(module_name)
+        except Exception as exc:
+            failures.append(f"Failed to import critical module {module_name}: {exc!r}")
+    if failures:
+        raise AssertionError("\n".join(failures))
 
 
 def parse_db_env_fixture(path):
@@ -93,23 +127,20 @@ class EnvironmentSetupTests(unittest.TestCase):
 
         self.assertTrue(requirements.exists(), "requirements.txt must exist.")
 
-        requirement_text = requirements.read_text(encoding="utf-8").lower()
-        dependency_groups = [
-            ("Qt binding", ["pyside6"]),
-            ("MySQL connector", ["mysql-connector-python"]),
-            ("environment file loader", ["python-dotenv"]),
-            ("Excel export engine", ["pandas", "xlsxwriter"]),
-        ]
+        requirement_text = requirements.read_text(encoding="utf-8")
+        missing_messages = missing_dependency_messages(requirement_text)
 
-        for feature, alternatives in dependency_groups:
-            with self.subTest(feature=feature):
-                self.assertTrue(
-                    any(dependency in requirement_text for dependency in alternatives),
-                    (
-                        f"requirements.txt is missing dependency for {feature}. "
-                        f"Expected one of: {', '.join(alternatives)}"
-                    ),
-                )
+        self.assertEqual(missing_messages, [], "\n".join(missing_messages))
+
+    def test_missing_dependency_messages_are_clear(self):
+        messages = missing_dependency_messages(
+            "PySide6\nmysql-connector-python\npython-dotenv\n",
+            dependency_groups=DEPENDENCY_GROUPS,
+        )
+
+        self.assertEqual(len(messages), 1)
+        self.assertIn("Excel export engine", messages[0])
+        self.assertIn("pandas, xlsxwriter", messages[0])
 
     def test_active_python_process_is_project_compatible(self):
         self.assertGreaterEqual(
@@ -120,18 +151,16 @@ class EnvironmentSetupTests(unittest.TestCase):
         self.assertTrue(sys.executable, "Active test process must expose sys.executable.")
 
     def test_critical_modules_import_without_opening_database(self):
-        critical_modules = [
-            "database",
-            "database.base.connection",
-            "ui.formatting",
-        ]
+        import_critical_modules()
 
-        for module_name in critical_modules:
-            with self.subTest(module=module_name):
-                try:
-                    importlib.import_module(module_name)
-                except Exception as exc:  # pragma: no cover - failure path improves diagnostics.
-                    self.fail(f"Failed to import critical module {module_name}: {exc!r}")
+    def test_import_failure_message_identifies_module_name(self):
+        def fake_importer(module_name):
+            if module_name == "database.base.connection":
+                raise RuntimeError("blocked import")
+            return object()
+
+        with self.assertRaisesRegex(AssertionError, "database\\.base\\.connection"):
+            import_critical_modules(importer=fake_importer)
 
     def test_main_py_syntax_compiles_without_running_application(self):
         main_path = PROJECT_ROOT / "main.py"
