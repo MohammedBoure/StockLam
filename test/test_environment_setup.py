@@ -25,6 +25,8 @@ CRITICAL_MODULES = [
     "database.base.connection",
     "ui.formatting",
 ]
+DB_ENV_REQUIRED_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER")
+DB_ENV_OPTIONAL_KEYS = ("DB_PASSWORD",)
 
 
 def missing_dependency_messages(requirement_text, dependency_groups=DEPENDENCY_GROUPS):
@@ -108,22 +110,30 @@ def has_main_entrypoint_guard(source):
 
 def parse_db_env_fixture(path):
     values = dotenv_values(path)
-    port_value = values.get("DB_PORT") or "3306"
+    missing_keys = [key for key in DB_ENV_REQUIRED_KEYS if not str(values.get(key) or "").strip()]
+    if missing_keys:
+        raise ValueError(f"Missing required DB env settings: {', '.join(missing_keys)}")
+
+    port_value = values.get("DB_PORT")
     try:
         port = int(port_value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"DB_PORT must be numeric: {port_value}") from exc
 
+    database = str(values.get("DB_NAME") or "").strip()
+    user = str(values.get("DB_USER") or "").strip()
+    if not database:
+        raise ValueError("DB_NAME must not be empty")
+    if not user:
+        raise ValueError("DB_USER must not be empty")
+
     config = {
-        "host": values.get("DB_HOST") or "localhost",
+        "host": str(values.get("DB_HOST") or "").strip(),
         "port": port,
-        "user": values.get("DB_USER"),
+        "user": user,
         "password": values.get("DB_PASSWORD"),
-        "database": values.get("DB_NAME"),
+        "database": database,
     }
-    missing = [key for key in ("user", "password", "database") if not config.get(key)]
-    if missing:
-        raise ValueError(f"Missing DB settings: {', '.join(missing)}")
     return config
 
 
@@ -308,7 +318,55 @@ class EnvironmentSetupTests(unittest.TestCase):
             self.assertEqual(config["password"], "secret")
             self.assertEqual(config["database"], "stocklam_test")
 
-            env_path.write_text(
+    def test_env_fixture_parser_does_not_depend_on_real_dotenv_file(self):
+        real_env_path = PROJECT_ROOT / ".env"
+        before = real_env_path.read_text(encoding="utf-8") if real_env_path.exists() else None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / ".env"
+            fixture_path.write_text(
+                "\n".join(
+                    [
+                        "DB_HOST=example.test",
+                        "DB_PORT=4406",
+                        "DB_USER=fixture_user",
+                        "DB_PASSWORD=fixture_secret",
+                        "DB_NAME=fixture_db_test",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            config = parse_db_env_fixture(fixture_path)
+
+        after = real_env_path.read_text(encoding="utf-8") if real_env_path.exists() else None
+
+        self.assertEqual(config["host"], "example.test")
+        self.assertEqual(config["port"], 4406)
+        self.assertEqual(config["user"], "fixture_user")
+        self.assertEqual(config["database"], "fixture_db_test")
+        self.assertEqual(after, before, "Parsing a fixture .env must not modify the real project .env.")
+
+    def test_env_fixture_parser_reports_missing_required_keys(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / ".env"
+            fixture_path.write_text(
+                "\n".join(
+                    [
+                        "DB_HOST=127.0.0.1",
+                        "DB_PORT=3306",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "DB_NAME.*DB_USER"):
+                parse_db_env_fixture(fixture_path)
+
+    def test_env_fixture_parser_requires_numeric_port(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / ".env"
+            fixture_path.write_text(
                 "\n".join(
                     [
                         "DB_HOST=127.0.0.1",
@@ -320,12 +378,40 @@ class EnvironmentSetupTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "DB_PORT"):
-                parse_db_env_fixture(env_path)
 
-            env_path.write_text("DB_HOST=127.0.0.1\nDB_PORT=3306\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "Missing DB settings"):
-                parse_db_env_fixture(env_path)
+            with self.assertRaisesRegex(ValueError, "DB_PORT must be numeric"):
+                parse_db_env_fixture(fixture_path)
+
+    def test_env_fixture_parser_rejects_empty_database_and_user(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / ".env"
+            fixture_path.write_text(
+                "\n".join(
+                    [
+                        "DB_HOST=127.0.0.1",
+                        "DB_PORT=3306",
+                        "DB_USER=",
+                        "DB_PASSWORD=secret",
+                        "DB_NAME=",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "DB_NAME.*DB_USER"):
+                parse_db_env_fixture(fixture_path)
+
+    def test_database_connection_uses_expected_env_keys_without_instantiating_database(self):
+        connection_path = PROJECT_ROOT / "database" / "base" / "connection.py"
+        source = connection_path.read_text(encoding="utf-8")
+
+        for key in DB_ENV_REQUIRED_KEYS + DB_ENV_OPTIONAL_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(
+                    key,
+                    source,
+                    f"database/base/connection.py should read expected .env key {key}.",
+                )
 
     def test_database_name_guard_rejects_production_like_names(self):
         safe_names = [
