@@ -479,6 +479,67 @@ class StartupChecksTests(unittest.TestCase):
             "Auto-backup worker should log a clear skipped message when no database connection exists.",
         )
 
+    def test_auto_backup_worker_skips_data_manager_without_usable_db(self):
+        from database.auto_backup_worker import AutoBackupWorker
+
+        no_db_manager = type("NoDbManager", (), {})()
+        none_db_manager = type("NoneDbManager", (), {"db": None})()
+
+        with self.assertLogs(level="INFO") as logs:
+            AutoBackupWorker(no_db_manager).run()
+            AutoBackupWorker(none_db_manager).run()
+
+        self.assertEqual(
+            sum("Auto-backup worker skipped: no database connection is available." in line for line in logs.output),
+            2,
+            "Auto-backup should skip cleanly when the data manager has no usable db attribute.",
+        )
+
+    def test_auto_backup_worker_disabled_config_does_not_call_backup(self):
+        from database.auto_backup_worker import AutoBackupWorker
+
+        class FakeBackupDb:
+            def __init__(self):
+                self.calls = []
+
+            def create_multi_backup(self, backup_paths, password, is_auto=False):
+                self.calls.append((backup_paths, password, is_auto))
+                return True, "unexpected backup"
+
+        class OneCycleWorker(AutoBackupWorker):
+            def _sleep_check(self, seconds):
+                self.sleep_seconds = seconds
+                self.running = False
+
+        fake_db = FakeBackupDb()
+        fake_data_manager = type("FakeDataManager", (), {"db": fake_db})()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            config_path = temp_path / "config.json"
+            backup_path = temp_path / "backups"
+            backup_path.mkdir()
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "auto_backup_enabled": False,
+                        "auto_backup_interval": 0,
+                        "auto_backup_password": "secret",
+                        "backup_paths": [str(backup_path)],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            worker = OneCycleWorker(fake_data_manager)
+            worker.config_file = str(config_path)
+            with self.assertLogs(level="INFO") as logs:
+                worker.run()
+
+        self.assertEqual(fake_db.calls, [])
+        self.assertEqual(worker.sleep_seconds, 60)
+        self.assertTrue(any("Auto-backup worker started" in line for line in logs.output))
+
     def test_auto_backup_worker_one_cycle_uses_temp_config_and_fake_database(self):
         from database.auto_backup_worker import AutoBackupWorker
 
@@ -524,6 +585,96 @@ class StartupChecksTests(unittest.TestCase):
         self.assertEqual(worker.sleep_seconds, 0)
         self.assertTrue(any("Auto-backup worker started" in line for line in logs.output))
         self.assertTrue(any("Auto-backup success" in line for line in logs.output))
+
+    def test_auto_backup_worker_one_cycle_logs_backup_failure_without_crashing(self):
+        from database.auto_backup_worker import AutoBackupWorker
+
+        class FakeBackupDb:
+            def __init__(self):
+                self.calls = []
+
+            def create_multi_backup(self, backup_paths, password, is_auto=False):
+                self.calls.append((backup_paths, password, is_auto))
+                return False, "disk full"
+
+        class OneCycleWorker(AutoBackupWorker):
+            def _sleep_check(self, seconds):
+                self.sleep_seconds = seconds
+                self.running = False
+
+        fake_db = FakeBackupDb()
+        fake_data_manager = type("FakeDataManager", (), {"db": fake_db})()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            config_path = temp_path / "config.json"
+            backup_path = temp_path / "backups"
+            backup_path.mkdir()
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "auto_backup_enabled": True,
+                        "auto_backup_interval": 0,
+                        "auto_backup_password": "secret",
+                        "backup_paths": [str(backup_path)],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            worker = OneCycleWorker(fake_data_manager)
+            worker.config_file = str(config_path)
+            with self.assertLogs(level="WARNING") as logs:
+                worker.run()
+
+        self.assertEqual(fake_db.calls, [([str(backup_path)], "secret", True)])
+        self.assertEqual(worker.sleep_seconds, 0)
+        self.assertTrue(any("Auto-backup issue: disk full" in line for line in logs.output))
+
+    def test_auto_backup_worker_one_cycle_logs_backup_exception_without_crashing(self):
+        from database.auto_backup_worker import AutoBackupWorker
+
+        class ExplodingBackupDb:
+            def __init__(self):
+                self.calls = []
+
+            def create_multi_backup(self, backup_paths, password, is_auto=False):
+                self.calls.append((backup_paths, password, is_auto))
+                raise RuntimeError("backup exploded")
+
+        class OneCycleWorker(AutoBackupWorker):
+            def _sleep_check(self, seconds):
+                self.sleep_seconds = seconds
+                self.running = False
+
+        fake_db = ExplodingBackupDb()
+        fake_data_manager = type("FakeDataManager", (), {"db": fake_db})()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            config_path = temp_path / "config.json"
+            backup_path = temp_path / "backups"
+            backup_path.mkdir()
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "auto_backup_enabled": True,
+                        "auto_backup_interval": 0,
+                        "auto_backup_password": "",
+                        "backup_paths": [str(backup_path)],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            worker = OneCycleWorker(fake_data_manager)
+            worker.config_file = str(config_path)
+            with self.assertLogs(level="ERROR") as logs:
+                worker.run()
+
+        self.assertEqual(fake_db.calls, [([str(backup_path)], "", True)])
+        self.assertEqual(worker.sleep_seconds, 60)
+        self.assertTrue(any("Critical error in auto-backup thread: backup exploded" in line for line in logs.output))
 
 
 if __name__ == "__main__":
