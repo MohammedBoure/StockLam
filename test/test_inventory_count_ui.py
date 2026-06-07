@@ -699,6 +699,197 @@ class InventoryCountUiTests(unittest.TestCase):
         self.assertEqual(data_manager.inventory_counts.export_calls, [])
         tab.deleteLater()
 
+    def test_scan_dialog_initial_ui_contract(self):
+        dialog = InventoryCountScanDialog(FakeDataManager(), 101, {"User_ID": 7})
+
+        self.assertIsNotNone(dialog.barcode_input)
+        self.assertEqual(dialog.qty_input.value(), 1)
+        self.assertEqual(dialog.scan_table.columnCount(), 5)
+        headers = [
+            dialog.scan_table.horizontalHeaderItem(column).text()
+            for column in range(dialog.scan_table.columnCount())
+        ]
+        self.assertEqual(headers, ["Barcode", "Qty", "Status", "Time", "Message"])
+        dialog.deleteLater()
+
+    def test_scan_dialog_set_details_for_known_and_unknown_lines(self):
+        data_manager = FakeDataManager()
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+        line = data_manager.inventory_counts.lines[0]
+
+        dialog._set_details(line, "INT-001")
+
+        self.assertEqual(dialog.product_title_label.text(), "Glucose")
+        self.assertEqual(dialog.detail_labels["Product_Name"].text(), "Glucose")
+        self.assertEqual(dialog.detail_labels["Lot_Number"].text(), "LOT-A")
+        self.assertEqual(dialog.detail_labels["Location_Name"].text(), "Stock A")
+        self.assertEqual(dialog.detail_labels["Program_Qty_Snapshot"].text(), "10")
+        self.assertEqual(dialog.detail_labels["Counted_Qty"].text(), "0")
+        self.assertEqual(dialog.detail_labels["Difference_Qty"].text(), "-10")
+        self.assertIn("Lot LOT-A", dialog.product_meta_label.text())
+        self.assertIn("Emplacement Stock A", dialog.product_meta_label.text())
+
+        dialog._set_details(None, "MISSING-777")
+
+        self.assertEqual(dialog.product_title_label.text(), "Inconnu")
+        self.assertEqual(dialog.detail_labels["Internal_Barcode"].text(), "MISSING-777")
+        self.assertEqual(dialog.detail_labels["Program_Qty_Snapshot"].text(), "0")
+        self.assertEqual(dialog.detail_labels["Line_Status"].text(), "UNKNOWN")
+        dialog.deleteLater()
+
+    def test_scan_dialog_find_line_uses_exact_lookup_before_fallback(self):
+        class ExactInventoryCounts(FakeInventoryCounts):
+            def __init__(self):
+                super().__init__()
+                self.exact_calls = []
+                self.fallback_calls = []
+
+            def get_session_line_by_barcode(self, session_id, barcode):
+                self.exact_calls.append((session_id, barcode))
+                return dict(self.lines[0])
+
+            def get_session_lines(self, session_id, status=None, search=None):
+                self.fallback_calls.append((session_id, status, search))
+                return []
+
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts = ExactInventoryCounts()
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+
+        line = dialog._find_line_for_barcode("ANY-CODE")
+
+        self.assertEqual(line["Product_Name"], "Glucose")
+        self.assertEqual(data_manager.inventory_counts.exact_calls, [(101, "ANY-CODE")])
+        self.assertEqual(data_manager.inventory_counts.fallback_calls, [])
+        dialog.deleteLater()
+
+    def test_scan_dialog_find_line_fallback_matches_all_supported_codes(self):
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts.get_session_line_by_barcode = None
+        fallback_calls = []
+
+        def fallback(session_id, status=None, search=None):
+            fallback_calls.append((session_id, status, search))
+            return data_manager.inventory_counts.lines
+
+        data_manager.inventory_counts.get_session_lines = fallback
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+
+        self.assertEqual(dialog._find_line_for_barcode("INT-001")["Product_Name"], "Glucose")
+        self.assertEqual(dialog._find_line_for_barcode("PROD-002")["Product_Name"], "Controle")
+        self.assertEqual(dialog._find_line_for_barcode("REF-002")["Product_Name"], "Controle")
+        self.assertEqual(dialog._find_line_for_barcode("PROD 001")["Product_Name"], "Glucose")
+        self.assertEqual(dialog._find_line_for_barcode("PROD001")["Product_Name"], "Glucose")
+        self.assertIsNone(dialog._find_line_for_barcode("NO-MATCH"))
+        self.assertTrue(all(call[0] == 101 for call in fallback_calls))
+        dialog.deleteLater()
+
+    def test_scan_dialog_default_quantity_for_line(self):
+        data_manager = FakeDataManager()
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+
+        self.assertEqual(dialog._default_quantity_for_line(None), 1)
+        self.assertEqual(dialog._default_quantity_for_line(data_manager.inventory_counts.lines[0]), 10)
+        self.assertEqual(dialog._default_quantity_for_line(data_manager.inventory_counts.lines[1]), 7)
+        dialog.deleteLater()
+
+    def test_scan_dialog_schedule_lookup_empty_short_duplicate_and_new_code(self):
+        dialog = InventoryCountScanDialog(FakeDataManager(), 101, {"User_ID": 7})
+        dialog.pending_barcode = "old"
+        dialog.pending_line = {"Line_ID": 1}
+        dialog.last_loaded_barcode = "old"
+
+        dialog.schedule_barcode_lookup("")
+        self.assertEqual(dialog.pending_barcode, "")
+        self.assertIsNone(dialog.pending_line)
+        self.assertEqual(dialog.last_loaded_barcode, "")
+
+        dialog.schedule_barcode_lookup("ab")
+        self.assertFalse(dialog.barcode_lookup_timer.isActive())
+
+        dialog.last_loaded_barcode = "ABC123"
+        dialog.schedule_barcode_lookup("ABC123")
+        self.assertFalse(dialog.barcode_lookup_timer.isActive())
+
+        dialog.last_loaded_barcode = ""
+        dialog.schedule_barcode_lookup("ABC123")
+        self.assertTrue(dialog.barcode_lookup_timer.isActive())
+        dialog.barcode_lookup_timer.stop()
+        dialog.deleteLater()
+
+    def test_scan_dialog_load_barcode_details_paths(self):
+        dialog = InventoryCountScanDialog(FakeDataManager(), 101, {"User_ID": 7})
+
+        dialog.barcode_input.clear()
+        dialog.load_barcode_details()
+        self.assertEqual(dialog.pending_barcode, "")
+        self.assertEqual(dialog.product_title_label.text(), "Pret a scanner")
+
+        dialog.barcode_input.setText("INT-001")
+        dialog.load_barcode_details()
+        self.assertEqual(dialog.pending_line["Product_Name"], "Glucose")
+        self.assertEqual(dialog.last_loaded_barcode, "INT-001")
+        self.assertEqual(dialog.qty_input.value(), 10)
+        self.assertIn("READY", dialog.result_label.text())
+
+        dialog.barcode_input.setText("NO-MATCH")
+        dialog.load_barcode_details()
+        self.assertIsNone(dialog.pending_line)
+        self.assertEqual(dialog.product_title_label.text(), "Inconnu")
+        self.assertIn("UNKNOWN", dialog.result_label.text())
+        dialog.deleteLater()
+
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts = None
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+        dialog.barcode_input.setText("ABC-123")
+        dialog.load_barcode_details()
+        self.assertIn("ERROR", dialog.result_label.text())
+        dialog.deleteLater()
+
+        class RaisingInventoryCounts(FakeInventoryCounts):
+            def get_session_line_by_barcode(self, session_id, barcode):
+                raise RuntimeError("lookup boom")
+
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts = RaisingInventoryCounts()
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+        dialog.barcode_input.setText("ABC-123")
+        dialog.load_barcode_details()
+        self.assertIn("ERROR", dialog.result_label.text())
+        self.assertIn("lookup boom", dialog.result_label.text())
+        dialog.deleteLater()
+
+    def test_scan_dialog_record_quantity_empty_barcode_does_nothing(self):
+        data_manager = FakeDataManager()
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+
+        dialog.record_current_quantity()
+
+        self.assertEqual(data_manager.inventory_counts.scan_calls, [])
+        self.assertEqual(dialog.scan_table.rowCount(), 0)
+        dialog.deleteLater()
+
+    def test_scan_dialog_record_quantity_unknown_adds_row_and_keeps_details_unknown(self):
+        data_manager = FakeDataManager()
+        dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
+        emitted = []
+        dialog.scan_recorded.connect(lambda: emitted.append(True))
+
+        dialog.barcode_input.setText("UNKNOWN-777")
+        dialog.load_barcode_details()
+        dialog.qty_input.setValue(4)
+        dialog.record_current_quantity()
+
+        self.assertEqual(data_manager.inventory_counts.scan_calls[-1]["barcode"], "UNKNOWN-777")
+        self.assertEqual(data_manager.inventory_counts.scan_calls[-1]["qty"], 4)
+        self.assertEqual(dialog.scan_table.item(0, 2).text(), "UNKNOWN")
+        self.assertEqual(dialog.product_title_label.text(), "Inconnu")
+        self.assertEqual(dialog.detail_labels["Internal_Barcode"].text(), "UNKNOWN-777")
+        self.assertEqual(dialog.barcode_input.text(), "")
+        self.assertEqual(emitted, [True])
+        dialog.deleteLater()
+
     def test_scan_dialog_loads_known_product_and_records_quantity(self):
         data_manager = FakeDataManager()
         dialog = InventoryCountScanDialog(data_manager, 101, {"User_ID": 7})
