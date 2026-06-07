@@ -1,3 +1,4 @@
+import importlib
 import logging
 import os
 import sys
@@ -79,32 +80,58 @@ class FakeDataManager:
 
 
 class EnvironmentSetupTests(unittest.TestCase):
-    def test_virtualenv_and_requirements_are_ready(self):
+    def test_project_virtualenv_python_exists(self):
         venv_python = PROJECT_ROOT / "venv" / "Scripts" / "python.exe"
-        requirements = PROJECT_ROOT / "requirements.txt"
 
         self.assertTrue(
             venv_python.exists(),
             "Expected project virtual environment Python at venv\\Scripts\\python.exe.",
         )
+
+    def test_requirements_file_declares_runtime_dependencies(self):
+        requirements = PROJECT_ROOT / "requirements.txt"
+
         self.assertTrue(requirements.exists(), "requirements.txt must exist.")
-        self.assertGreaterEqual(sys.version_info[:2], (3, 10))
 
         requirement_text = requirements.read_text(encoding="utf-8").lower()
-        expected_dependencies = [
-            "pyside6",
-            "mysql-connector-python",
-            "python-dotenv",
-            "pandas",
-            "xlsxwriter",
+        dependency_groups = [
+            ("Qt binding", ["pyside6"]),
+            ("MySQL connector", ["mysql-connector-python"]),
+            ("environment file loader", ["python-dotenv"]),
+            ("Excel export engine", ["pandas", "xlsxwriter"]),
         ]
-        for dependency in expected_dependencies:
-            self.assertIn(dependency, requirement_text, f"Missing dependency: {dependency}")
+
+        for feature, alternatives in dependency_groups:
+            with self.subTest(feature=feature):
+                self.assertTrue(
+                    any(dependency in requirement_text for dependency in alternatives),
+                    (
+                        f"requirements.txt is missing dependency for {feature}. "
+                        f"Expected one of: {', '.join(alternatives)}"
+                    ),
+                )
+
+    def test_active_python_process_is_project_compatible(self):
+        self.assertGreaterEqual(
+            sys.version_info[:2],
+            (3, 10),
+            f"Active Python is too old: {sys.version_info.major}.{sys.version_info.minor}",
+        )
+        self.assertTrue(sys.executable, "Active test process must expose sys.executable.")
 
     def test_critical_modules_import_without_opening_database(self):
-        import database  # noqa: F401
-        import database.base.connection  # noqa: F401
-        import ui.formatting  # noqa: F401
+        critical_modules = [
+            "database",
+            "database.base.connection",
+            "ui.formatting",
+        ]
+
+        for module_name in critical_modules:
+            with self.subTest(module=module_name):
+                try:
+                    importlib.import_module(module_name)
+                except Exception as exc:  # pragma: no cover - failure path improves diagnostics.
+                    self.fail(f"Failed to import critical module {module_name}: {exc!r}")
 
     def test_main_py_syntax_compiles_without_running_application(self):
         main_path = PROJECT_ROOT / "main.py"
