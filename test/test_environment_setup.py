@@ -155,6 +155,30 @@ def is_safe_test_database_name(name):
     return any(token in text for token in SAFE_TEST_DB_MARKERS)
 
 
+def write_environment_log_messages(log_path, logger_name="stocklam.environment-test"):
+    logger = logging.getLogger(logger_name)
+    original_handlers = list(logger.handlers)
+    original_level = logger.level
+    original_propagate = logger.propagate
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    try:
+        logger.info("startup message")
+        logger.error("database error message")
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+        logger.setLevel(original_level)
+        logger.propagate = original_propagate
+
+    return original_handlers, list(logger.handlers)
+
+
 class FakeInventoryCounts:
     def get_sessions(self, status=None, limit=100):
         return [
@@ -460,26 +484,37 @@ class EnvironmentSetupTests(unittest.TestCase):
         )
 
     def test_log_file_can_be_written_and_read_from_temporary_path(self):
-        logger = logging.getLogger("stocklam.environment-test")
-        logger.setLevel(logging.INFO)
-        logger.propagate = False
-
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "environment.log"
-            handler = logging.FileHandler(log_path, encoding="utf-8")
-            handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
-            logger.addHandler(handler)
-            try:
-                logger.info("startup message")
-                logger.error("database error message")
-            finally:
-                logger.removeHandler(handler)
-                handler.close()
+            before_handlers, after_handlers = write_environment_log_messages(log_path)
 
+            self.assertTrue(log_path.exists(), "Temporary log file should exist after writing.")
             content = log_path.read_text(encoding="utf-8")
 
         self.assertIn("INFO:startup message", content)
         self.assertIn("ERROR:database error message", content)
+        self.assertEqual(after_handlers, before_handlers, "Temporary log handler must be removed after writing.")
+
+    def test_log_handler_cleanup_is_repeatable(self):
+        logger_name = "stocklam.environment-test.cleanup"
+        logger = logging.getLogger(logger_name)
+        original_handlers = list(logger.handlers)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            first_log = Path(temp_dir) / "first.log"
+            second_log = Path(temp_dir) / "second.log"
+
+            write_environment_log_messages(first_log, logger_name=logger_name)
+            write_environment_log_messages(second_log, logger_name=logger_name)
+
+            first_content = first_log.read_text(encoding="utf-8")
+            second_content = second_log.read_text(encoding="utf-8")
+
+        self.assertEqual(logger.handlers, original_handlers)
+        self.assertEqual(first_content.count("INFO:startup message"), 1)
+        self.assertEqual(first_content.count("ERROR:database error message"), 1)
+        self.assertEqual(second_content.count("INFO:startup message"), 1)
+        self.assertEqual(second_content.count("ERROR:database error message"), 1)
 
     def test_inventory_widget_resizes_under_offscreen_qt(self):
         from PySide6.QtWidgets import QApplication
