@@ -27,6 +27,9 @@ CRITICAL_MODULES = [
 ]
 DB_ENV_REQUIRED_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER")
 DB_ENV_OPTIONAL_KEYS = ("DB_PASSWORD",)
+SAFE_TEST_DB_MARKERS = ("test", "dev", "sandbox", "local")
+UNSAFE_DB_MARKERS = ("prod", "production", "real", "live")
+DEFAULT_LIVE_DATABASE_NAMES = {"lab_inventory_enterprise_db"}
 
 
 def missing_dependency_messages(requirement_text, dependency_groups=DEPENDENCY_GROUPS):
@@ -142,12 +145,14 @@ def is_safe_test_database_name(name):
     if not text:
         return False
 
-    unsafe_tokens = {"prod", "production", "real", "live"}
-    if any(token in text for token in unsafe_tokens):
+    normalized = text.replace("-", "_").replace(" ", "_")
+    if normalized in DEFAULT_LIVE_DATABASE_NAMES:
         return False
 
-    safe_tokens = {"test", "dev", "sandbox", "local"}
-    return any(token in text for token in safe_tokens)
+    if any(token in text for token in UNSAFE_DB_MARKERS):
+        return False
+
+    return any(token in text for token in SAFE_TEST_DB_MARKERS)
 
 
 class FakeInventoryCounts:
@@ -413,7 +418,7 @@ class EnvironmentSetupTests(unittest.TestCase):
                     f"database/base/connection.py should read expected .env key {key}.",
                 )
 
-    def test_database_name_guard_rejects_production_like_names(self):
+    def test_database_name_guard_accepts_expected_safe_names(self):
         safe_names = [
             "stocklam_test",
             "lab_inventory_enterprise_db_test",
@@ -421,19 +426,38 @@ class EnvironmentSetupTests(unittest.TestCase):
             "inventory_sandbox",
             "local_stocklam",
         ]
+
+        for name in safe_names:
+            self.assertTrue(is_safe_test_database_name(name), f"{name} should be safe for tests.")
+
+    def test_database_name_guard_rejects_production_like_names(self):
         unsafe_names = [
             "",
             "Lab_Inventory_Enterprise_DB",
+            "Lab Inventory Enterprise DB",
             "production_stocklam",
             "stocklam_prod",
             "real_inventory",
             "live_stocklam",
+            "stocklam",
+            "modernlam",
         ]
 
-        for name in safe_names:
-            self.assertTrue(is_safe_test_database_name(name), f"{name} should be safe for tests.")
         for name in unsafe_names:
             self.assertFalse(is_safe_test_database_name(name), f"{name} should be rejected.")
+
+    def test_default_live_database_name_is_safe_only_when_marked_for_tests(self):
+        self.assertFalse(is_safe_test_database_name("Lab_Inventory_Enterprise_DB"))
+        self.assertFalse(is_safe_test_database_name("lab inventory enterprise db"))
+        self.assertTrue(is_safe_test_database_name("Lab_Inventory_Enterprise_DB_test"))
+
+    def test_future_integration_tests_can_call_database_name_guard(self):
+        candidate_database = "production_stocklam"
+
+        self.assertFalse(
+            is_safe_test_database_name(candidate_database),
+            "Integration tests must reject production-like database names before opening a connection.",
+        )
 
     def test_log_file_can_be_written_and_read_from_temporary_path(self):
         logger = logging.getLogger("stocklam.environment-test")
