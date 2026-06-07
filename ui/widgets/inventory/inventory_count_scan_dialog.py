@@ -9,12 +9,12 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHeaderView,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSplitter,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -118,6 +118,12 @@ QHeaderView::section {
     font-weight: 800;
     padding: 6px;
 }
+QSplitter::handle {
+    background: #dfe6ee;
+}
+QSplitter::handle:horizontal {
+    width: 6px;
+}
 """
 
 
@@ -132,12 +138,13 @@ class InventoryCountScanDialog(QDialog):
         self.pending_barcode = ""
         self.pending_line = None
         self.last_loaded_barcode = ""
+        self._shown_maximized = False
         self.detail_labels = {}
 
         self.setWindowTitle("Scanner inventaire")
         self.setObjectName("inventoryScanner")
-        self.setMinimumSize(720, 520)
-        self.resize(980, 680)
+        self.setMinimumSize(900, 600)
+        self.resize(1180, 760)
         self.setStyleSheet(SCAN_STYLE)
         self.init_ui()
 
@@ -161,7 +168,7 @@ class InventoryCountScanDialog(QDialog):
         self.barcode_input.setPlaceholderText("Scanner ou saisir un code-barres")
         self.barcode_input.returnPressed.connect(self.load_barcode_details)
         self.barcode_input.textChanged.connect(self.schedule_barcode_lookup)
-        form.addWidget(self.barcode_input, 1, 0, 1, 2)
+        form.addWidget(self.barcode_input, 1, 0)
 
         self.barcode_lookup_timer = QTimer(self)
         self.barcode_lookup_timer.setSingleShot(True)
@@ -169,21 +176,25 @@ class InventoryCountScanDialog(QDialog):
 
         qty_label = QLabel("Quantite")
         qty_label.setObjectName("fieldLabel")
-        form.addWidget(qty_label, 0, 2)
+        form.addWidget(qty_label, 0, 1)
         self.qty_input = QSpinBox()
         self.qty_input.setRange(0, 999999)
         self.qty_input.setSingleStep(1)
         self.qty_input.setValue(1)
         self.qty_input.lineEdit().returnPressed.connect(self.record_current_quantity)
-        form.addWidget(self.qty_input, 1, 2)
+        self.qty_input.setMaximumWidth(160)
+        form.addWidget(self.qty_input, 1, 1)
 
         self.record_btn = QPushButton("Valider")
         self.record_btn.setObjectName("validateButton")
         self.record_btn.clicked.connect(self.record_current_quantity)
-        form.addWidget(self.record_btn, 1, 3)
-        form.setColumnStretch(0, 2)
-        form.setColumnStretch(1, 2)
-        form.setColumnStretch(2, 1)
+        self.record_btn.setFixedWidth(110)
+        form.addWidget(self.record_btn, 1, 2)
+        self.close_btn = QPushButton("Fermer")
+        self.close_btn.clicked.connect(self.accept)
+        self.close_btn.setFixedWidth(90)
+        form.addWidget(self.close_btn, 1, 3)
+        form.setColumnStretch(0, 1)
         layout.addWidget(scan_panel)
 
         self.product_summary = QFrame()
@@ -248,20 +259,7 @@ class InventoryCountScanDialog(QDialog):
         details_scroll = QScrollArea()
         details_scroll.setWidgetResizable(True)
         details_scroll.setFrameShape(QFrame.NoFrame)
-        details_scroll.setMaximumHeight(250)
         details_scroll.setWidget(details_group)
-        layout.addWidget(details_scroll)
-
-        self.result_label = QLabel("Pret a scanner.")
-        self.result_label.setObjectName("scanResult")
-        self.result_label.setMinimumHeight(54)
-        self.result_label.setWordWrap(True)
-        self.result_label.setAlignment(Qt.AlignVCenter)
-        self.result_label.setStyleSheet(
-            "font-size: 18px; font-weight: 800; color: #2c3e50; "
-            "padding: 10px; border: 1px solid #dfe6e9; border-radius: 6px;"
-        )
-        layout.addWidget(self.result_label)
 
         self.scan_table = QTableWidget(0, 5)
         self.scan_table.setHorizontalHeaderLabels(["Barcode", "Qty", "Status", "Time", "Message"])
@@ -276,17 +274,35 @@ class InventoryCountScanDialog(QDialog):
         self.scan_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.scan_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.scan_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        layout.addWidget(self.scan_table, 1)
 
-        footer = QHBoxLayout()
-        footer.addStretch()
-        self.close_btn = QPushButton("Fermer")
-        self.close_btn.clicked.connect(self.accept)
-        footer.addWidget(self.close_btn)
-        layout.addLayout(footer)
+        content_splitter = QSplitter(Qt.Horizontal)
+        content_splitter.setChildrenCollapsible(False)
+        content_splitter.addWidget(details_scroll)
+        content_splitter.addWidget(self.scan_table)
+        content_splitter.setStretchFactor(0, 3)
+        content_splitter.setStretchFactor(1, 2)
+        content_splitter.setSizes([700, 460])
+        layout.addWidget(content_splitter, 1)
+
+        self.result_label = QLabel("Pret a scanner.")
+        self.result_label.setObjectName("scanResult")
+        self.result_label.setMinimumHeight(54)
+        self.result_label.setWordWrap(True)
+        self.result_label.setAlignment(Qt.AlignVCenter)
+        self.result_label.setStyleSheet(
+            "font-size: 18px; font-weight: 800; color: #2c3e50; "
+            "padding: 10px; border: 1px solid #dfe6e9; border-radius: 6px;"
+        )
+        layout.addWidget(self.result_label)
 
     def showEvent(self, event):
         super().showEvent(event)
+        if not self._shown_maximized:
+            self._shown_maximized = True
+            QTimer.singleShot(0, self.showMaximized)
+        QTimer.singleShot(0, self._focus_barcode)
+
+    def _focus_barcode(self):
         self.barcode_input.setFocus()
         self.barcode_input.selectAll()
 
@@ -452,7 +468,6 @@ class InventoryCountScanDialog(QDialog):
 
         while self.scan_table.rowCount() > 20:
             self.scan_table.removeRow(self.scan_table.rowCount() - 1)
-        self.scan_table.resizeColumnsToContents()
 
     def schedule_barcode_lookup(self, text):
         barcode = text.strip()
