@@ -42,6 +42,41 @@ INVENTAIRE_ACTION_PERMISSIONS = [
     "act_inventory_cancel",
     "act_inventory_export",
 ]
+ENVIRONMENT_SETUP_CHECKLIST_COVERAGE = {
+    "Install dependencies inside the project virtual environment.": [
+        "test_project_virtualenv_python_exists",
+        "test_requirements_file_declares_runtime_dependencies",
+        "test_active_python_process_is_project_compatible",
+    ],
+    "Start the application from `venv` using `python main.py`.": [
+        "test_main_py_syntax_compiles_without_running_application",
+        "test_main_py_compiles_with_py_compile_without_gui_or_database",
+        "test_main_py_has_startup_guard_and_exposes_main_function",
+        "test_main_py_does_not_connect_to_database_or_open_gui_on_import",
+    ],
+    "Verify `.env` database settings.": [
+        "test_env_fixture_parser_validates_database_settings",
+        "test_env_fixture_parser_does_not_depend_on_real_dotenv_file",
+        "test_env_fixture_parser_reports_missing_required_keys",
+        "test_env_fixture_parser_requires_numeric_port",
+        "test_env_fixture_parser_rejects_empty_database_and_user",
+        "test_database_connection_uses_expected_env_keys_without_instantiating_database",
+    ],
+    "Verify the application does not use production data during testing.": [
+        "test_database_name_guard_accepts_expected_safe_names",
+        "test_database_name_guard_rejects_production_like_names",
+        "test_default_live_database_name_is_safe_only_when_marked_for_tests",
+        "test_future_integration_tests_can_call_database_name_guard",
+    ],
+    "Verify logs are written and readable.": [
+        "test_log_file_can_be_written_and_read_from_temporary_path",
+        "test_log_handler_cleanup_is_repeatable",
+    ],
+    "Verify screen resolution support: small laptop, standard desktop, wide screen.": [
+        "test_inventory_widget_resizes_under_offscreen_qt",
+        "test_inventory_action_buttons_keep_usable_size_hints_offscreen",
+    ],
+}
 
 
 def missing_dependency_messages(requirement_text, dependency_groups=DEPENDENCY_GROUPS):
@@ -223,6 +258,26 @@ class FakeDataManager:
 
 
 class EnvironmentSetupTests(unittest.TestCase):
+    def test_section_1_1_checklist_rows_have_automated_coverage(self):
+        expected_rows = {
+            "Install dependencies inside the project virtual environment.",
+            "Start the application from `venv` using `python main.py`.",
+            "Verify `.env` database settings.",
+            "Verify the application does not use production data during testing.",
+            "Verify logs are written and readable.",
+            "Verify screen resolution support: small laptop, standard desktop, wide screen.",
+        }
+
+        self.assertEqual(set(ENVIRONMENT_SETUP_CHECKLIST_COVERAGE), expected_rows)
+        for row, test_names in ENVIRONMENT_SETUP_CHECKLIST_COVERAGE.items():
+            with self.subTest(row=row):
+                self.assertTrue(test_names, f"No automated tests documented for checklist row: {row}")
+                for test_name in test_names:
+                    self.assertTrue(
+                        hasattr(EnvironmentSetupTests, test_name),
+                        f"Checklist row '{row}' references missing test: {test_name}",
+                    )
+
     def test_project_virtualenv_python_exists(self):
         venv_python = PROJECT_ROOT / "venv" / "Scripts" / "python.exe"
 
