@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QTabWidget, QWidget
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -106,6 +106,26 @@ class FakeAutoBackupWorker:
     def stop(self):
         self.stopped = True
         self.started = False
+
+
+class FakeSettingsTab(QWidget):
+    instances = []
+
+    def __init__(self, data_manager):
+        super().__init__()
+        self.data_manager = data_manager
+        self.connection_error_received = None
+        self.tabs = QTabWidget()
+        self.tab_db = QWidget()
+        self.tab_general = QWidget()
+        self.tab_printer = QWidget()
+        self.tab_system = QWidget()
+        self.tab_system_logs = QWidget()
+        self.tab_pdf_config = QWidget()
+        FakeSettingsTab.instances.append(self)
+
+    def set_connection_error(self, error):
+        self.connection_error_received = error
 
 
 def import_main_safely():
@@ -280,6 +300,54 @@ class StartupChecksTests(unittest.TestCase):
         self.assertTrue(dialog.accepted)
         self.assertTrue(critical_messages, "Database-unavailable startup should report a controlled critical message.")
 
+    def test_database_initializer_failure_returns_controlled_error_without_real_connection(self):
+        main_module = import_main_safely()
+        FakeLabDataManager.created_with = []
+        FakeDatabaseConnectionDialog.instances = []
+        critical_messages = []
+
+        class FailingDatabase:
+            reset_calls = 0
+
+            @classmethod
+            def reset_connection_state(cls):
+                cls.reset_calls += 1
+
+            def __init__(self):
+                raise ConnectionError("mysql bootstrap failed")
+
+        fake_config = {
+            "host": "127.0.0.1",
+            "port": 3306,
+            "user": "tester",
+            "password": "secret",
+            "database": "stocklam_test",
+        }
+
+        with patch.object(main_module, "DatabaseConnectionDialog", FakeDatabaseConnectionDialog), \
+             patch.object(main_module, "DB_CONNECTION_ATTEMPTS", 1), \
+             patch.object(main_module, "Database", FailingDatabase), \
+             patch.object(main_module, "LabDataManager", FakeLabDataManager), \
+             patch.object(main_module, "_get_runtime_db_config", return_value=("temp.env", fake_config)), \
+             patch.object(main_module, "_probe_tcp_connection", return_value=3), \
+             patch.object(main_module.QMessageBox, "critical", lambda *args: critical_messages.append(args)), \
+             patch.object(main_module.time, "sleep", lambda seconds: None):
+            data_manager, error = main_module.connect_to_database_with_retry(FakeApp())
+
+        dialog = FakeDatabaseConnectionDialog.instances[0]
+        self.assertIsNone(data_manager)
+        self.assertIsInstance(error, str)
+        self.assertIn("Impossible de se connecter", error)
+        self.assertIn("ConnectionError: mysql bootstrap failed", error)
+        self.assertEqual(FakeLabDataManager.created_with, [])
+        self.assertEqual(FailingDatabase.reset_calls, 2)
+        self.assertTrue(dialog.accepted)
+        self.assertTrue(critical_messages)
+        self.assertTrue(
+            any("Echec tentative 1" in line for line, _ in dialog.lines),
+            "Connection initializer failure should be recorded as a controlled startup failure.",
+        )
+
     def test_connection_error_formatter_includes_database_error_details(self):
         main_module = import_main_safely()
 
@@ -363,6 +431,39 @@ class StartupChecksTests(unittest.TestCase):
         self.assertEqual(window.connection_error, "database unavailable")
         self.assertIsNone(window.auto_backup_thread)
         self.assertEqual(FakeAutoBackupWorker.instances, [])
+        window.deleteLater()
+
+    def test_main_window_database_unavailable_blocks_normal_pages_and_keeps_settings_accessible(self):
+        from ui import main_window as main_window_module
+
+        FakeAutoBackupWorker.instances = []
+        FakeSettingsTab.instances = []
+        warnings = []
+
+        with patch.object(main_window_module, "AutoBackupWorker", FakeAutoBackupWorker), \
+             patch.object(main_window_module, "SettingsTab", FakeSettingsTab), \
+             patch.object(main_window_module.QMessageBox, "warning", lambda *args: warnings.append(args)), \
+             patch.object(QApplication, "exec", side_effect=AssertionError("startup smoke must not call app.exec()")):
+            window = main_window_module.MainWindow(
+                data_manager=None,
+                current_user=None,
+                connection_error="database unavailable",
+            )
+            window.switch_page(0)
+
+        self.assertEqual(window.connection_error, "database unavailable")
+        self.assertEqual(window.content_area.currentIndex(), 4)
+        self.assertEqual(set(window.loaded_pages), {4})
+        self.assertIsNone(window.auto_backup_thread)
+        self.assertEqual(FakeAutoBackupWorker.instances, [])
+        self.assertEqual(len(FakeSettingsTab.instances), 1)
+        self.assertIs(FakeSettingsTab.instances[0].data_manager, None)
+        self.assertEqual(FakeSettingsTab.instances[0].connection_error_received, "database unavailable")
+        self.assertGreaterEqual(FakeSettingsTab.instances[0].tabs.count(), 1)
+        self.assertTrue(
+            warnings,
+            "Attempting to open a normal page during a connection error should show a controlled warning.",
+        )
         window.deleteLater()
 
     def test_auto_backup_worker_logs_skip_without_database_connection(self):
