@@ -844,10 +844,11 @@ class InventoryCountManager:
                     continue
 
                 new_status = batch["Status"]
-                if counted_qty == 0:
-                    new_status = "Depleted"
-                elif counted_qty > 0 and new_status == "Depleted":
-                    new_status = "Available"
+                if new_status not in {"Quarantined", "Expired"}:
+                    if counted_qty == 0:
+                        new_status = "Depleted"
+                    elif counted_qty > 0 and new_status == "Depleted":
+                        new_status = "Available"
 
                 cursor.execute(
                     """

@@ -2,6 +2,7 @@ from decimal import Decimal
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
 import mysql.connector
 
@@ -101,6 +102,17 @@ class FakeDb:
             self.connection = self.connections.pop(0)
             return self.connection
         return self.connections[0]
+
+
+class ErrorDb:
+    def __init__(self, error=None):
+        self.error = error or mysql.connector.Error("database boom")
+
+    def get_raw_connection(self):
+        raise self.error
+
+    def get_db_connection(self):
+        raise self.error
 
 
 class FakeStockMovementLog:
@@ -1007,6 +1019,177 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertIn("Exported inventory count", result["message"])
+
+    def test_scan_barcode_rejects_negative_quantity_without_db(self):
+        manager = make_manager()
+
+        result = manager.scan_barcode(session_id=1, barcode="ABC-123", qty=-1)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["status"], "INVALID")
+
+    def test_scan_barcode_returns_error_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        result = manager.scan_barcode(session_id=99, barcode="ABC-123", qty=1)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["status"], "ERROR")
+        self.assertIn("database boom", result["message"])
+
+    def test_set_counted_quantity_returns_false_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        self.assertFalse(manager.set_counted_quantity(line_id=10, counted_qty=5))
+
+    def test_get_sessions_without_status_uses_only_limit_param(self):
+        rows = [{"Session_ID": 1}, {"Session_ID": 2}]
+        cursor = FakeCursor(fetchall_rows=[rows])
+        manager = make_manager(FakeDb(FakeConnection(cursor)))
+
+        result = manager.get_sessions(status=None, limit=2)
+
+        self.assertEqual(result, rows)
+        query, params = cursor.executed[0]
+        self.assertNotIn("WHERE s.Status", query)
+        self.assertEqual(params, (2,))
+
+    def test_get_sessions_returns_empty_list_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        self.assertEqual(manager.get_sessions(), [])
+
+    def test_get_session_lines_without_filters_uses_session_only(self):
+        rows = [{"Line_ID": 1}]
+        cursor = FakeCursor(fetchall_rows=[rows])
+        manager = make_manager(FakeDb(FakeConnection(cursor)))
+
+        result = manager.get_session_lines(session_id=99)
+
+        self.assertEqual(result, rows)
+        query, params = cursor.executed[0]
+        self.assertNotIn("l.Line_Status = %s", query)
+        self.assertNotIn("LIKE %s", query)
+        self.assertEqual(params, (99,))
+
+    def test_get_session_lines_returns_empty_list_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        self.assertEqual(manager.get_session_lines(session_id=99), [])
+
+    def test_get_session_summary_returns_default_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        summary = manager.get_session_summary(session_id=99)
+
+        self.assertEqual(summary["OK"], 0)
+        self.assertEqual(summary["SHORT"], 0)
+        self.assertEqual(summary["EXCESS"], 0)
+        self.assertEqual(summary["NOT_COUNTED"], 0)
+        self.assertEqual(summary["UNKNOWN"], 0)
+        self.assertEqual(summary["Estimated_Variance_Value"], Decimal("0"))
+
+    def test_mark_review_returns_false_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        self.assertFalse(manager.mark_review(session_id=99))
+
+    def test_cancel_session_returns_failure_on_database_exception(self):
+        manager = make_manager(ErrorDb())
+
+        result = manager.cancel_session(session_id=99)
+
+        self.assertFalse(result["success"])
+        self.assertIn("database boom", result["message"])
+
+    def test_apply_session_preserves_quarantined_and_expired_status_when_counted_zero(self):
+        lines = [
+            {
+                "Line_ID": 20,
+                "Batch_ID": 44,
+                "Program_Qty_Snapshot": Decimal("5"),
+                "Counted_Qty": Decimal("0"),
+                "Difference_Qty": Decimal("-5"),
+            },
+            {
+                "Line_ID": 21,
+                "Batch_ID": 45,
+                "Program_Qty_Snapshot": Decimal("3"),
+                "Counted_Qty": Decimal("0"),
+                "Difference_Qty": Decimal("-3"),
+            },
+        ]
+        batches = [
+            {
+                "Batch_ID": 44,
+                "Product_ID": 7,
+                "Internal_Barcode": "Q",
+                "Quantity_Current": Decimal("5"),
+                "Status": "Quarantined",
+                "Stock_Unit": "Unit",
+            },
+            {
+                "Batch_ID": 45,
+                "Product_ID": 8,
+                "Internal_Barcode": "E",
+                "Quantity_Current": Decimal("3"),
+                "Status": "Expired",
+                "Stock_Unit": "Unit",
+            },
+        ]
+        cursor = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {"Total_Lines": 2},
+                {"Unknown_Lines": 0},
+                {"Unknown_Scans": 0},
+                *batches,
+            ],
+            fetchall_rows=[lines],
+        )
+        connection = FakeConnection(cursor)
+        manager = make_manager(FakeDb(connection), FakeStockMovementLog())
+
+        result = manager.apply_session(session_id=99, user_id=7, allow_unknown=True)
+
+        self.assertTrue(result["success"])
+        update_params = [
+            params for query, params in cursor.executed
+            if "UPDATE Inventory_Batches" in query
+        ]
+        self.assertEqual(update_params[0], (Decimal("0"), "Quarantined", 44))
+        self.assertEqual(update_params[1], (Decimal("0"), "Expired", 45))
+
+    def test_export_session_to_excel_writes_file_when_lines_and_scans_are_empty(self):
+        cursor = FakeCursor(
+            [
+                {
+                    "Session_ID": 99,
+                    "Session_Name": "Empty export",
+                    "Status": "Review",
+                    "Started_At": "2026-06-07",
+                    "Applied_At": None,
+                }
+            ],
+            fetchall_rows=[[]],
+        )
+        manager = make_manager(FakeDb(FakeConnection(cursor)))
+        manager.get_session_lines = lambda session_id: []
+        manager.get_session_summary = lambda session_id: {
+            "OK": 0,
+            "SHORT": 0,
+            "EXCESS": 0,
+            "NOT_COUNTED": 0,
+            "UNKNOWN": 0,
+            "Estimated_Variance_Value": Decimal("0"),
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = f"{temp_dir}\\inventaire_empty.xlsx"
+            result = manager.export_session_to_excel(99, output_path)
+            self.assertTrue(zipfile.is_zipfile(output_path))
+
+        self.assertTrue(result["success"])
 
 
 if __name__ == "__main__":
