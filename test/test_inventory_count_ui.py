@@ -327,15 +327,32 @@ class InventoryCountUiTests(unittest.TestCase):
         tab_dict = InventoryCountTab(FakeDataManager(), {"Permissions": {"act_inventory_scan": True}})
         tab_json = InventoryCountTab(FakeDataManager(), {"Permissions": '{"act_inventory_scan": true}'})
         tab_bad_json = InventoryCountTab(FakeDataManager(), {"Permissions": "{bad json"})
+        tab_missing = InventoryCountTab(FakeDataManager(), {})
 
         self.assertTrue(tab_list.has_action("act_inventory_scan"))
         self.assertTrue(tab_dict.has_action("act_inventory_scan"))
         self.assertTrue(tab_json.has_action("act_inventory_scan"))
         self.assertFalse(tab_bad_json.has_action("act_inventory_scan"))
+        self.assertFalse(tab_missing.has_action("act_inventory_scan"))
         tab_list.deleteLater()
         tab_dict.deleteLater()
         tab_json.deleteLater()
         tab_bad_json.deleteLater()
+        tab_missing.deleteLater()
+
+    def test_inventory_tab_opens_with_no_sessions(self):
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts.sessions = []
+
+        tab = InventoryCountTab(data_manager, {"Permissions": []})
+
+        self.assertEqual(tab.sessions_table.rowCount(), 0)
+        self.assertEqual(tab.lines_table.rowCount(), 0)
+        self.assertIsNone(tab.current_session_id)
+        self.assertFalse(tab.btn_scan.isEnabled())
+        self.assertFalse(tab.btn_apply.isEnabled())
+        self.assertEqual(tab.session_context_label.text(), "Aucune session")
+        tab.deleteLater()
 
     def test_inventory_tab_loads_sessions_lines_and_summary(self):
         data_manager = FakeDataManager()
@@ -359,7 +376,11 @@ class InventoryCountUiTests(unittest.TestCase):
         self.assertEqual(tab.lines_table.rowCount(), 2)
         self.assertEqual(tab.lines_table.item(0, 0).text(), "Glucose")
         self.assertEqual(tab.summary_cards["OK"].value_label.text(), "1")
+        self.assertEqual(tab.summary_cards["SHORT"].value_label.text(), "0")
         self.assertEqual(tab.summary_cards["EXCESS"].value_label.text(), "1")
+        self.assertEqual(tab.summary_cards["NOT_COUNTED"].value_label.text(), "1")
+        self.assertEqual(tab.summary_cards["UNKNOWN"].value_label.text(), "0")
+        self.assertIn("12", tab.summary_cards["Estimated_Variance_Value"].value_label.text())
         self.assertTrue(tab.btn_scan.isEnabled())
         tab.deleteLater()
 
@@ -442,6 +463,22 @@ class InventoryCountUiTests(unittest.TestCase):
         self.assertTrue(tab.btn_apply.isEnabled())
         self.assertFalse(tab.btn_review.isEnabled())
         self.assertTrue(tab.btn_cancel.isEnabled())
+        tab.deleteLater()
+
+    def test_inventory_tab_button_state_follows_cancelled_session(self):
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts.sessions[0]["Status"] = "Cancelled"
+        tab = InventoryCountTab(
+            data_manager,
+            {"Permissions": ["act_inventory_scan", "act_inventory_apply", "act_inventory_cancel", "act_inventory_export"]},
+        )
+        tab.sessions_table.selectRow(0)
+        tab.load_current_session()
+
+        self.assertFalse(tab.btn_scan.isEnabled())
+        self.assertFalse(tab.btn_apply.isEnabled())
+        self.assertFalse(tab.btn_cancel.isEnabled())
+        self.assertTrue(tab.btn_export.isEnabled())
         tab.deleteLater()
 
     def test_create_session_success_uses_dialog_values_and_selects_new_session(self):
@@ -550,6 +587,52 @@ class InventoryCountUiTests(unittest.TestCase):
         self.assertEqual(len(messages.informations), 1)
         tab.deleteLater()
 
+    def test_cancel_session_failure_shows_warning(self):
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts.cancel_result = {"success": False, "message": "Annulation impossible."}
+        tab = InventoryCountTab(data_manager, {"User_ID": 7, "Permissions": ["act_inventory_cancel"]})
+        tab.sessions_table.selectRow(0)
+        tab.load_current_session()
+        messages = FakeMessageBox([QMessageBox.Yes])
+
+        with patch.object(tab_module.QMessageBox, "question", messages.question), \
+             patch.object(tab_module.QMessageBox, "information", messages.information), \
+             patch.object(tab_module.QMessageBox, "warning", messages.warning):
+            tab.cancel_session()
+
+        self.assertEqual(data_manager.inventory_counts.cancel_calls, [(101, 7)])
+        self.assertEqual(messages.warnings[-1][1], "Annulation impossible.")
+        self.assertEqual(messages.informations, [])
+        tab.deleteLater()
+
+    def test_apply_session_rejects_non_open_session_before_manager_call(self):
+        data_manager = FakeDataManager()
+        tab = InventoryCountTab(data_manager, {"User_ID": 7, "Permissions": ["act_inventory_apply"]})
+        tab.sessions_table.selectRow(1)
+        tab.load_current_session()
+        messages = FakeMessageBox()
+
+        with patch.object(tab_module.QMessageBox, "warning", messages.warning):
+            tab.apply_session()
+
+        self.assertEqual(data_manager.inventory_counts.apply_calls, [])
+        self.assertIn("ne peut pas", messages.warnings[-1][1])
+        tab.deleteLater()
+
+    def test_apply_session_stops_when_final_confirmation_is_no(self):
+        data_manager = FakeDataManager()
+        data_manager.inventory_counts.summary["UNKNOWN"] = 0
+        tab = InventoryCountTab(data_manager, {"User_ID": 7, "Permissions": ["act_inventory_apply"]})
+        tab.sessions_table.selectRow(0)
+        tab.load_current_session()
+        messages = FakeMessageBox([QMessageBox.No])
+
+        with patch.object(tab_module.QMessageBox, "question", messages.question):
+            tab.apply_session()
+
+        self.assertEqual(data_manager.inventory_counts.apply_calls, [])
+        tab.deleteLater()
+
     def test_apply_session_handles_unknown_confirmation_success_and_failure(self):
         data_manager = FakeDataManager()
         data_manager.inventory_counts.summary["UNKNOWN"] = 1
@@ -602,6 +685,18 @@ class InventoryCountUiTests(unittest.TestCase):
             tab.export_session()
 
         self.assertEqual(len(messages.warnings), 1)
+        tab.deleteLater()
+
+    def test_export_session_no_path_does_not_call_manager(self):
+        data_manager = FakeDataManager()
+        tab = InventoryCountTab(data_manager, {"Permissions": ["act_inventory_export"]})
+        tab.sessions_table.selectRow(0)
+        tab.load_current_session()
+
+        with patch.object(tab_module.QFileDialog, "getSaveFileName", return_value=("", "")):
+            tab.export_session()
+
+        self.assertEqual(data_manager.inventory_counts.export_calls, [])
         tab.deleteLater()
 
     def test_scan_dialog_loads_known_product_and_records_quantity(self):
