@@ -1,6 +1,8 @@
+import ast
 import importlib
 import logging
 import os
+import py_compile
 import sys
 import tempfile
 import unittest
@@ -46,6 +48,62 @@ def import_critical_modules(module_names=CRITICAL_MODULES, importer=importlib.im
             failures.append(f"Failed to import critical module {module_name}: {exc!r}")
     if failures:
         raise AssertionError("\n".join(failures))
+
+
+def compile_python_file_to_temp_pyc(source_path):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_path = Path(temp_dir) / f"{Path(source_path).stem}.pyc"
+        py_compile.compile(str(source_path), cfile=str(output_path), doraise=True)
+        return output_path.exists()
+
+
+def _call_name(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return ""
+
+
+def top_level_call_names(source):
+    tree = ast.parse(source)
+    calls = []
+
+    def visit_statement(statement):
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return
+        for node in ast.walk(statement):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(node, ast.Call):
+                calls.append(_call_name(node.func))
+
+    for statement in tree.body:
+        visit_statement(statement)
+    return calls
+
+
+def main_function_calls(source):
+    tree = ast.parse(source)
+    for statement in tree.body:
+        if isinstance(statement, ast.FunctionDef) and statement.name == "main":
+            return [_call_name(node.func) for node in ast.walk(statement) if isinstance(node, ast.Call)]
+    raise AssertionError("main.py does not define a main() function.")
+
+
+def has_main_entrypoint_guard(source):
+    tree = ast.parse(source)
+    for statement in tree.body:
+        if not isinstance(statement, ast.If):
+            continue
+        condition = ast.unparse(statement.test)
+        if "__name__" not in condition or "__main__" not in condition:
+            continue
+        guarded_calls = [_call_name(node.func) for node in ast.walk(statement) if isinstance(node, ast.Call)]
+        if "main" in guarded_calls:
+            return True
+    return False
 
 
 def parse_db_env_fixture(path):
@@ -171,6 +229,60 @@ class EnvironmentSetupTests(unittest.TestCase):
 
         self.assertIn("def main(", source)
         self.assertIn("if __name__ == \"__main__\"", source)
+
+    def test_main_py_compiles_with_py_compile_without_gui_or_database(self):
+        main_path = PROJECT_ROOT / "main.py"
+        self.assertTrue(main_path.exists(), "main.py must exist before startup readiness can be tested.")
+
+        try:
+            compiled = compile_python_file_to_temp_pyc(main_path)
+        except py_compile.PyCompileError as exc:
+            self.fail(f"main.py failed py_compile syntax check: {exc}")
+
+        self.assertTrue(compiled, "main.py did not produce a temporary bytecode file during py_compile.")
+
+    def test_main_py_has_startup_guard_and_exposes_main_function(self):
+        main_path = PROJECT_ROOT / "main.py"
+        source = main_path.read_text(encoding="utf-8")
+        calls_inside_main = main_function_calls(source)
+
+        self.assertIn(
+            "QApplication",
+            calls_inside_main,
+            "main.py main() should contain GUI startup logic, but tests must not execute it.",
+        )
+        self.assertIn(
+            "connect_to_database_with_retry",
+            calls_inside_main,
+            "main.py main() should contain database startup logic, but tests must not execute it.",
+        )
+        self.assertTrue(
+            has_main_entrypoint_guard(source),
+            'main.py must call main() only behind an `if __name__ == "__main__"` guard.',
+        )
+
+    def test_main_py_does_not_connect_to_database_or_open_gui_on_import(self):
+        main_path = PROJECT_ROOT / "main.py"
+        source = main_path.read_text(encoding="utf-8")
+        calls = top_level_call_names(source)
+        prohibited_top_level_calls = {
+            "Database",
+            "LabDataManager",
+            "connect_to_database_with_retry",
+            "QApplication",
+            "MainWindow",
+            "LoginDialog",
+        }
+        found = sorted(prohibited_top_level_calls.intersection(calls))
+
+        self.assertEqual(
+            found,
+            [],
+            (
+                "main.py should not open MySQL or start GUI at import time. "
+                f"Unexpected top-level startup calls: {', '.join(found)}"
+            ),
+        )
 
     def test_env_fixture_parser_validates_database_settings(self):
         with tempfile.TemporaryDirectory() as temp_dir:
