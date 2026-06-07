@@ -30,6 +30,18 @@ DB_ENV_OPTIONAL_KEYS = ("DB_PASSWORD",)
 SAFE_TEST_DB_MARKERS = ("test", "dev", "sandbox", "local")
 UNSAFE_DB_MARKERS = ("prod", "production", "real", "live")
 DEFAULT_LIVE_DATABASE_NAMES = {"lab_inventory_enterprise_db"}
+SCREEN_SIZE_CASES = [
+    (1024, 600, "small laptop"),
+    (1366, 768, "standard laptop"),
+    (1920, 1080, "desktop"),
+]
+INVENTAIRE_ACTION_PERMISSIONS = [
+    "act_inventory_create",
+    "act_inventory_scan",
+    "act_inventory_apply",
+    "act_inventory_cancel",
+    "act_inventory_export",
+]
 
 
 def missing_dependency_messages(requirement_text, dependency_groups=DEPENDENCY_GROUPS):
@@ -517,23 +529,79 @@ class EnvironmentSetupTests(unittest.TestCase):
         self.assertEqual(second_content.count("ERROR:database error message"), 1)
 
     def test_inventory_widget_resizes_under_offscreen_qt(self):
+        from PySide6.QtWidgets import QApplication, QFrame
+
+        from ui.widgets.inventory.inventory_count_tab import InventoryCountTab
+
+        app = QApplication.instance() or QApplication([])
+        widget = InventoryCountTab(
+            FakeDataManager(),
+            {"User_ID": 1, "Permissions": INVENTAIRE_ACTION_PERMISSIONS},
+        )
+        try:
+            sidebar = widget.findChild(QFrame, "inventorySidebar")
+            self.assertIsNotNone(sidebar, "Inventaire action/sidebar panel should exist.")
+
+            widget.show()
+            for width, height, label in SCREEN_SIZE_CASES:
+                widget.resize(width, height)
+                app.processEvents()
+
+                with self.subTest(size=label):
+                    self.assertGreater(widget.width(), 0)
+                    self.assertGreater(widget.height(), 0)
+                    self.assertTrue(widget.sessions_table.isVisible())
+                    self.assertTrue(widget.lines_table.isVisible())
+                    self.assertTrue(sidebar.isVisible())
+                    self.assertGreater(widget.sessions_table.width(), 0)
+                    self.assertGreater(widget.sessions_table.height(), 0)
+                    self.assertGreater(widget.lines_table.width(), 0)
+                    self.assertGreater(widget.lines_table.height(), 0)
+                    self.assertGreater(sidebar.width(), 0)
+                    self.assertGreater(sidebar.height(), 0)
+                    self.assertEqual(widget.sessions_table.columnCount(), 5)
+                    self.assertEqual(widget.lines_table.columnCount(), 10)
+                    self.assertIsNotNone(widget.search_input)
+                    self.assertIsNotNone(widget.status_filter)
+                    self.assertGreater(widget.search_input.width(), 0)
+                    self.assertGreater(widget.status_filter.width(), 0)
+                    self.assertTrue(widget.session_context_label.isVisible())
+        finally:
+            widget.deleteLater()
+            app.processEvents()
+
+    def test_inventory_action_buttons_keep_usable_size_hints_offscreen(self):
         from PySide6.QtWidgets import QApplication
 
         from ui.widgets.inventory.inventory_count_tab import InventoryCountTab
 
         app = QApplication.instance() or QApplication([])
-        widget = InventoryCountTab(FakeDataManager(), {"Permissions": []})
+        widget = InventoryCountTab(
+            FakeDataManager(),
+            {"User_ID": 1, "Permissions": INVENTAIRE_ACTION_PERMISSIONS},
+        )
         try:
-            for width, height in [(1024, 600), (1366, 768), (1920, 1080)]:
-                widget.resize(width, height)
-                app.processEvents()
+            widget.resize(1024, 600)
+            widget.show()
+            app.processEvents()
 
-                self.assertGreater(widget.width(), 0)
-                self.assertGreater(widget.height(), 0)
-                self.assertGreater(widget.sessions_table.width(), 0)
-                self.assertGreater(widget.lines_table.width(), 0)
-                self.assertIsNotNone(widget.btn_refresh)
-                self.assertGreater(widget.btn_refresh.sizeHint().width(), 0)
+            action_buttons = [
+                widget.btn_new,
+                widget.btn_scan,
+                widget.btn_review,
+                widget.btn_apply,
+                widget.btn_cancel,
+                widget.btn_export,
+                widget.btn_refresh,
+            ]
+            for button in action_buttons:
+                with self.subTest(button=button.text()):
+                    self.assertTrue(button.text().strip())
+                    self.assertFalse(button.isHidden())
+                    self.assertGreater(button.sizeHint().width(), 0)
+                    self.assertGreater(button.sizeHint().height(), 0)
+                    self.assertGreater(button.width(), 0)
+                    self.assertGreater(button.height(), 0)
         finally:
             widget.deleteLater()
             app.processEvents()
