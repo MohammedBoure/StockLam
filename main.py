@@ -5,8 +5,6 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 import traceback
-import socket
-import time
 from datetime import datetime
 import branding
 
@@ -36,12 +34,8 @@ from PySide6.QtWidgets import (
     QApplication,
     QMessageBox,
     QDialog,
-    QVBoxLayout,
-    QLabel,
-    QTextEdit,
-    QProgressBar,
 )
-from PySide6.QtCore import Qt, QSettings, QLockFile, QDir 
+from PySide6.QtCore import QSettings, QLockFile, QDir
 from database.base import Database, get_external_path
 from database import LabDataManager
 from ui.main_window import MainWindow
@@ -75,9 +69,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_CONNECTION_ATTEMPTS = 12
-DB_CONNECTION_RETRY_SECONDS = 5
-DB_SOCKET_TIMEOUT_SECONDS = 3
+DB_CONNECTION_ATTEMPTS = 2
 
 # =========================================================================
 # 2. صائد الأخطاء المفاجئة (Global Crash Handler)
@@ -108,47 +100,6 @@ def check_env_file():
     return True
 
 
-class DatabaseConnectionDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Connexion a la base de donnees")
-        self.setMinimumSize(700, 420)
-        self.setModal(True)
-
-        layout = QVBoxLayout(self)
-        self.status_label = QLabel("Preparation du test de connexion...")
-        self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
-
-        self.progress = QProgressBar()
-        self.progress.setRange(0, DB_CONNECTION_ATTEMPTS)
-        self.progress.setValue(0)
-        layout.addWidget(self.progress)
-
-        self.details = QTextEdit()
-        self.details.setReadOnly(True)
-        self.details.setMinimumHeight(280)
-        layout.addWidget(self.details)
-
-    def set_status(self, text):
-        self.status_label.setText(text)
-        QApplication.processEvents()
-
-    def append_line(self, text, level=logging.INFO):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        line = f"[{timestamp}] {text}"
-        self.details.append(line)
-        logger.log(level, text)
-        QApplication.processEvents()
-
-    def set_attempt(self, attempt):
-        self.progress.setValue(max(0, min(attempt - 1, DB_CONNECTION_ATTEMPTS)))
-        self.set_status(f"Tentative {attempt}/{DB_CONNECTION_ATTEMPTS}...")
-
-    def mark_success(self):
-        self.progress.setValue(DB_CONNECTION_ATTEMPTS)
-        self.set_status("Connexion reussie.")
-
 
 def _get_runtime_db_config():
     env_path = get_external_path(".env")
@@ -173,12 +124,6 @@ def _get_runtime_db_config():
     return env_path, config
 
 
-def _probe_tcp_connection(host, port):
-    start = time.monotonic()
-    with socket.create_connection((host, port), timeout=DB_SOCKET_TIMEOUT_SECONDS):
-        pass
-    return int((time.monotonic() - start) * 1000)
-
 
 def _format_connection_error(error):
     parts = [f"{error.__class__.__name__}: {error}"]
@@ -190,61 +135,46 @@ def _format_connection_error(error):
 
 
 def connect_to_database_with_retry(app):
-    dialog = DatabaseConnectionDialog()
-    dialog.show()
-    QApplication.processEvents()
-
     last_error = None
     for attempt in range(1, DB_CONNECTION_ATTEMPTS + 1):
-        dialog.set_attempt(attempt)
         try:
             Database.reset_connection_state()
             env_path, db_config = _get_runtime_db_config()
-            dialog.append_line(f"Lecture configuration: {env_path}")
-            dialog.append_line(
+            logger.info("Lecture configuration: %s", env_path)
+            logger.info(
                 "Cible MySQL: "
                 f"{db_config['host']}:{db_config['port']} / "
                 f"base={db_config['database']} / utilisateur={db_config['user']}"
             )
 
-            elapsed_ms = _probe_tcp_connection(db_config["host"], db_config["port"])
-            dialog.append_line(f"Test reseau TCP OK ({elapsed_ms} ms).")
-
             db = Database()
             data_manager = LabDataManager(db)
-            dialog.append_line("Connexion MySQL et initialisation application OK.")
-            dialog.mark_success()
-            time.sleep(0.2)
-            dialog.accept()
+            logger.info("Connexion MySQL et initialisation application OK.")
             return data_manager, None
 
         except Exception as error:
             Database.reset_connection_state()
             last_error = _format_connection_error(error)
-            dialog.append_line(f"Echec tentative {attempt}: {last_error}", logging.WARNING)
-            logger.error("Database connection attempt failed.", exc_info=True)
-
-            if attempt < DB_CONNECTION_ATTEMPTS:
-                for remaining in range(DB_CONNECTION_RETRY_SECONDS, 0, -1):
-                    dialog.set_status(
-                        "Connexion impossible pour le moment. "
-                        f"Nouvelle tentative dans {remaining} s..."
-                    )
-                    app.processEvents()
-                    time.sleep(1)
+            logger.warning(
+                "Echec connexion base de donnees tentative %s/%s: %s",
+                attempt,
+                DB_CONNECTION_ATTEMPTS,
+                last_error,
+            )
+            logger.debug("Database connection attempt failed.", exc_info=True)
 
     detailed_error = (
         "Impossible de se connecter a la base de donnees apres plusieurs tentatives.\n\n"
         f"{last_error or 'Erreur inconnue'}\n\n"
         f"Journal detaille: {log_file_path}"
     )
-    dialog.append_line("Toutes les tentatives de connexion ont echoue.", logging.ERROR)
-    QMessageBox.critical(
-        dialog,
+    QMessageBox.warning(
+        None,
         "Connexion base de donnees impossible",
-        detailed_error + "\n\nLe programme va ouvrir les parametres de connexion.",
+        "Connexion a la base de donnees impossible.\n\n"
+        "Le programme va ouvrir les parametres de connexion.\n\n"
+        f"{last_error or 'Erreur inconnue'}",
     )
-    dialog.accept()
     return None, detailed_error
 
 
