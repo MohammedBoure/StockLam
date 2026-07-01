@@ -1,0 +1,16 @@
+﻿name: stocklam_inventory_scanner
+description: Mobile inventory count scanner companion for StockLam.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  mobile_scanner: ^5.2.3
+
+flutter:
+  uses-material-design: true
