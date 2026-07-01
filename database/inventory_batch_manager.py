@@ -615,13 +615,12 @@ class InventoryBatchManager:
 
     def transfer_batch_location(self, batch_id: int, new_location_id: int, qty: int, user_id: Optional[int] = None) -> bool:
         """
-        نقل كمية من موقع لآخر مع إدارة دقيقة للاتصال (Context Manager Safe).
+        نقل كمية من موقع لآخر مع الحفاظ على الكود بار الأصلي والكمية الابتدائية.
         """
         if qty <= 0:
             return False
 
         try:
-            # 1. فتح الاتصال باستخدام Context Manager
             with self.db.get_db_connection() as conn:
                 conn.autocommit = False # بدء المعاملة
                 cursor = conn.cursor(dictionary=True)
@@ -646,10 +645,8 @@ class InventoryBatchManager:
                         conn.rollback()
                         return False
 
-                    barcode = original['Internal_Barcode']
-                    target_barcode = self._transfer_barcode_for_location(
-                        cursor, barcode, batch_id, new_location_id
-                    )
+                    # تعديل: استخدام الكود بار الأصلي مباشرة دون إضافة لاحقة الموقع
+                    target_barcode = original['Internal_Barcode']
                     unit_label = original.get('Stock_Unit', 'U')
 
                     # 2. خصم الكمية من المصدر
@@ -674,7 +671,7 @@ class InventoryBatchManager:
                     final_target_id = None
 
                     if target_batch:
-                        # دمج
+                        # دمج الكمية إذا كان المنتج موجوداً مسبقاً بنفس الكود بار في الموقع الجديد
                         final_target_id = target_batch['Batch_ID']
                         cursor.execute("""
                             UPDATE Inventory_Batches 
@@ -683,7 +680,6 @@ class InventoryBatchManager:
                             WHERE Batch_ID = %s
                         """, (qty, final_target_id))
                     else:
-                        # إنشاء جديد
                         insert_query = """
                             INSERT INTO Inventory_Batches 
                             (Product_ID, Location_ID, Lot_Number, Expiry_Date, Quantity_Initial, 
@@ -691,18 +687,24 @@ class InventoryBatchManager:
                             Unit_Price_Received, Tax_Rate_Percent, Discount_Percent, Created_At)
                             VALUES (%s, %s, %s, %s, 0, %s, %s, %s, 'Available', %s, %s, %s, %s, NOW())
                         """
-                        # لاحظ أننا وضعنا 0 مباشرة في الـ VALUES لـ Quantity_Initial
-                        # ولذلك حذفنا المتغير qty الأول من مصفوفة params ليتوافق العدد
                         params = (
-                            original['Product_ID'], new_location_id, original['Lot_Number'], 
-                            original['Expiry_Date'], qty, original['PO_ID'], 
-                            original['BR_ID'], target_barcode,
-                            original['Unit_Price_Received'], original['Tax_Rate_Percent'], original['Discount_Percent']
+                            original['Product_ID'],
+                            new_location_id,
+                            original['Lot_Number'],
+                            original['Expiry_Date'],
+                            qty,  # هذه تعود لـ Quantity_Current
+                            original['PO_ID'],
+                            original['BR_ID'],
+                            target_barcode,
+                            original['Unit_Price_Received'],
+                            original['Tax_Rate_Percent'],
+                            original['Discount_Percent']
                         )
+
                         cursor.execute(insert_query, params)
                         final_target_id = cursor.lastrowid
 
-                    # 4. تسجيل الحركة (مع تمرير user_id)
+                    # 4. تسجيل الحركة في السجل
                     source_movement_id = self.stock_movement_log.create_movement_log(
                         product_id=original['Product_ID'],
                         movement_type='Transfer',
@@ -720,7 +722,7 @@ class InventoryBatchManager:
                         qty_change=Decimal(str(qty)),
                         unit_used=unit_label,
                         batch_id=final_target_id, 
-                        user_id=user_id, # <--- هام جداً
+                        user_id=user_id,
                         notes=f"Transfert: Loc {original['Location_ID']} -> {new_location_id}",
                         external_cursor=cursor
                     )
@@ -736,7 +738,7 @@ class InventoryBatchManager:
                     logging.error(f"SQL Error in transfer: {inner_e}")
                     raise inner_e
                 finally:
-                    cursor.close() # إغلاق المؤشر دائماً
+                    cursor.close()
 
         except Exception as e:
             logging.error(f"Critical Error in transfer_batch_location: {e}", exc_info=True)
@@ -894,7 +896,20 @@ class InventoryBatchManager:
                         B.Lot_Number,
                         B.Expiry_Date,
                         B.Quantity_Current,
-                        B.Quantity_Initial,
+                        COALESCE(
+                            NULLIF(B.Quantity_Initial, 0),
+                            (
+                                SELECT MAX(SourceB.Quantity_Initial)
+                                FROM Inventory_Batches SourceB
+                                WHERE SourceB.BR_ID = B.BR_ID
+                                  AND SourceB.Product_ID = B.Product_ID
+                                  AND COALESCE(SourceB.Lot_Number, '') = COALESCE(B.Lot_Number, '')
+                                  AND COALESCE(SourceB.Expiry_Date, '1000-01-01') = COALESCE(B.Expiry_Date, '1000-01-01')
+                                  AND COALESCE(SourceB.Internal_Barcode, '') = COALESCE(B.Internal_Barcode, '')
+                                  AND SourceB.Quantity_Initial > 0
+                            ),
+                            B.Quantity_Initial
+                        ) AS Quantity_Initial,
                         B.Unit_Price_Received,
                         B.Tax_Rate_Percent,
                         B.Discount_Percent,
