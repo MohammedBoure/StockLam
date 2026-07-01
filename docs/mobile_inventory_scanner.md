@@ -1,47 +1,74 @@
 ﻿# StockLam mobile inventory scanner
 
-This adds a phone companion for the existing Inventaire session workflow.
+Ready-to-use Android companion for the current StockLam **Inventaire** workflow.
 
-## Architecture
+## What it does
 
-- The desktop app keeps creating and reviewing inventory count sessions.
-- The main PC runs `tools/inventory_mobile_api.py` on the LAN.
-- The Flutter app connects to that API and records scans using the same `InventoryCountManager.scan_barcode(..., replace_counted=True)` logic used by the PySide scan dialog.
+- Uses the desktop StockLam database through a small LAN API.
+- Lists open `Counting` inventory sessions.
+- Scans barcodes with the phone camera.
+- Shows product, lot, expiry, location, program quantity, counted quantity, and status.
+- Saves the physical quantity directly into the selected StockLam inventory session.
+- Uses the same backend method as the desktop scan dialog: `InventoryCountManager.scan_barcode(..., replace_counted=True)`.
 - The phone never receives MySQL credentials.
 
 ## Start the API on the main PC
 
+From the repository root:
+
 ```powershell
-$env:INVENTORY_MOBILE_API_TOKEN = "change-this-token"
-venv\Scripts\python.exe tools\inventory_mobile_api.py --host 0.0.0.0 --port 8787
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+.\tools\start_inventory_mobile_api.ps1
 ```
 
-Open Windows Firewall for port `8787` on the private network if the phone cannot connect.
-
-Health check from another device:
+The script prints the PC IP addresses. Use one of them in the phone app, for example:
 
 ```text
-http://MAIN_PC_IP:8787/api/health
+http://192.168.1.10:8787
 ```
 
-## Run the Flutter app
+If Windows Firewall blocks the phone, allow private-network inbound TCP on port `8787`.
+
+## Build or run the Android app
 
 ```powershell
 cd mobile_inventory_scanner
 flutter pub get
-flutter run
+flutter analyze
+flutter test
+flutter build apk --debug
 ```
 
-In the app, set:
+Debug APK output:
 
-- Server API: `http://MAIN_PC_IP:8787`
-- Token: the value of `INVENTORY_MOBILE_API_TOKEN`
+```text
+mobile_inventory_scanner\build\app\outputs\flutter-apk\app-debug.apk
+```
 
-## Workflow
+## Practical workflow
 
 1. Open StockLam on the PC.
 2. Create or select an Inventaire session and keep it in `Counting` status.
-3. Start the API on the main PC.
-4. Open the Flutter app on a phone connected to the same LAN.
-5. Load sessions, select the session, scan barcode, enter physical quantity, save.
-6. The desktop session can refresh and review/apply the same counts.
+3. Start the API on the main PC with `tools\start_inventory_mobile_api.ps1`.
+4. Install/run the Android app on a phone connected to the same Wi-Fi/LAN.
+5. Enter the server URL and token if configured.
+6. Tap **Sessions**, select the open inventory session.
+7. Scan a product barcode, verify details, enter physical quantity, tap **Enregistrer**.
+8. Return to the desktop Inventaire screen, refresh/review/apply as usual.
+
+## API endpoints
+
+- `GET /api/health`
+- `GET /api/inventory-sessions?status=Counting`
+- `GET /api/inventory-sessions/{session_id}/lookup?barcode=...`
+- `POST /api/inventory-sessions/{session_id}/scan`
+
+`POST /scan` body:
+
+```json
+{
+  "barcode": "123456",
+  "qty": 5,
+  "replace_counted": true
+}
+```
