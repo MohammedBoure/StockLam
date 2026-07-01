@@ -4,6 +4,7 @@
 """
 
 import logging
+import time
 from datetime import datetime, date
 
 from ui.formatting import format_money
@@ -33,6 +34,7 @@ def load_data(self):
             include_zero_stock=fetch_zero
         )
         apply_filters_local(self)
+        self._last_load_monotonic = time.monotonic()
 
         # استعادة التحديد السابق
         if selected_batch_id:

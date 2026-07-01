@@ -18,6 +18,7 @@
 """
 
 import logging
+import time
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Signal
@@ -69,6 +70,8 @@ class BatchesTab(QWidget):
         # الفرز
         self.current_sort_col = -1
         self.current_sort_asc = True
+        self._last_load_monotonic = 0.0
+        self._auto_reload_interval_seconds = 15.0
 
         self.init_ui()
 
@@ -88,7 +91,9 @@ class BatchesTab(QWidget):
                 self.apply_role_permissions(role)
         except Exception as e:
             logging.error(f"Error applying permissions in showEvent: {e}")
-        self.load_data()
+        now = time.monotonic()
+        if not self.all_data or (now - self._last_load_monotonic) >= self._auto_reload_interval_seconds:
+            self.load_data()
 
     # ------------------------------------------------------------------
     # ربط الدوال من الوحدات الخارجية بالكلاس

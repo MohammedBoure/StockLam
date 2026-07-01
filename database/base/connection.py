@@ -31,7 +31,8 @@ class Database:
             'user': os.getenv('DB_USER'),
             'password': os.getenv('DB_PASSWORD'),
             'database': os.getenv('DB_NAME'),
-            'port': int(os.getenv('DB_PORT', 3306))
+            'port': int(os.getenv('DB_PORT', 3306)),
+            'connection_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', 5))
         }
 
         if not all([self.db_config['user'], self.db_config['password'], self.db_config['database']]):
@@ -65,7 +66,13 @@ class Database:
             )
             self.engine = create_engine(
                 db_url,
-                connect_args={'use_pure': True, 'auth_plugin': 'mysql_native_password'},
+                connect_args={
+                    'use_pure': True,
+                    'auth_plugin': 'mysql_native_password',
+                    'connection_timeout': self.db_config['connection_timeout'],
+                },
+                pool_pre_ping=True,
+                pool_recycle=1800,
                 echo=False
             )
         except Exception as e:

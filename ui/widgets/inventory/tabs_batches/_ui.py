@@ -24,7 +24,6 @@ def build_ui(self):
     layout.addWidget(_build_table(self))
     layout.addLayout(_build_bottom_bar(self))
 
-    self.load_data()
     self.table.doubleClicked.connect(self.show_batch_details)
 
 
