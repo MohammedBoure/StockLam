@@ -75,16 +75,6 @@ SYSTEM_PERMISSIONS = {
             "act_inventory_export": "Exporter vers Excel"
         }
     },
-    "5. FINANCE_FOURNISSEURS": {
-        "label": "💰 États Fournisseurs",
-        "icon": "fa5s.file-invoice-dollar",
-        "perms": {
-            "nav_finance": "Accès États Fournisseurs",
-            "tab_fin_situation": "Grand Livre (Situation)",
-            "tab_fin_journal": "Journal des Paiements",
-            "tab_fin_dashboard": "Tableau de Bord Financier"
-        }
-    },
     "6. SOUS_TRAITANTS": {
         "label": "🧾 Sous-Traitants",
         "icon": "fa5s.file-invoice-dollar",

@@ -13,7 +13,6 @@ _ALL_PERMISSIONS = [
     "nav_data", 
     "nav_procurement", 
     "nav_inventory",
-    "nav_finance", 
     "nav_services", 
     "nav_history",    
     "nav_inventaire",
@@ -53,9 +52,6 @@ _ALL_PERMISSIONS = [
     "tab_inv_history", # سجل حركات المخزون
 
     # --- تبويبات المالية (Finance) ---
-    "tab_fin_situation", 
-    "tab_fin_journal", 
-    "tab_fin_dashboard",
 
     # --- تبويبات الإعدادات (Settings) ---
     "tab_config", 
@@ -73,7 +69,6 @@ _ALL_PERMISSIONS = [
     "act_create_po", 
     "act_approve_po", 
     "act_receive_po", 
-    "act_add_payment",
     "act_inventory_create",
     "act_inventory_scan",
     "act_inventory_apply",

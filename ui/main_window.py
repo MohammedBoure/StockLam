@@ -14,8 +14,6 @@ from .widgets.master_data.suppliers_tab import SuppliersTab
 from .widgets.master_data.products_tab import ProductsTab
 from .widgets.dashboard.dashboard_view import DashboardTab
 from .widgets.procurement.procurement_tabs import ProcurementTab
-from .widgets.supplier.supplier_stats_tab import SupplierStatsTab
-from .widgets.supplier.supplier_financial_view import SupplierFinancialView 
 from .widgets.inventory.inventory_tabs import InventoryTab
 from .widgets.inventory.inventory_count_tab import InventoryCountTab
 from .widgets.master_data.manufacturers_tab import ManufacturersTab
@@ -100,7 +98,6 @@ class MainWindow(QMainWindow):
                 2: "nav_procurement",
                 3: "nav_inventory",
                 9: "nav_inventaire",
-                8: "nav_finance",
                 6: "nav_services",
                 7: "nav_history",
                 5: "tab_users",
@@ -278,7 +275,6 @@ class MainWindow(QMainWindow):
             (2, "Achats & Entrées", "fa5s.shopping-cart"), 
             (3, "Stock & Magasin",  "fa5s.boxes"),
             (9, "Inventaire", "fa5s.clipboard-list"),
-            (8, "États Fournisseurs", "fa5s.file-invoice-dollar"), 
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
             (7, "Traçabilité",      "fa5s.history"),
             (5, "Utilisateurs",    "fa5s.users"),
@@ -410,7 +406,6 @@ class MainWindow(QMainWindow):
             2: "nav_procurement",
             3: "nav_inventory",
             9: "nav_inventaire",
-            8: "nav_finance",
             6: "nav_services",
             7: "nav_history",  # واجهة السجل المستقلة
             5: "tab_users",
@@ -569,19 +564,6 @@ class MainWindow(QMainWindow):
             except:
                 widget = QLabel("Module Facturation non chargé")
 
-        # --- 8. Supplier Financials ---
-        elif page_id == 8: 
-            from .widgets.supplier.supplier_financial_view import SupplierFinancialView
-            widget = SupplierFinancialView(self.data_manager)
-            
-            if self.has_permission("tab_fin_situation"):
-                widget.tabs.addTab(widget.tab_situation, "📜 Grand Livre (Situation)")
-            if self.has_permission("tab_fin_journal"):
-                widget.tabs.addTab(widget.tab_journal, "💰 Journal des Paiements")
-            if self.has_permission("tab_fin_dashboard"):
-                widget.tabs.addTab(widget.tab_dashboard, "📊 Tableau de Bord")
-                widget.tab_dashboard.refresh_stats()
-
         elif page_id == 7:
             from .widgets.history import MovementHistoryTab
             widget = MovementHistoryTab(self.data_manager)
@@ -609,7 +591,6 @@ class MainWindow(QMainWindow):
             2: "nav_procurement",
             3: "nav_inventory",
             9: "nav_inventaire",
-            8: "nav_finance",
             6: "nav_services",
             7: "nav_history",
             5: "tab_users",
