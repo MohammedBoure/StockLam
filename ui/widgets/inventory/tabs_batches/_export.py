@@ -9,7 +9,7 @@ from datetime import date
 
 from PySide6.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 from PySide6.QtCore import Qt
-from ui.formatting import quantity_to_int
+from ui.formatting import format_money, format_quantity, quantity_to_int
 
 try:
     from reportlab.lib.pagesizes import A4, landscape
@@ -29,40 +29,84 @@ except ImportError:
 # استخراج بيانات الجدول (مشترك بين Excel و PDF)
 # ---------------------------------------------------------------------------
 
-def get_table_data(self):
-    """إرجاع (columns, rows) مع استبعاد الأعمدة المالية للتقني"""
+EXPORT_COLUMN_KEYS = {
+    0: 'Product_Name',
+    1: 'Family_Name',
+    2: 'Manuf_Name',
+    3: 'Automate_Name',
+    4: 'Supplier_Name',
+    5: 'Quantity_Current',
+    6: 'Date_Received',
+    7: 'Lot_Number',
+    8: 'Expiry_Date',
+    9: 'Quantity_Initial',
+    10: 'Internal_Barcode',
+    11: 'Unit_Price_Received',
+    12: 'Total_Value',
+    13: 'PO_ID',
+    14: 'Location_Name',
+}
+
+
+def _is_technician(self):
     try:
         role = self.window().current_user.get('Role', 'Technician')
     except Exception:
         role = 'Technician'
+    return role == 'Technician'
 
-    is_tech = (role == 'Technician')
 
-    columns = []
-    for c in range(self.table.columnCount()):
-        if is_tech and c in [11, 12]:
-            continue
-        item = self.table.horizontalHeaderItem(c)
-        columns.append(item.text() if item else f"Col {c}")
+def _export_column_indices(self):
+    is_tech = _is_technician(self)
+    return [
+        c for c in range(self.table.columnCount())
+        if not (is_tech and c in [11, 12])
+    ]
+
+
+def _header_text(self, column_index):
+    item = self.table.horizontalHeaderItem(column_index)
+    return item.text() if item else f"Col {column_index}"
+
+
+def _format_export_cell(row, column_index):
+    if column_index == 5:
+        return format_quantity(row.get('Quantity_Current', 0))
+    if column_index == 6:
+        return str(row.get('Date_Received') or row.get('Created_At', ''))[:10]
+    if column_index == 8:
+        return str(row.get('Expiry_Date', ''))[:10]
+    if column_index == 9:
+        return format_quantity(row.get('Quantity_Initial', 0))
+    if column_index == 10:
+        return row.get('Internal_Barcode') or row.get('Barcode') or ''
+    if column_index == 11:
+        return format_money(float(row.get('Unit_Price_Received', 0) or 0))
+    if column_index == 12:
+        qty = float(row.get('Quantity_Current', 0) or 0)
+        price = float(row.get('Unit_Price_Received', 0) or 0)
+        discount = float(row.get('Discount_Percent', 0) or 0) / 100.0
+        tax = float(row.get('Tax_Rate_Percent', 0) or 0) / 100.0
+        return format_money(qty * price * (1 - discount) * (1 + tax))
+
+    key = EXPORT_COLUMN_KEYS.get(column_index)
+    return row.get(key, '') if key else ''
+
+
+def get_table_data(self):
+    """Return all rows matching the current filters, not only lazy-loaded table rows."""
+    column_indices = _export_column_indices(self)
+    columns = [_header_text(self, c) for c in column_indices]
 
     rows = []
-    for r in range(self.table.rowCount()):
-        if self.table.isRowHidden(r):
-            continue
-        row_data = []
-        for c in range(self.table.columnCount()):
-            if is_tech and c in [11, 12]:
-                continue
-            item = self.table.item(r, c)
-            row_data.append(item.text() if item else "")
-        rows.append(row_data)
+    for row in getattr(self, 'filtered_data', []) or []:
+        rows.append([
+            str(_format_export_cell(row, c) or '')
+            for c in column_indices
+        ])
 
     return columns, rows
 
-
-# ---------------------------------------------------------------------------
-# طباعة الملصقات
-# ---------------------------------------------------------------------------
 
 def print_batch_label(self):
     """طباعة ملصق لكل صف محدد"""
@@ -163,9 +207,10 @@ def export_to_excel(self):
 # ---------------------------------------------------------------------------
 
 def export_to_pdf(self):
-    """تصدير PDF بتخطيط أفقي مع التفاف النصوص الطويلة"""
-    if self.table.rowCount() == 0:
-        QMessageBox.warning(self, "Attention", "Aucune donnée à exporter.")
+    """Export the full currently filtered batch list to PDF."""
+    cols, rows = get_table_data(self)
+    if not rows:
+        QMessageBox.warning(self, "Attention", "Aucune donnÃ©e Ã  exporter.")
         return
 
     filename, _ = QFileDialog.getSaveFileName(
@@ -185,7 +230,7 @@ def export_to_pdf(self):
         )
 
         styles = getSampleStyleSheet()
-        style_left   = ParagraphStyle(
+        style_left = ParagraphStyle(
             'CellText', parent=styles['Normal'],
             fontName='Helvetica', fontSize=6, leading=7,
             alignment=TA_LEFT, splitLongWords=1, wordWrap='CJK'
@@ -199,7 +244,7 @@ def export_to_pdf(self):
         elements = []
         elements.append(
             Paragraph(
-                f"État du Stock par Lot - {date.today().strftime('%d/%m/%Y')}",
+                f"Etat du Stock par Lot - {date.today().strftime('%d/%m/%Y')}",
                 styles['Title']
             )
         )
@@ -212,38 +257,43 @@ def export_to_pdf(self):
         )
         elements.append(Spacer(1, 10))
 
-        # بناء رأس الجدول
-        headers = [
-            self.table.horizontalHeaderItem(i).text()
-            for i in range(self.table.columnCount())
-        ]
-        header_row = [Paragraph(f"<b>{h}</b>", style_center) for h in headers]
+        header_row = [Paragraph(f"<b>{h}</b>", style_center) for h in cols]
         data = [header_row]
 
-        # الصفوف
-        TEXT_COLS = {0, 1, 2, 3, 4, 10, 13, 14}
-        for r in range(self.table.rowCount()):
-            if self.table.isRowHidden(r):
-                continue
+        text_headers = {
+            'Produit', 'Famille', 'Fabricant', 'Automate', 'Fournisseur',
+            'Lot', 'Code-Barres', 'PO', 'Emplacement'
+        }
+        for row in rows:
             row_data = []
-            for c in range(self.table.columnCount()):
-                item = self.table.item(r, c)
-                text = item.text() if item else ""
-                style = style_left if c in TEXT_COLS else style_center
-                row_data.append(Paragraph(text, style))
+            for header, value in zip(cols, row):
+                style = style_left if header in text_headers else style_center
+                row_data.append(Paragraph(str(value), style))
             data.append(row_data)
 
-        # صف المجموع
-        data.append(
-            [Paragraph("<b>TOTAL</b>", style_left)] + [""] * 14
-        )
+        data.append([Paragraph("<b>TOTAL</b>", style_left)] + [""] * (len(cols) - 1))
 
-        col_widths = [
-            140, 45, 45, 40, 45, 35, 45, 40,
-            45,  32, 50, 35, 45, 35, 45
-        ]
+        base_widths = {
+            'Produit': 140,
+            'Famille': 45,
+            'Fabricant': 45,
+            'Automate': 40,
+            'Fournisseur': 45,
+            'Stock (Actuel)': 35,
+            'Date EntrÃ©e': 45,
+            'Lot': 40,
+            'Expiration': 45,
+            'QtÃ© Init.': 32,
+            'Code-Barres': 50,
+            'Prix U.': 35,
+            'Valeur (DA)': 45,
+            'PO': 35,
+            'Emplacement': 45,
+        }
+        col_widths = [base_widths.get(col, 45) for col in cols]
 
         pdf_table = Table(data, colWidths=col_widths, repeatRows=1)
+        span_end = min(4, len(cols) - 1)
         style = TableStyle([
             ('BACKGROUND',   (0, 0),  (-1, 0),  colors.grey),
             ('VALIGN',       (0, 0),  (-1, -1), 'TOP'),
@@ -254,10 +304,9 @@ def export_to_pdf(self):
             ('TOPPADDING',   (0, 0),  (-1, -1), 2),
             ('BOTTOMPADDING',(0, 0),  (-1, -1), 2),
             ('BACKGROUND',   (0, -1), (-1, -1), colors.beige),
-            ('SPAN',         (0, -1), (4, -1)),
+            ('SPAN',         (0, -1), (span_end, -1)),
         ])
 
-        # تلوين متعاقب للصفوف (Zebra)
         for i in range(1, len(data) - 1):
             if i % 2 == 0:
                 style.add('BACKGROUND', (0, i), (-1, i), colors.whitesmoke)
