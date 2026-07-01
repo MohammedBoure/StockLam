@@ -396,7 +396,11 @@ class ReceptionLogManager:
             barcode_lock_acquired = True
 
             # 1. جلب البيانات القديمة لحساب الفرق
-            cursor.execute("SELECT Quantity_Initial, Quantity_Current FROM Inventory_Batches WHERE Batch_ID = %s", (batch_id,))
+            cursor.execute("""
+                SELECT Quantity_Initial, Quantity_Current, Internal_Barcode
+                FROM Inventory_Batches
+                WHERE Batch_ID = %s
+                """, (batch_id,))
             old_data = cursor.fetchone()
             if not old_data:
                 return False, "Lot introuvable."
@@ -410,13 +414,7 @@ class ReceptionLogManager:
             if new_current < 0:
                 return False, "Impossible: Stock consommé."
 
-            barcode_to_save = self._allocate_reception_barcode(
-                cursor,
-                line_data['BR_ID'],
-                line_data.get('Internal_Barcode'),
-                batch_id,
-                po_id=line_data.get('PO_ID')
-            )
+            barcode_to_save = old_data.get('Internal_Barcode')
 
             # 2. تحديث الباتش
             query = """
@@ -992,7 +990,12 @@ class ReceptionLogManager:
             ))
 
             # 2. جلب البيانات القديمة
-            cursor.execute("SELECT Batch_ID, Quantity_Initial, Quantity_Current, Product_ID FROM Inventory_Batches WHERE BR_ID = %s", (br_id,))
+            cursor.execute("""
+                SELECT Batch_ID, Quantity_Initial, Quantity_Current, Product_ID,
+                       Internal_Barcode, Reception_Note
+                FROM Inventory_Batches
+                WHERE BR_ID = %s
+                """, (br_id,))
             existing_batches = {row['Batch_ID']: row for row in cursor.fetchall()}
             
             incoming_ids = [int(item['Batch_ID']) for item in items if item.get('Batch_ID')]
@@ -1047,13 +1050,7 @@ class ReceptionLogManager:
                             Internal_Barcode=%s
                         WHERE Batch_ID=%s
                     """
-                    barcode_to_save = self._allocate_reception_barcode(
-                        cursor,
-                        br_id,
-                        item.get('Internal_Barcode'),
-                        exclude_batch_id=bid,
-                        po_id=po_id
-                    )
+                    barcode_to_save = old_data.get('Internal_Barcode')
                     cursor.execute(update_query, (
                         item['Product_ID'], item['Location_ID'], item.get('Lot_Number'), item['Expiry_Date'],
                         new_initial, new_current, item.get('Line_Note', ''),
