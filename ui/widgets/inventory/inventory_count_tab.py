@@ -1,5 +1,7 @@
 import json
 import logging
+import random
+import string
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QInputDialog,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -743,6 +746,25 @@ class InventoryCountTab(QWidget):
         self.load_lines()
         self.refresh_summary()
 
+    def _confirm_sensitive_action(self, title, action_text):
+        alphabet = "".join(ch for ch in string.ascii_uppercase if ch not in "IO")
+        code = "".join(random.choice(alphabet) for _ in range(3))
+        prompt = (
+            f"{action_text}\n\n"
+            f"Pour confirmer, tapez exactement ce code de 3 lettres : {code}"
+        )
+        typed, accepted = QInputDialog.getText(self, title, prompt, QLineEdit.Normal, "")
+        if not accepted:
+            return False
+        if typed.strip().upper() != code:
+            QMessageBox.warning(
+                self,
+                title,
+                "Code de confirmation incorrect. Operation annulee.",
+            )
+            return False
+        return True
+
     def mark_review(self):
         manager = self._manager()
         if not manager or not self.current_session_id:
@@ -780,14 +802,10 @@ class InventoryCountTab(QWidget):
             if not allow_unknown:
                 return
 
-        confirm = QMessageBox.question(
-            self,
+        if not self._confirm_sensitive_action(
             "Inventaire",
-            "Appliquer les ecarts sur le stock programme ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if confirm != QMessageBox.Yes:
+            "Appliquer les ecarts sur le stock programme ? Cette operation modifie le stock reel.",
+        ):
             return
 
         result = manager.apply_session(self.current_session_id, self._user_id(), allow_unknown=allow_unknown)
@@ -811,14 +829,10 @@ class InventoryCountTab(QWidget):
         if status in {"Applied", "Cancelled"}:
             QMessageBox.warning(self, "Inventaire", "Cette session ne peut pas etre annulee.")
             return
-        confirm = QMessageBox.question(
-            self,
+        if not self._confirm_sensitive_action(
             "Inventaire",
-            "Annuler cette session d'inventaire ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if confirm != QMessageBox.Yes:
+            "Annuler cette session d'inventaire ? Cette operation ferme la session sans appliquer les ecarts.",
+        ):
             return
         result = manager.cancel_session(self.current_session_id, self._user_id())
         if result.get("success"):
