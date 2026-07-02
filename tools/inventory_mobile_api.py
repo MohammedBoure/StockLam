@@ -187,9 +187,10 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
 
-def build_server(host: str, port: int):
-    db = Database()
-    data_manager = LabDataManager(db)
+def build_server(host: str, port: int, data_manager=None):
+    if data_manager is None:
+        db = Database()
+        data_manager = LabDataManager(db)
     server = ThreadingHTTPServer((host, port), InventoryMobileApi)
     server.data_manager = data_manager  # type: ignore[attr-defined]
     return server

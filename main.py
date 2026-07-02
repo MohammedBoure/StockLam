@@ -5,6 +5,7 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 import traceback
+import threading
 from datetime import datetime
 import branding
 
@@ -40,6 +41,7 @@ from database.base import Database, get_external_path
 from database import LabDataManager
 from ui.main_window import MainWindow
 from ui.login_dialog import LoginDialog 
+from tools.inventory_mobile_api import build_server as build_inventory_mobile_server
 
 # =========================================================================
 # 1. إعدادات التسجيل (Logging) المتقدمة
@@ -70,6 +72,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DB_CONNECTION_ATTEMPTS = 2
+_mobile_api_server = None
+_mobile_api_thread = None
 
 # =========================================================================
 # 2. صائد الأخطاء المفاجئة (Global Crash Handler)
@@ -178,6 +182,47 @@ def connect_to_database_with_retry(app):
     return None, detailed_error
 
 
+def start_inventory_mobile_api(data_manager):
+    global _mobile_api_server, _mobile_api_thread
+
+    if not data_manager or _mobile_api_server is not None:
+        return
+
+    host = os.getenv("INVENTORY_MOBILE_API_HOST", "0.0.0.0")
+    port = int(os.getenv("INVENTORY_MOBILE_API_PORT", "8787"))
+
+    try:
+        _mobile_api_server = build_inventory_mobile_server(host, port, data_manager=data_manager)
+        _mobile_api_thread = threading.Thread(
+            target=_mobile_api_server.serve_forever,
+            name="InventoryMobileAPI",
+            daemon=True,
+        )
+        _mobile_api_thread.start()
+        logger.info("Inventory mobile API started on http://%s:%s", host, port)
+    except OSError as error:
+        _mobile_api_server = None
+        _mobile_api_thread = None
+        logger.warning("Inventory mobile API could not start on %s:%s: %s", host, port, error)
+
+
+def stop_inventory_mobile_api():
+    global _mobile_api_server, _mobile_api_thread
+
+    if _mobile_api_server is None:
+        return
+
+    try:
+        _mobile_api_server.shutdown()
+        _mobile_api_server.server_close()
+        logger.info("Inventory mobile API stopped.")
+    except Exception:
+        logger.warning("Inventory mobile API stop failed.", exc_info=True)
+    finally:
+        _mobile_api_server = None
+        _mobile_api_thread = None
+
+
 # =========================================================================
 # 4. الدالة الرئيسية (Main)
 # =========================================================================
@@ -188,6 +233,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(branding.get_app_name())
     app.setOrganizationName(branding.get_organization_name())
+    app.aboutToQuit.connect(stop_inventory_mobile_api)
     
     # --- منع تشغيل البرنامج مرتين (Single Instance) ---
     lock_file_path = os.path.join(QDir.tempPath(), branding.get_lock_file_name())
@@ -270,6 +316,9 @@ def main():
                 return 
 
         # تشغيل النافذة الرئيسية
+        if data_manager and not connection_error:
+            start_inventory_mobile_api(data_manager)
+
         window = MainWindow(data_manager, current_user, connection_error)
         window.showMaximized() 
         
