@@ -3,11 +3,7 @@
 Run on the main PC while StockLam uses the same database:
     venv/Scripts/python.exe tools/inventory_mobile_api.py --host 0.0.0.0 --port 8787
 
-Optional security token:
-    set INVENTORY_MOBILE_API_TOKEN=change-me
-    venv/Scripts/python.exe tools/inventory_mobile_api.py --host 0.0.0.0 --port 8787
-
-The Flutter app sends the token in X-API-Key when configured.
+The mobile app sends a built-in StockLam API key automatically.
 """
 
 from __future__ import annotations
@@ -25,6 +21,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+FIXED_API_TOKEN = "StockLam-Inventaire-Mobile-2026"
 import sys
 
 if str(ROOT_DIR) not in sys.path:
@@ -76,7 +73,7 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
         return self.server.data_manager.inventory_counts  # type: ignore[attr-defined]
 
     def _token(self):
-        return self.server.api_token  # type: ignore[attr-defined]
+        return FIXED_API_TOKEN
 
     def _send_json(self, status: int, payload: dict):
         body = json.dumps(payload, ensure_ascii=False, default=_json_default).encode("utf-8")
@@ -120,10 +117,6 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, {"success": True})
 
     def do_GET(self):
-        if not self._is_authorized():
-            self._send_error(HTTPStatus.UNAUTHORIZED, "Invalid API token.")
-            return
-
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = parse_qs(parsed.query)
@@ -131,6 +124,10 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
         try:
             if path == "/api/health":
                 self._send_json(HTTPStatus.OK, {"success": True, "app": "StockLam", "service": "inventory_mobile_api"})
+                return
+
+            if not self._is_authorized():
+                self._send_error(HTTPStatus.UNAUTHORIZED, "Invalid mobile app key.")
                 return
 
             if path == "/api/inventory-sessions":
@@ -162,7 +159,7 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self._is_authorized():
-            self._send_error(HTTPStatus.UNAUTHORIZED, "Invalid API token.")
+            self._send_error(HTTPStatus.UNAUTHORIZED, "Invalid mobile app key.")
             return
 
         parsed = urlparse(self.path)
@@ -190,12 +187,11 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
 
-def build_server(host: str, port: int, token: str | None):
+def build_server(host: str, port: int):
     db = Database()
     data_manager = LabDataManager(db)
     server = ThreadingHTTPServer((host, port), InventoryMobileApi)
     server.data_manager = data_manager  # type: ignore[attr-defined]
-    server.api_token = token or ""  # type: ignore[attr-defined]
     return server
 
 
@@ -203,16 +199,12 @@ def main():
     parser = argparse.ArgumentParser(description="StockLam mobile inventory scanner API")
     parser.add_argument("--host", default=os.getenv("INVENTORY_MOBILE_API_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.getenv("INVENTORY_MOBILE_API_PORT", "8787")))
-    parser.add_argument("--token", default=os.getenv("INVENTORY_MOBILE_API_TOKEN", ""))
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    server = build_server(args.host, args.port, args.token)
+    server = build_server(args.host, args.port)
     logging.info("Inventory mobile API listening on http://%s:%s", args.host, args.port)
-    if args.token:
-        logging.info("API token protection is enabled.")
-    else:
-        logging.warning("API token protection is disabled. Use only on a trusted LAN.")
+    logging.info("Built-in mobile app key protection is enabled.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -51,7 +51,7 @@ mobile_inventory_scanner\build\app\outputs\flutter-apk\app-debug.apk
 2. Create or select an Inventaire session and keep it in `Counting` status.
 3. Start the API on the main PC with `tools\start_inventory_mobile_api.ps1`.
 4. Install/run the Android app on a phone connected to the same Wi-Fi/LAN.
-5. Enter the server URL and token if configured.
+5. Enter only the server URL. The app key is built in automatically.
 6. Tap **Sessions**, select the open inventory session.
 7. Scan a product barcode, verify details, enter physical quantity, tap **Enregistrer**.
 8. Return to the desktop Inventaire screen, refresh/review/apply as usual.

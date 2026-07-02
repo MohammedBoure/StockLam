@@ -16,6 +16,8 @@ T? firstOrNull<T>(Iterable<T> values) {
   return iterator.moveNext() ? iterator.current : null;
 }
 
+const stockLamMobileApiKey = 'StockLam-Inventaire-Mobile-2026';
+
 String cleanBaseUrl(String value) =>
     value.trim().replaceAll(RegExp(r'/+$'), '');
 
@@ -111,14 +113,13 @@ class ScanEntry {
 }
 
 class ApiClient {
-  ApiClient({required this.baseUrl, this.token = ''});
+  ApiClient({required this.baseUrl});
 
   final String baseUrl;
-  final String token;
 
   Map<String, String> get headers => {
         'Content-Type': 'application/json',
-        if (token.trim().isNotEmpty) 'X-API-Key': token.trim(),
+        'X-API-Key': stockLamMobileApiKey,
       };
 
   Uri uri(String path, [Map<String, String>? query]) {
@@ -191,11 +192,8 @@ class ScannerHomePage extends StatefulWidget {
 
 class _ScannerHomePageState extends State<ScannerHomePage> {
   static const serverKey = 'stocklam_server_url';
-  static const tokenKey = 'stocklam_api_token';
-
   final serverController =
       TextEditingController(text: 'http://192.168.1.10:8787');
-  final tokenController = TextEditingController();
   final barcodeController = TextEditingController();
   final qtyController = TextEditingController(text: '1');
   final barcodeFocus = FocusNode();
@@ -211,8 +209,7 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   bool cameraOpen = false;
   bool scanBusy = false;
 
-  ApiClient get api =>
-      ApiClient(baseUrl: serverController.text, token: tokenController.text);
+  ApiClient get api => ApiClient(baseUrl: serverController.text);
 
   @override
   void initState() {
@@ -223,7 +220,6 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   @override
   void dispose() {
     serverController.dispose();
-    tokenController.dispose();
     barcodeController.dispose();
     qtyController.dispose();
     barcodeFocus.dispose();
@@ -234,7 +230,6 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final savedServer = prefs.getString(serverKey);
-    final savedToken = prefs.getString(tokenKey);
     if (!mounted) {
       return;
     }
@@ -242,16 +237,12 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
       if (savedServer != null && savedServer.isNotEmpty) {
         serverController.text = savedServer;
       }
-      if (savedToken != null) {
-        tokenController.text = savedToken;
-      }
     });
   }
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(serverKey, cleanBaseUrl(serverController.text));
-    await prefs.setString(tokenKey, tokenController.text.trim());
   }
 
   Future<void> checkServer() async {
@@ -476,13 +467,6 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                   labelText: 'Serveur API', prefixIcon: Icon(Icons.lan)),
               keyboardType: TextInputType.url,
               textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: tokenController,
-              decoration: const InputDecoration(
-                  labelText: 'Token optionnel', prefixIcon: Icon(Icons.key)),
-              obscureText: true,
             ),
             const SizedBox(height: 10),
             Row(

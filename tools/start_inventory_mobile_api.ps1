@@ -1,26 +1,14 @@
-﻿param(
+param(
     [string]$HostAddress = "0.0.0.0",
-    [int]$Port = 8787,
-    [string]$Token = $env:INVENTORY_MOBILE_API_TOKEN
+    [int]$Port = 8787
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
-if (-not $Token) {
-    $Token = Read-Host "Token API mobile (laisser vide seulement sur reseau prive fiable)"
-}
-
-if ($Token) {
-    $env:INVENTORY_MOBILE_API_TOKEN = $Token
-    Write-Host "API token protection: enabled" -ForegroundColor Green
-} else {
-    Remove-Item Env:\INVENTORY_MOBILE_API_TOKEN -ErrorAction SilentlyContinue
-    Write-Host "API token protection: disabled" -ForegroundColor Yellow
-}
-
 Write-Host "StockLam mobile inventory API" -ForegroundColor Cyan
+Write-Host "Built-in mobile app key: enabled" -ForegroundColor Green
 Write-Host "Listening: http://$HostAddress`:$Port"
 Write-Host "Phone URL: http://<PC_IP>:$Port"
 Write-Host "Local network IPv4 addresses:" -ForegroundColor Cyan
