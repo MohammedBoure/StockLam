@@ -4,7 +4,7 @@ import zipfile
 import logging
 import pandas as pd
 import numpy as np
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from sqlalchemy import text, inspect as sa_inspect
 import sqlalchemy
 
@@ -86,6 +86,29 @@ class BackupManagerMixin:
     @staticmethod
     def _quote_identifier(identifier):
         return f"`{str(identifier).replace('`', '``')}`"
+
+    @staticmethod
+    def _normalize_mysql_temporal_value(value, column_type):
+        if value == '<NULL>' or pd.isna(value) or value == 'NaT' or value == '':
+            return None
+
+        mysql_type = str(column_type or '').lower().split('(', 1)[0].strip()
+        if mysql_type not in {'date', 'datetime', 'timestamp'}:
+            return value
+
+        if isinstance(value, (pd.Timestamp, datetime)):
+            parsed = value
+        elif isinstance(value, date):
+            parsed = datetime.combine(value, datetime.min.time())
+        else:
+            parsed = pd.to_datetime(str(value).strip(), errors='coerce')
+
+        if pd.isna(parsed):
+            return value
+
+        if mysql_type == 'date':
+            return parsed.strftime('%Y-%m-%d')
+        return parsed.strftime('%Y-%m-%d %H:%M:%S')
 
     def _drop_inventory_global_barcode_unique(self, conn):
         cursor = None
@@ -286,7 +309,9 @@ class BackupManagerMixin:
                 with self.engine.connect() as conn_inner:
                     try:
                         result = conn_inner.execute(text(f"SHOW COLUMNS FROM {self._quote_identifier(table_name)}"))
-                        db_columns = [row[0] for row in result.fetchall()]
+                        db_column_rows = result.fetchall()
+                        db_columns = [row[0] for row in db_column_rows]
+                        db_column_types = {row[0]: row[1] for row in db_column_rows}
                     except Exception:
                         continue
 
@@ -302,11 +327,14 @@ class BackupManagerMixin:
                 cleaned_data = []
                 for row in df.values.tolist():
                     new_row = []
-                    for val in row:
-                        if val == '<NULL>' or pd.isna(val) or val == 'NaT' or val == '':
+                    for col, val in zip(common_cols, row):
+                        normalized_val = self._normalize_mysql_temporal_value(
+                            val, db_column_types.get(col)
+                        )
+                        if normalized_val is None:
                             new_row.append(None)
                         else:
-                            new_row.append(val)
+                            new_row.append(normalized_val)
                     cleaned_data.append(tuple(new_row))
 
                 batch_size = 1000
