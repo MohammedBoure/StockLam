@@ -421,7 +421,7 @@ class ReceptionLogManager:
                 UPDATE Inventory_Batches 
                 SET Product_ID=%s, Location_ID=%s, Quantity_Initial=%s, Quantity_Current=%s,
                     Unit_Price_Received=%s, Tax_Rate_Percent=%s, Discount_Percent=%s,
-                    Lot_Number=%s, Expiry_Date=%s, Reception_Note=%s, Internal_Barcode=%s
+                    Lot_Number=%s, Expiry_Date=%s, Reception_Note=%s
                 WHERE Batch_ID=%s
             """
             params = (
@@ -429,7 +429,7 @@ class ReceptionLogManager:
                 line_data['Unit_Price_Received'], line_data.get('Tax_Rate_Percent', 0),
                 line_data.get('Discount_Percent', 0), line_data.get('Lot_Number'),
                 line_data.get('Expiry_Date'), line_data.get('Batch_Note', ''),
-                barcode_to_save, batch_id
+                batch_id
             )
             cursor.execute(query, params)
             line_data['Internal_Barcode'] = barcode_to_save
@@ -1046,8 +1046,7 @@ class ReceptionLogManager:
                         UPDATE Inventory_Batches 
                         SET Product_ID=%s, Location_ID=%s, Lot_Number=%s, Expiry_Date=%s, 
                             Quantity_Initial=%s, Quantity_Current=%s, Reception_Note=%s,
-                            Unit_Price_Received=%s, Tax_Rate_Percent=%s, Discount_Percent=%s,
-                            Internal_Barcode=%s
+                            Unit_Price_Received=%s, Tax_Rate_Percent=%s, Discount_Percent=%s
                         WHERE Batch_ID=%s
                     """
                     barcode_to_save = old_data.get('Internal_Barcode')
@@ -1055,7 +1054,7 @@ class ReceptionLogManager:
                         item['Product_ID'], item['Location_ID'], item.get('Lot_Number'), item['Expiry_Date'],
                         new_initial, new_current, item.get('Line_Note', ''),
                         item['Unit_Price_Received'], item['Tax_Rate_Percent'], item.get('Discount_Percent', 0),
-                        barcode_to_save, bid
+                        bid
                     ))
 
                     # === التغيير الجذري هنا: تسجيل الفرق كحركة جديدة ===

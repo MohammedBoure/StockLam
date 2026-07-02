@@ -761,6 +761,7 @@ class InventoryBatchManager:
             # 1. توليد الباركود إذا لم يكن موجوداً
             prefix = self.get_barcode_prefix_for_po(po_id) if po_id else (f"BR{br_id}-" if br_id else "STK")
             final_barcode = internal_barcode
+            barcode_was_provided = bool(final_barcode)
             if not final_barcode:
                 # دالة التوليد (تأكد من وجودها)
                 final_barcode = self.generate_smart_barcode(prefix, item_index)
@@ -772,7 +773,7 @@ class InventoryBatchManager:
                 LIMIT 1
             """, (final_barcode,))
             barcode_owner = cursor.fetchone()
-            if barcode_owner and int(barcode_owner[1]) != int(location_id):
+            if barcode_owner and int(barcode_owner[1]) != int(location_id) and not barcode_was_provided:
                 next_serial = item_index + 1
                 while True:
                     candidate = self.generate_smart_barcode(prefix, next_serial)
