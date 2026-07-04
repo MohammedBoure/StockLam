@@ -947,7 +947,7 @@ class ReceptionLogManager:
                     FROM Inventory_Batches ib
                     JOIN Products_Master pm ON ib.Product_ID = pm.Product_ID
                     LEFT JOIN Locations l ON ib.Location_ID = l.Location_ID
-                    WHERE ib.BR_ID = %s
+                    WHERE ib.BR_ID = %s AND ib.Quantity_Initial > 0
                 """
                 cursor.execute(batches_query, (br_id,))
                 return {'Header': header, 'Batches': cursor.fetchall()}
