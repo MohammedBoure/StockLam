@@ -264,12 +264,46 @@ def open_history_via_barcode(self):
 
 
 def go_to_reception(self, br_id, target_batch_id=None):
-    """فتح وصل الاستلام المرتبط باللوط"""
+    """فتح وصل الاستلام المرتبط باللوط وتحديد السطر الصحيح"""
     try:
         reception_data = self.manager.reception.get_reception_full_details(br_id)
         if not reception_data or not reception_data.get('Header'):
             QMessageBox.warning(self, "Erreur", "Données de réception introuvables.")
             return
+
+        # --- بداية التعديل الذكي للبحث عن السطر الأصلي ---
+        if target_batch_id:
+            # التحقق مما إذا كان اللوط موجوداً ضمن اللوطات الأصلية للوصل
+            valid_ids = [b['Batch_ID'] for b in reception_data.get('Batches', [])]
+            
+            if target_batch_id not in valid_ids:
+                # إذا لم يكن موجوداً (يعني أنه منتج محول)، نجلبه من بيانات الجدول الحالية
+                clicked_batch = next((b for b in self.all_data if b.get('Batch_ID') == target_batch_id), None)
+                
+                if clicked_batch:
+                    clicked_barcode = str(clicked_batch.get('Internal_Barcode') or '').strip()
+                    clicked_lot = str(clicked_batch.get('Lot_Number') or '').strip()
+
+                    if clicked_barcode:
+                        parent_batch = next(
+                            (b for b in reception_data.get('Batches', [])
+                             if b['Product_ID'] == clicked_batch['Product_ID']
+                             and str(b.get('Internal_Barcode') or '').strip() == clicked_barcode),
+                            None
+                        )
+                    else:
+                        parent_batch = next(
+                            (b for b in reception_data.get('Batches', [])
+                             if b['Product_ID'] == clicked_batch['Product_ID']
+                             and clicked_lot
+                             and str(b.get('Lot_Number') or '').strip() == clicked_lot),
+                            None
+                        )
+                    
+                    if parent_batch:
+                        # استبدال المعرف بمعرف اللوط الأصلي ليتم تلوينه في الواجهة
+                        target_batch_id = parent_batch['Batch_ID']
+        # --- نهاية التعديل ---
 
         header = reception_data['Header']
         po_data = {
@@ -287,7 +321,7 @@ def go_to_reception(self, br_id, target_batch_id=None):
             parent=self,
             edit_mode=True,
             reception_data=reception_data,
-            target_batch_id=target_batch_id,
+            target_batch_id=target_batch_id, # سيتم تمرير المعرف الأصلي الآن إذا كان المنتج محولاً
         )
         dialog.exec()
 
@@ -302,7 +336,6 @@ def go_to_reception(self, br_id, target_batch_id=None):
     except Exception as e:
         logging.error(f"Erreur go_to_reception: {e}")
         QMessageBox.critical(self, "Erreur", f"Technique: {str(e)}")
-
 
 # ---------------------------------------------------------------------------
 # مسح الباركود
