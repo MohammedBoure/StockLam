@@ -50,3 +50,10 @@ Restored-database full pass - inventory display fix:
 - Inventory list display now derives `QTE INIT` from the first positive stock movement when database `Quantity_Initial` is zero due to the reception repair.
 - Example validation for `252019` in `STOCK SALLE 00`: displayed `Quantity_Initial=192.00`, stored `Reception_Quantity_Initial=0`, `Quantity_Current=192`.
 - Full dry-run after apply found `rows=0` duplicate groups and `rows=0` planned repairs.
+
+Revalidation pass - 252019 semantics:
+- The database had returned to an unrepaired state again: dry-run found 30 legacy split rows with positive `Quantity_Initial`.
+- Re-applied `fix_legacy_reception_inventory.py --br-id 2 --apply`.
+- Post-apply dry-run found `rows=0` duplicate groups and `rows=0` planned repairs.
+- Correct meaning after repair: Bon de reception `252019` keeps received quantity `216`; stock row `33989` displays `QTE INIT=192.00` from the first positive movement while stored `Reception_Quantity_Initial=0` prevents Bon duplication.
+- `252017` and `252019` remain separate Bon rows even though they share product and lot; navigation from stock uses barcode matching.
