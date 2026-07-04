@@ -900,17 +900,16 @@ class InventoryBatchManager:
                         COALESCE(
                             NULLIF(B.Quantity_Initial, 0),
                             (
-                                SELECT MAX(SourceB.Quantity_Initial)
-                                FROM Inventory_Batches SourceB
-                                WHERE SourceB.BR_ID = B.BR_ID
-                                  AND SourceB.Product_ID = B.Product_ID
-                                  AND COALESCE(SourceB.Lot_Number, '') = COALESCE(B.Lot_Number, '')
-                                  AND COALESCE(SourceB.Expiry_Date, '1000-01-01') = COALESCE(B.Expiry_Date, '1000-01-01')
-                                  AND COALESCE(SourceB.Internal_Barcode, '') = COALESCE(B.Internal_Barcode, '')
-                                  AND SourceB.Quantity_Initial > 0
+                                SELECT SML.Qty_Change
+                                FROM Stock_Movement_Log SML
+                                WHERE SML.Batch_ID = B.Batch_ID
+                                  AND SML.Qty_Change > 0
+                                ORDER BY SML.Transaction_Date ASC, SML.Movement_ID ASC
+                                LIMIT 1
                             ),
                             B.Quantity_Initial
                         ) AS Quantity_Initial,
+                        B.Quantity_Initial AS Reception_Quantity_Initial,
                         B.Unit_Price_Received,
                         B.Tax_Rate_Percent,
                         B.Discount_Percent,

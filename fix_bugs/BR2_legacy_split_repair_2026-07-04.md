@@ -43,3 +43,10 @@ Second-pass validation:
 - Full dry-run after apply found `rows=0` duplicate groups and `rows=0` planned repairs.
 - `252019`: canonical batch `33549` keeps `Quantity_Initial=216`; split batch `33989` now has `Quantity_Initial=0` and `Quantity_Current=192`.
 - `252015`: canonical batch `33545` keeps `Quantity_Initial=70`; split batch `33992` now has `Quantity_Initial=0` and `Quantity_Current=20`.
+
+Restored-database full pass - inventory display fix:
+- After the database was restored to the original problematic state, `fix_legacy_reception_inventory.py --br-id 2 --apply` found and repaired 30 legacy split rows again.
+- `Quantity_Current` was preserved for all split rows.
+- Inventory list display now derives `QTE INIT` from the first positive stock movement when database `Quantity_Initial` is zero due to the reception repair.
+- Example validation for `252019` in `STOCK SALLE 00`: displayed `Quantity_Initial=192.00`, stored `Reception_Quantity_Initial=0`, `Quantity_Current=192`.
+- Full dry-run after apply found `rows=0` duplicate groups and `rows=0` planned repairs.
