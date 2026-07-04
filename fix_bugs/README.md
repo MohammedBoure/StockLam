@@ -1,0 +1,1 @@
+﻿Legacy reception split repair. Use repair_legacy_reception_splits.py without --apply for dry-run, then add --apply only after reviewing planned repairs. This fixes old transfer-created positive Quantity_Initial split rows and keeps Quantity_Current unchanged.
