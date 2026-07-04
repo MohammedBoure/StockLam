@@ -1,14 +1,14 @@
-r"""One entrypoint for repairing legacy reception/inventory split rows.
+r"""One entrypoint for repairing reception/inventory Quantity_Initial consistency.
 
 This file is intentionally kept in fix_bugs so it can be run from the project
 root after restoring a database backup or when old transfer-created duplicate
 reception rows reappear.
 
-What it does through tools.repair_legacy_reception_splits:
-- finds duplicate Bon de reception rows created by the old transfer algorithm;
-- treats same BR/product/internal barcode/lot as one received line, even when
-  a split row has a different expiry date;
-- resets Quantity_Initial to 0 only on non-canonical transfer split rows;
+What it does through tools.repair_reception_stock_consistency:
+- keeps Inventory_Batches.Quantity_Initial as the Bon de reception quantity;
+- repairs Quantity_Initial from the latest ReceptionLogManager SystemLogs entry
+  when that entry exists for the same Batch_ID;
+- repairs zero Quantity_Initial values from the first positive stock movement;
 - keeps Quantity_Current unchanged so actual stock by location is preserved;
 - recalculates Reception_Log totals from positive reception quantities;
 - writes a SystemLogs entry when --apply is used.
@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.repair_legacy_reception_splits import main
+from tools.repair_reception_stock_consistency import main
 
 
 if __name__ == "__main__":

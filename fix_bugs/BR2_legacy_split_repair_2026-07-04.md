@@ -57,3 +57,30 @@ Revalidation pass - 252019 semantics:
 - Post-apply dry-run found `rows=0` duplicate groups and `rows=0` planned repairs.
 - Correct meaning after repair: Bon de reception `252019` keeps received quantity `216`; stock row `33989` displays `QTE INIT=192.00` from the first positive movement while stored `Reception_Quantity_Initial=0` prevents Bon duplication.
 - `252017` and `252019` remain separate Bon rows even though they share product and lot; navigation from stock uses barcode matching.
+Final correction - stock Quantity_Initial is Bon quantity:
+- The previous zeroing repair was incorrect for the confirmed business rule.
+- The correct rule is that each stock batch `Inventory_Batches.Quantity_Initial` is also the quantity shown in Bon de reception.
+- New entrypoint: `fix_bugs\fix_legacy_reception_inventory.py`, backed by `tools\repair_reception_stock_consistency.py`.
+- The tool repaired only batches where `Quantity_Initial=0` and a first positive stock movement exists, or where a latest `ReceptionLogManager.update_reception_line` SystemLogs entry proves another initial quantity.
+- It does not change `Quantity_Current`.
+- It recalculates `Reception_Log` totals after applying repairs.
+
+Applied on restored BR2 data:
+- Full dry-run audited 314 batches and planned 13 repairs.
+- All 13 repairs were zero `Quantity_Initial` values restored from first positive `Stock_Movement_Log` transfer movements.
+- Post-apply dry-run audited 314 batches and planned 0 repairs.
+
+Reception totals after final correction:
+- `Invoice_Total_HT`: 15,745,166.64
+- `Invoice_Total_TVA`: 709,271.70
+- `Invoice_Total_TTC`: 15,912,840.22
+- `Total_Discount`: 541,598.12
+
+Key validation:
+- `252019` batch `33549`: `Quantity_Initial=216`, `Quantity_Current=0`, location `STOCK SEC`.
+- `252019` batch `33989`: `Quantity_Initial=192`, `Quantity_Current=192`, location `STOCK SALLE 00`.
+- `252020` batch `33550`: `Quantity_Initial=197`, `Quantity_Current=4`, location `STOCK SEC`.
+- `252020` batch `33985`: `Quantity_Initial=12`, `Quantity_Current=165`, location `STOCK SALLE 00`.
+- `252021` batch `33551`: `Quantity_Initial=108`, `Quantity_Current=6`, location `STOCK SEC`.
+- `252021` batch `33986`: `Quantity_Initial=96`, `Quantity_Current=84`, location `STOCK SALLE 00`.
+- `252029` batch `34086`: `Quantity_Initial=2`, restored from first positive movement.
