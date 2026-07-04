@@ -81,7 +81,7 @@ def _load_duplicate_groups(cursor, br_id: int, barcodes: list[str]):
             p.Product_Name,
             b.Internal_Barcode,
             b.Lot_Number,
-            b.Expiry_Date,
+            GROUP_CONCAT(DISTINCT b.Expiry_Date ORDER BY b.Expiry_Date SEPARATOR ', ') AS Expiry_Dates,
             COUNT(*) AS Batch_Count,
             SUM(b.Quantity_Initial) AS Total_Initial,
             SUM(b.Quantity_Current) AS Total_Current
@@ -90,7 +90,7 @@ def _load_duplicate_groups(cursor, br_id: int, barcodes: list[str]):
         WHERE b.BR_ID = %s
           AND b.Quantity_Initial > 0
           {barcode_filter}
-        GROUP BY b.BR_ID, b.Product_ID, b.Internal_Barcode, b.Lot_Number, b.Expiry_Date
+        GROUP BY b.BR_ID, b.Product_ID, b.Internal_Barcode, b.Lot_Number
         HAVING COUNT(*) > 1
         ORDER BY b.Internal_Barcode, b.Product_ID
         """,
@@ -129,7 +129,6 @@ def _load_group_batches(cursor, group: dict[str, Any]):
           AND b.Product_ID = %s
           AND b.Internal_Barcode = %s
           AND COALESCE(b.Lot_Number, '') = COALESCE(%s, '')
-          AND COALESCE(b.Expiry_Date, '1000-01-01') = COALESCE(%s, '1000-01-01')
         GROUP BY
             b.Batch_ID, b.BR_ID, b.PO_ID, b.Product_ID, p.Product_Name,
             b.Internal_Barcode, b.Location_ID, l.Location_Name, b.Lot_Number,
@@ -141,7 +140,6 @@ def _load_group_batches(cursor, group: dict[str, Any]):
             group["Product_ID"],
             group["Internal_Barcode"],
             group["Lot_Number"],
-            group["Expiry_Date"],
         ),
     )
 
