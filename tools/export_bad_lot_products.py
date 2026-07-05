@@ -109,6 +109,8 @@ def lot_problem(value: str) -> str | None:
         return "EMPTY"
     if stripped.upper() == "NON_DEFINI":
         return "NON_DEFINI"
+    if stripped.upper() == "N/A":
+        return "N/A"
     if re.fullmatch(r"\.+", stripped):
         return "DOTS"
     return None
@@ -351,7 +353,7 @@ def write_xlsx(path: Path, sheets: list[tuple[str, list[str], list[dict[str, str
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export products with undefined or dotted lot numbers.")
     parser.add_argument("--source-dir", default="sauvegarde_excel_20260704_144952")
-    parser.add_argument("--output", default="reports/produits_lot_non_defini_20260705.xlsx")
+    parser.add_argument("--output", default="reports/produits_lot_non_defini_avec_na_20260705.xlsx")
     args = parser.parse_args()
 
     details, summary = build_report_rows(Path(args.source_dir))
@@ -362,7 +364,7 @@ def main() -> None:
         {"Metric": "Problem_Batch_Count", "Value": str(len(details))},
         {"Metric": "Problem_Product_Count", "Value": str(len(summary))},
         {"Metric": "Generated_At", "Value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-        {"Metric": "Lot_Filter", "Value": "NON_DEFINI, empty, or dots only"},
+        {"Metric": "Lot_Filter", "Value": "NON_DEFINI, N/A, empty, or dots only"},
     ]
 
     write_xlsx(
