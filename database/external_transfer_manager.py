@@ -114,10 +114,85 @@ class ExternalTransferManager:
                     ORDER BY t.Transaction_Date DESC
                 """
                 cursor.execute(query)
-                return cursor.fetchall()
+                transfers = cursor.fetchall()
+                self.apply_display_references(transfers)
+                return transfers
         except Exception as e:
             logging.error(f"Error getting transfers: {e}")
             return []
+
+
+    def _get_transfer_year(self, transaction_date) -> int:
+        if hasattr(transaction_date, 'year'):
+            return int(transaction_date.year)
+
+        raw_date = str(transaction_date or "")
+        if "-" in raw_date:
+            try:
+                return int(raw_date.split("-")[0])
+            except (TypeError, ValueError):
+                pass
+        return datetime.now().year
+
+    def get_return_sequence_number(self, transfer_id: int, transaction_date=None) -> int:
+        """Return BR numbering is independent from BL IDs and restarts every year."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+
+                if transaction_date is None:
+                    cursor.execute(
+                        "SELECT Transaction_Date FROM External_Transfer_Log WHERE Transfer_ID = %s",
+                        (transfer_id,)
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        transaction_date = row.get('Transaction_Date')
+
+                year = self._get_transfer_year(transaction_date)
+                start_date = f"{year}-01-01 00:00:00"
+                end_date = f"{year + 1}-01-01 00:00:00"
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS Seq
+                    FROM External_Transfer_Log
+                    WHERE IFNULL(Transfer_Type, 'Outbound') = 'Return'
+                      AND Transaction_Date >= %s
+                      AND Transaction_Date < %s
+                      AND (
+                            Transaction_Date < %s
+                            OR (Transaction_Date = %s AND Transfer_ID <= %s)
+                      )
+                    """,
+                    (start_date, end_date, transaction_date, transaction_date, transfer_id)
+                )
+                row = cursor.fetchone()
+                return int((row or {}).get('Seq') or 1)
+        except Exception as e:
+            logging.error(f"Error getting BR sequence for transfer {transfer_id}: {e}")
+            return int(transfer_id)
+
+    def format_transfer_reference(self, transfer: Dict) -> str:
+        transfer_id = int(transfer.get('Transfer_ID'))
+        transaction_date = transfer.get('Transaction_Date')
+        transfer_type = transfer.get('Transfer_Type') or transfer.get('Transfer_Type_Fixed') or 'Outbound'
+        year = self._get_transfer_year(transaction_date)
+
+        if transfer_type == 'Return':
+            seq = transfer.get('Return_Sequence')
+            if seq is None:
+                seq = self.get_return_sequence_number(transfer_id, transaction_date)
+            return f"{year}/{int(seq):02d}"
+
+        return f"{year}/{transfer_id:03d}"
+
+    def apply_display_references(self, transfers: List[Dict]) -> None:
+        for transfer in transfers:
+            try:
+                transfer['Display_Ref'] = self.format_transfer_reference(transfer)
+            except Exception as e:
+                logging.error(f"Error formatting transfer reference: {e}")
+                transfer['Display_Ref'] = str(transfer.get('Transfer_ID', ''))
 
     # --------------------------------------------------------------------------
     #  Details Operations (Items)
@@ -361,7 +436,9 @@ class ExternalTransferManager:
                 query += " ORDER BY t.Transaction_Date DESC"
 
                 cursor.execute(query, params)
-                return cursor.fetchall()
+                transfers = cursor.fetchall()
+                self.apply_display_references(transfers)
+                return transfers
         except Exception as e:
             logging.error(f"Error filtering transfers: {e}")
             return []
@@ -673,7 +750,10 @@ class ExternalTransferManager:
                 cursor = conn.cursor(dictionary=True)
                 query = "SELECT * FROM External_Transfer_Log WHERE Transfer_ID = %s"
                 cursor.execute(query, (transfer_id,))
-                return cursor.fetchone()
+                transfer = cursor.fetchone()
+                if transfer:
+                    transfer['Display_Ref'] = self.format_transfer_reference(transfer)
+                return transfer
         except Exception as e:
             logging.error(f"Error getting transfer header {transfer_id}: {e}")
             return None

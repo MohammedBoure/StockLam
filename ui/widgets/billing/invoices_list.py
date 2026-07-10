@@ -230,7 +230,7 @@ class InvoicesListWidget(QWidget):
                 self.table.insertRow(row)
 
                 # التعديل هنا: استخدام التنسيق الجديد للعرض
-                formatted_ref = self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
+                formatted_ref = t.get('Display_Ref') or self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
                 id_item = QTableWidgetItem(formatted_ref)
                 id_item.setData(Qt.UserRole, t['Transfer_ID']) # حفظ الـ ID الحقيقي في الـ Data للعمليات البرمجية
                 id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
@@ -265,7 +265,7 @@ class InvoicesListWidget(QWidget):
 
     def filter_table(self, text):
         for r in range(self.table.rowCount()):
-            match = any(text.lower() in (self.table.item(r, col).text().lower() if self.table.item(r, col) else "") for col in [0, 2])
+            match = any(text.lower() in (self.table.item(r, col).text().lower() if self.table.item(r, col) else "") for col in [0, 2, 3])
             self.table.setRowHidden(r, not match)
 
     # =========================================================================
@@ -325,7 +325,7 @@ class InvoicesListWidget(QWidget):
         try:
             year_val = raw_date.split('-')[0] if '-' in raw_date else str(datetime.now().year)
             # تنسيق الرقم بـ 3 خانات (أو أكثر إذا لزم الأمر)
-            formatted_ref = f"{year_val}/{int(transfer_id):03d}"
+            formatted_ref = header_data.get('Display_Ref') or f"{year_val}/{int(transfer_id):03d}"
         except:
             formatted_ref = str(transfer_id)
         # --------------------------------------------
@@ -334,7 +334,8 @@ class InvoicesListWidget(QWidget):
         partner_clean = str(header_data.get('Partner_Name', 'Client')).replace(" ", "_")
         # في اسم الملف نستبدل / بـ - لأن أنظمة التشغيل لا تقبل / في أسماء الملفات
         safe_ref_for_filename = formatted_ref.replace("/", "-")
-        default_name = f"{settings.get('doc_title', 'BL')}_{partner_clean}_{safe_ref_for_filename}.pdf"
+        document_title = "Bon de Retour" if (header_data.get('Transfer_Type') or 'Outbound') == 'Return' else settings.get('doc_title', 'BL')
+        default_name = f"{document_title}_{partner_clean}_{safe_ref_for_filename}.pdf"
 
         path, _ = QFileDialog.getSaveFileName(self, "Enregistrer PDF", default_name, "PDF Files (*.pdf)")
         if not path: return
@@ -373,7 +374,7 @@ class InvoicesListWidget(QWidget):
 
             # استخدام formatted_ref الجديد هنا ليظهر في ملف الـ PDF
             left_text = (
-                f"<font size=14 color='{settings.get('theme_color')}'><b>{settings.get('doc_title')} N°: {formatted_ref}</b></font><br/><br/>"
+                f"<font size=14 color='{settings.get('theme_color')}'><b>{document_title} N°: {formatted_ref}</b></font><br/><br/>"
                 f"<b>Banque :</b> {settings.get('bank_name', 'N/A')}<br/>"
                 f"<b>N° Compte :</b> {settings.get('bank_acc', 'N/A')}<br/>"
                 f"<font size=9>Date d'édition : {current_time}</font>"

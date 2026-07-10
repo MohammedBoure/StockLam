@@ -361,7 +361,8 @@ class InvoiceEditorWidget(QWidget):
             return False
 
         self.current_id = transfer_id
-        self.lbl_title.setText(f"TRANSACTION / BL N° {self.format_id(transfer_id)}")
+        doc_label = "BON DE RETOUR" if transfer_type == 'Return' else "TRANSACTION / BL"
+        self.lbl_title.setText(f"{doc_label} N° {self.format_id(transfer_id)}")
         self.set_header_enabled(False)
         if show_message:
             QMessageBox.information(self, "Succes", "L'en-tete a ete enregistre.")
@@ -681,7 +682,14 @@ class InvoiceEditorWidget(QWidget):
             self.persist_current_transfer()
 
     def format_id(self, raw_id):
-        # إذا لم يتوفر التاريخ، نستخدم السنة الحالية
+        try:
+            if hasattr(self.manager, 'external_transfers') and raw_id:
+                transfer = self.manager.external_transfers.get_transfer_by_id(int(raw_id))
+                if transfer and transfer.get('Display_Ref'):
+                    return transfer['Display_Ref']
+        except Exception as e:
+            logging.error(f"Error formatting transfer id {raw_id}: {e}")
+
         year = self.inp_date.date().toString("yyyy")
         return f"{year}/{int(raw_id):03d}"
 
