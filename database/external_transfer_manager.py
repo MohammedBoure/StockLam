@@ -12,6 +12,7 @@ from .system_logger import log_methods
 
 @log_methods()
 class ExternalTransferManager:
+    _transfer_schema_checked = False
     """
     إدارة عمليات التحويل الخارجي للمنتجات (بيع، تبرع، تبادل).
     """
@@ -19,6 +20,33 @@ class ExternalTransferManager:
     def __init__(self, db_instance):
         self.db = db_instance
         self.movement_manager = StockMovementLogManager(db_instance)
+
+
+    def _ensure_transfer_schema(self):
+        if ExternalTransferManager._transfer_schema_checked:
+            return
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SHOW COLUMNS FROM External_Transfer_Log LIKE 'Transfer_Type'")
+                transfer_type_col = cursor.fetchone()
+                transfer_type_def = ""
+                if transfer_type_col:
+                    if isinstance(transfer_type_col, dict):
+                        transfer_type_def = str(transfer_type_col.get('Type', ''))
+                    elif isinstance(transfer_type_col, (list, tuple)) and len(transfer_type_col) > 1:
+                        transfer_type_def = str(transfer_type_col[1])
+
+                if "Return" not in transfer_type_def or "Outbound" not in transfer_type_def:
+                    logging.info("Updating External_Transfer_Log.Transfer_Type enum for BL/BR workflow...")
+                    cursor.execute("""
+                        ALTER TABLE External_Transfer_Log
+                        MODIFY COLUMN Transfer_Type ENUM('Outbound', 'Return', 'Free', 'Paid') DEFAULT 'Outbound'
+                    """)
+                    conn.commit()
+                ExternalTransferManager._transfer_schema_checked = True
+        except Exception as e:
+            logging.error(f"External transfer schema check error: {e}")
 
     # --------------------------------------------------------------------------
     #  Header Operations (Log)
@@ -63,6 +91,7 @@ class ExternalTransferManager:
 
     def save_transfer_header_only(self, transfer_id, partner_id, transaction_date, user_id, transfer_type='Outbound'):
         try:
+            self._ensure_transfer_schema()
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 if transfer_id:
@@ -831,6 +860,7 @@ class ExternalTransferManager:
         """
         conn = None
         try:
+            self._ensure_transfer_schema()
             conn = self.db.get_raw_connection()
             conn.start_transaction()
             cursor = conn.cursor(dictionary=True)
@@ -911,12 +941,15 @@ class ExternalTransferManager:
                         mov_type = 'Transfer_Return' if delta_qty > 0 else 'Adjustment'
                         mov_note = f"Retour suppl. BR #{transfer_id}" if delta_qty > 0 else f"Annulation partiel retour BR #{transfer_id}"
 
-                        self.movement_manager.create_movement_log(
+                        movement_id = self.movement_manager.create_movement_log(
                             product_id=p_id, movement_type=mov_type,
                             qty_change=Decimal(str(delta_qty)), unit_used='Unit',
                             batch_id=b_id, user_id=user_id,
                             notes=mov_note, external_cursor=cursor
                         )
+                        if movement_id is None:
+                            conn.rollback()
+                            return False, f"Impossible de journaliser le retour du lot {b_id}."
 
                     cursor.execute("""
                         UPDATE External_Transfer_Details
@@ -928,13 +961,16 @@ class ExternalTransferManager:
                     # منتج يتم إرجاعه لأول مرة في هذا الوصل
                     cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current + %s WHERE Batch_ID = %s", (new_qty, b_id))
 
-                    self.movement_manager.create_movement_log(
+                    movement_id = self.movement_manager.create_movement_log(
                         product_id=p_id, movement_type='Transfer_Return',
                         qty_change=Decimal(str(new_qty)), unit_used='Unit',
                         batch_id=b_id, user_id=user_id,
                         notes=f"Retour de {partner_name} (BR #{transfer_id})",
                         external_cursor=cursor
                     )
+                    if movement_id is None:
+                        conn.rollback()
+                        return False, f"Impossible de journaliser le retour du lot {b_id}."
 
                     cursor.execute("""
                         INSERT INTO External_Transfer_Details (Transfer_ID, Product_ID, Batch_ID, Qty_Transferred, Unit_Price, Line_Total, Line_Note)

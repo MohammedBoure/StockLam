@@ -32,10 +32,10 @@ except (AttributeError, TypeError):
 logger = logging.getLogger("MODERNLAM")
 
 TABLE_IMPORT_ORDER = [
-    'Users', 'Location_Types', 'Product_Families', 'Packaging_Units', 
+    'Users', 'Location_Types', 'Product_Families', 'Packaging_Units',
     'Manufacturers', 'Suppliers', 'External_Partners', 'Locations', 'Automates', 'Waste_Reasons', # Added External_Partners
-    'Products_Master', 'Product_Documents', 'Purchase_Orders', 'PO_Details', 
-    'Reception_Log', 'Reception_Details', 'Inventory_Batches', 
+    'Products_Master', 'Product_Documents', 'Purchase_Orders', 'PO_Details',
+    'Reception_Log', 'Reception_Details', 'Inventory_Batches',
     'Active_Containers', 'External_Transfer_Log', 'External_Transfer_Details', 'Stock_Movement_Log',
     'Supplier_Credit_Notes','Credit_Note_Details','Supplier_Payments'
 ]
@@ -64,28 +64,28 @@ for handler in logging.root.handlers[:]:
 
 class Database:
     _instance = None
-    _pool = None 
+    _pool = None
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
             cls._instance = super(Database, cls).__new__(cls, *args, **kwargs)
         return cls._instance
-    
+
     def __init__(self):
         if hasattr(self, 'db_config'):
             return
-        
+
         env_path = get_external_path(".env")
         load_dotenv(env_path)
-        
+
         self.db_config = {
             'host': os.getenv('DB_HOST', 'localhost'),
             'user': os.getenv('DB_USER'),
             'password': os.getenv('DB_PASSWORD'),
-            'database': os.getenv('DB_NAME'), 
+            'database': os.getenv('DB_NAME'),
             'port': int(os.getenv('DB_PORT', 3306))
         }
-        
+
         if not all([self.db_config['user'], self.db_config['password'], self.db_config['database']]):
             raise ValueError("Database configuration is missing in .env file.")
 
@@ -95,7 +95,7 @@ class Database:
             try:
                 Database._pool = pooling.MySQLConnectionPool(
                     pool_name="modernlam_pool",
-                    pool_size=32, 
+                    pool_size=32,
                     pool_reset_session=True,
                     use_pure=True,
                     auth_plugin='mysql_native_password',
@@ -148,8 +148,8 @@ class Database:
 
     def get_raw_connection(self):
         return Database._pool.get_connection()
-    
-    def _initialize_schema(self): 
+
+    def _initialize_schema(self):
         try:
             with self.get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -158,13 +158,13 @@ class Database:
                     logging.info("⚡ Schema exists. Skipping initialization checks.")
                     return
         except:
-            pass      
-        schema_queries = [    
+            pass
+        schema_queries = [
 
             """CREATE USER 'root'@'%' IDENTIFIED BY 'root';
             GRANT ALL PRIVILEGES ON Lab_Inventory_Enterprise_DB.* TO 'root'@'%';
             FLUSH PRIVILEGES;
-            """,   
+            """,
             # --- 1. Users & Auth ---
             """CREATE TABLE IF NOT EXISTS Users (
                 User_ID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -175,8 +175,8 @@ class Database:
                 Is_Active BOOLEAN DEFAULT TRUE,
                 Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );""",
-            
-            """INSERT IGNORE INTO Users (Username, Password, Role, Full_Name) 
+
+            """INSERT IGNORE INTO Users (Username, Password, Role, Full_Name)
             VALUES ('admin', 'admin123', 'Admin', 'Administrateur Système');""",
 
             # --- 2. MASTER DATA ---
@@ -206,7 +206,7 @@ class Database:
                 Website VARCHAR(200) NULL,
                 Deleted_At DATETIME NULL
             );""",
-            
+
             """CREATE TABLE IF NOT EXISTS Suppliers (
                 Supplier_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Supplier_Name VARCHAR(255) NOT NULL UNIQUE,
@@ -224,7 +224,7 @@ class Database:
                 Bank_Account_IBAN VARCHAR(150) NULL,
                 Deleted_At DATETIME NULL
             );""",
-            
+
             """CREATE TABLE IF NOT EXISTS External_Partners (
                 Partner_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Partner_Name VARCHAR(255) NOT NULL UNIQUE,
@@ -247,7 +247,7 @@ class Database:
 
             """CREATE TABLE IF NOT EXISTS Locations (
                 Location_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                Location_Name VARCHAR(100) NOT NULL, 
+                Location_Name VARCHAR(100) NOT NULL,
                 Parent_Location_ID INT UNSIGNED NULL,
                 Type_ID INT UNSIGNED NULL,
                 Temperature_Zone ENUM('Room Temp', 'Refrigerated 2-8', 'Frozen -20', 'Deep Freeze -80') NOT NULL DEFAULT 'Room Temp',
@@ -255,10 +255,10 @@ class Database:
                 FOREIGN KEY (Parent_Location_ID) REFERENCES Locations(Location_ID) ON DELETE SET NULL ON UPDATE CASCADE,
                 FOREIGN KEY (Type_ID) REFERENCES Location_Types(Type_ID) ON DELETE SET NULL ON UPDATE CASCADE
             );""",
-            
-            """INSERT IGNORE INTO Location_Types (Type_Name) VALUES 
+
+            """INSERT IGNORE INTO Location_Types (Type_Name) VALUES
                ('Bâtiment'), ('Étage'), ('Salle'), ('Réfrigérateur'), ('Congélateur'), ('Étagère'), ('Boîte');""",
-            
+
             """CREATE TABLE IF NOT EXISTS Automates (
                 Automate_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Automate_Name VARCHAR(150) NOT NULL UNIQUE,
@@ -269,17 +269,17 @@ class Database:
                 Deleted_At DATETIME NULL,
                 FOREIGN KEY (Location_ID) REFERENCES Locations(Location_ID) ON DELETE SET NULL ON UPDATE CASCADE
             );""",
-            
+
             """CREATE TABLE IF NOT EXISTS Waste_Reasons (
                 Reason_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Reason_Name VARCHAR(100) NOT NULL,
                 Is_Active BOOLEAN DEFAULT TRUE
             );""",
-            
+
             """CREATE TABLE IF NOT EXISTS Products_Master (
                 Product_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Product_Name VARCHAR(255) NOT NULL,
-                Family_ID INT UNSIGNED NOT NULL DEFAULT 1, 
+                Family_ID INT UNSIGNED NOT NULL DEFAULT 1,
                 Barcode VARCHAR(100) NULL,
                 Ordering_Unit VARCHAR(50) NOT NULL DEFAULT 'Carton',
                 Stock_Unit VARCHAR(50) NOT NULL DEFAULT 'Box/Kit',
@@ -293,7 +293,7 @@ class Database:
                 Manuf_ID INT UNSIGNED NOT NULL,
                 Preferred_Automate_ID INT UNSIGNED NULL,
                 Storage_Temp_Req VARCHAR(50) NULL,
-                Is_Billable BOOLEAN DEFAULT FALSE, 
+                Is_Billable BOOLEAN DEFAULT FALSE,
                 Deleted_At DATETIME NULL,
                 FOREIGN KEY (Family_ID) REFERENCES Product_Families(Family_ID) ON UPDATE CASCADE,
                 FOREIGN KEY (Manuf_ID) REFERENCES Manufacturers(Manuf_ID) ON UPDATE CASCADE,
@@ -308,12 +308,12 @@ class Database:
                 Upload_Date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON DELETE CASCADE ON UPDATE CASCADE
             );""",
-            
+
             # --- 3. PROCUREMENT CYCLE ---
             # تم التحديث بناءً على Dump (إضافة Invoice_Ref و Deleted_At و Status Enum الصحيح)
             """
             CREATE TABLE IF NOT EXISTS Purchase_Orders (
-                PO_ID BIGINT UNSIGNED PRIMARY KEY, 
+                PO_ID BIGINT UNSIGNED PRIMARY KEY,
                 Supplier_ID INT UNSIGNED NOT NULL,
                 Order_Date DATE NOT NULL,
                 Expected_Delivery_Date DATE,
@@ -331,10 +331,10 @@ class Database:
                 FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
             );
             """,
-            
+
             """CREATE TABLE IF NOT EXISTS PO_Details (
                 ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                PO_ID BIGINT UNSIGNED NOT NULL, 
+                PO_ID BIGINT UNSIGNED NOT NULL,
                 Product_ID INT UNSIGNED NOT NULL,
                 Qty_Ordered INT UNSIGNED NOT NULL,
                 Ordering_Unit VARCHAR(50) DEFAULT NULL,
@@ -343,11 +343,11 @@ class Database:
                 Tax_Rate_Percent DECIMAL(5, 2) DEFAULT 0.00,
                 Line_Total_HT DECIMAL(15, 2) DEFAULT 0.00,
                 Line_Total_TTC DECIMAL(15, 2) DEFAULT 0.00,
-                Item_Note VARCHAR(255) NULL, 
+                Item_Note VARCHAR(255) NULL,
                 FOREIGN KEY (PO_ID) REFERENCES Purchase_Orders(PO_ID) ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE
             );"""
-            
+
             # --- 4. INVENTORY & RECEPTION ---
             # تم التحديث بناءً على Dump (إضافة Status, Variance_Notes, Total_Discount)
             """
@@ -364,8 +364,8 @@ class Database:
                 Invoice_Total_TTC DECIMAL(15, 2) DEFAULT 0.00,
                 Status ENUM('Completed', 'Variance Detected', 'Pending Audit') DEFAULT 'Completed',
                 Variance_Notes TEXT NULL,
-                Receiver_User_ID INT UNSIGNED DEFAULT NULL, 
-                Received_By INT UNSIGNED DEFAULT NULL, 
+                Receiver_User_ID INT UNSIGNED DEFAULT NULL,
+                Received_By INT UNSIGNED DEFAULT NULL,
                 Total_Discount DECIMAL(15, 2) DEFAULT 0.00,
                 UNIQUE KEY uq_supplier_bl (Supplier_ID, Supplier_BL_Ref),
                 UNIQUE KEY uq_supplier_invoice (Supplier_ID, Supplier_Invoice_Ref),
@@ -388,7 +388,7 @@ class Database:
                 FOREIGN KEY (PO_Detail_ID) REFERENCES PO_Details(ID) ON DELETE SET NULL ON UPDATE CASCADE,
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE
             );""",
-            
+
             """CREATE TABLE IF NOT EXISTS Inventory_Batches (
                 Batch_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 Internal_Barcode VARCHAR(50) NULL,
@@ -404,7 +404,7 @@ class Database:
                 PO_ID BIGINT UNSIGNED NULL,
                 BR_ID INT UNSIGNED NULL,
                 Status ENUM('Available', 'Quarantined', 'Expired', 'Depleted') DEFAULT 'Available',
-                Reception_Note TEXT NULL, 
+                Reception_Note TEXT NULL,
                 Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (Batch_ID),
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE,
@@ -412,7 +412,7 @@ class Database:
                 FOREIGN KEY (PO_ID) REFERENCES Purchase_Orders(PO_ID) ON DELETE SET NULL ON UPDATE CASCADE,
                 FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL ON UPDATE CASCADE
             );""",
-            
+
             """CREATE TABLE IF NOT EXISTS Active_Containers (
                 Container_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Parent_Batch_ID BIGINT UNSIGNED NOT NULL,
@@ -433,8 +433,8 @@ class Database:
                 Transfer_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Transaction_Date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 Partner_ID INT UNSIGNED NOT NULL,
-                Transfer_Type ENUM('Free', 'Paid') DEFAULT 'Free', 
-                Total_Amount DECIMAL(15, 2) DEFAULT 0.00, 
+                Transfer_Type ENUM('Outbound', 'Return', 'Free', 'Paid') DEFAULT 'Outbound',
+                Total_Amount DECIMAL(15, 2) DEFAULT 0.00,
                 Status ENUM('Draft', 'Completed', 'Cancelled') DEFAULT 'Draft',
                 Notes TEXT,
                 Created_By INT UNSIGNED,
@@ -455,7 +455,7 @@ class Database:
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID) ON UPDATE CASCADE,
                 FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID)
             );""",
-            
+
             # --- 6. AUDIT TRAIL ---
             # تم التحديث ليشمل External_Transfer في Enum
             """CREATE TABLE IF NOT EXISTS Stock_Movement_Log (
@@ -466,9 +466,9 @@ class Database:
                 Batch_ID BIGINT UNSIGNED NULL,
                 Container_ID BIGINT UNSIGNED NULL,
                 Movement_Type ENUM(
-                    'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run', 
-                    'Calibration', 'Adjustment', 'Waste', 'Transfer', 
-                    'External_Transfer', 'Return_To_Supplier'
+                    'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run',
+                    'Calibration', 'Adjustment', 'Waste', 'Transfer',
+                    'External_Transfer', 'Transfer_Return', 'Return_To_Supplier'
                 ) NOT NULL,
                 Reason_ID INT UNSIGNED NULL,
                 Qty_Change DECIMAL(10, 2) NOT NULL,
@@ -488,21 +488,21 @@ class Database:
                 Supplier_ID INT UNSIGNED NOT NULL,      -- يربط مع UMC LAB PLUS
                 BR_ID INT UNSIGNED NULL,                -- ربط اختياري مع وصل الاستلام الأصلي
                 Credit_Date DATE NOT NULL,              -- مثال: 30/12/2025
-                
+
                 -- نوع الـ Avoir: هل هو إرجاع بضاعة أم تصحيح مالي فقط؟
                 Type ENUM('Return_Goods', 'Price_Correction', 'Billing_Error') DEFAULT 'Return_Goods',
-                
+
                 Status ENUM('Draft', 'Validated', 'Used') DEFAULT 'Draft',
-                
+
                 -- المبالغ المالية
                 Total_Amount_HT DECIMAL(15, 2) DEFAULT 0.00,
                 Total_TVA DECIMAL(15, 2) DEFAULT 0.00,
                 Total_Amount_TTC DECIMAL(15, 2) DEFAULT 0.00, -- مثال: 62307.21
-                
+
                 Notes TEXT NULL,                        -- ملاحظات إضافية (مثل اسم البائع: RACHA SIRINE)
                 Created_By INT UNSIGNED NULL,
                 Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
-                
+
                 FOREIGN KEY (Supplier_ID) REFERENCES Suppliers(Supplier_ID) ON UPDATE CASCADE,
                 FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL,
                 FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
@@ -513,17 +513,17 @@ class Database:
                 Detail_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 Credit_Note_ID INT UNSIGNED NOT NULL,
                 Product_ID INT UNSIGNED NOT NULL,
-                
+
                 -- الربط مع المخزون (هام جداً بناءً على الصورة)
                 Batch_ID BIGINT UNSIGNED NULL,          -- لربطها بالباتش في النظام لدينا
                 Lot_Number VARCHAR(100) NULL,           -- لتخزين "032535A" كما في الصورة
                 Expiry_Date DATE NULL,                  -- لتخزين "01/05/28" كما في الصورة
-                
+
                 Qty_Returned DECIMAL(10, 2) DEFAULT 0.00, -- الكمية المرجعة (مثال: 10)
-                
+
                 Unit_Price DECIMAL(10, 2) NOT NULL,       -- سعر الوحدة في الـ Avoir
                 Line_Total DECIMAL(15, 2) NOT NULL,       -- المجموع للسطر
-                
+
                 FOREIGN KEY (Credit_Note_ID) REFERENCES Supplier_Credit_Notes(Credit_Note_ID) ON DELETE CASCADE,
                 FOREIGN KEY (Product_ID) REFERENCES Products_Master(Product_ID),
                 FOREIGN KEY (Batch_ID) REFERENCES Inventory_Batches(Batch_ID) ON DELETE SET NULL
@@ -535,7 +535,7 @@ class Database:
                 Payment_Date DATE NOT NULL,
                 Amount DECIMAL(15, 2) NOT NULL,
                 Payment_Method ENUM('Espèce', 'Chèque', 'Virement', 'Versement', 'Autre') DEFAULT 'Espèce',
-                Reference VARCHAR(100) NULL, 
+                Reference VARCHAR(100) NULL,
                 Notes TEXT NULL,
                 Created_By INT UNSIGNED NULL,
                 Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -545,7 +545,7 @@ class Database:
 
 
         ]
-        
+
         index_queries = [
             "CREATE INDEX idx_product_barcode ON Products_Master(Barcode);",
             "CREATE INDEX idx_batch_expiry ON Inventory_Batches(Expiry_Date);",
@@ -569,7 +569,7 @@ class Database:
                 cursor = conn.cursor()
                 # تعطيل فحص القيود مؤقتاً لتجنب مشاكل ترتيب الإنشاء
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-                
+
                 logging.info("Initializing schema tables...")
                 for query in schema_queries:
                     try:
@@ -577,15 +577,15 @@ class Database:
                         while cursor.nextset(): pass
                     except mysql.connector.Error as err:
                         logging.warning(f"Schema warning: {err}")
-                
+
                 # --- AUTO MIGRATIONS (Safety net for future updates) ---
-                
+
                 # 1. Purchase_Orders: Ensure columns exist
                 try:
                     cursor.execute("SHOW COLUMNS FROM Purchase_Orders LIKE 'Supplier_Invoice_Ref'")
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE Purchase_Orders ADD COLUMN Supplier_Invoice_Ref VARCHAR(150) NULL;")
-                    
+
                     cursor.execute("SHOW COLUMNS FROM Purchase_Orders LIKE 'Deleted_At'")
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE Purchase_Orders ADD COLUMN Deleted_At DATETIME NULL;")
@@ -596,12 +596,12 @@ class Database:
                     cursor.execute("SHOW COLUMNS FROM Reception_Log LIKE 'Variance_Notes'")
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE Reception_Log ADD COLUMN Variance_Notes TEXT NULL;")
-                    
+
                     cursor.execute("SHOW COLUMNS FROM Reception_Log LIKE 'Total_Discount'")
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE Reception_Log ADD COLUMN Total_Discount DECIMAL(15,2) DEFAULT 0.00;")
                 except Exception: pass
-                
+
                 # 3. Create Indexes
                 logging.info("Creating performance indexes...")
                 for query in index_queries:
@@ -609,7 +609,7 @@ class Database:
                         cursor.execute(query)
                         while cursor.nextset(): pass
                     except mysql.connector.Error:
-                        continue 
+                        continue
 
                 try:
                     cursor.execute("SHOW COLUMNS FROM Supplier_Payments LIKE 'BR_ID'")
@@ -619,12 +619,12 @@ class Database:
                         cursor.execute("ALTER TABLE Supplier_Payments ADD CONSTRAINT fk_payment_br FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL;")
                 except Exception as e:
                     logging.warning(f"Migration error (Supplier_Payments): {e}")
-                
+
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
                 logging.info("✅ Schema initialized successfully.")
 
 
-                
+
 
 
         except mysql.connector.Error as err:
@@ -635,10 +635,10 @@ class Database:
         # استخدام مسار مطلق للمجلد المؤقت لتجنب مشاكل الصلاحيات
         temp_dir = os.path.abspath('temp_backup_csv')
         conn_sqlalchemy = None
-        
+
         try:
             # 1. تنظيف وتجهيز المجلد المؤقت
-            if os.path.exists(temp_dir): 
+            if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
             os.makedirs(temp_dir, exist_ok=True)
 
@@ -652,7 +652,7 @@ class Database:
             # 3. جلب قائمة الجداول الفعلية من قاعدة البيانات
             inspector = sqlalchemy.inspect(self.engine)
             all_db_tables = inspector.get_table_names()
-            
+
             if not all_db_tables:
                 return False, "قاعدة البيانات فارغة، لا توجد جداول لتصديرها."
 
@@ -671,7 +671,7 @@ class Database:
                     # قراءة الجدول باستخدام Pandas
                     # استخدام SQL المباشر مع SQLAlchemy لتجنب مشاكل التنسيق
                     df = pd.read_sql_query(text(f"SELECT * FROM `{table_name}`"), conn_sqlalchemy)
-                    
+
                     if df.empty:
                         # إنشاء ملف فارغ بالأعمدة فقط للحفاظ على الهيكل عند الاستعادة
                         df.to_csv(csv_path, index=False, encoding='utf-8', na_rep='<NULL>')
@@ -695,7 +695,7 @@ class Database:
                     for root, _, files in os.walk(temp_dir):
                         for file in files:
                             zipf.write(os.path.join(root, file), file)
-                
+
                 return True, f"تم إنشاء النسخة الاحتياطية بنجاح: {os.path.basename(output_zip_path)}"
             else:
                 return False, "فشل تصدير أي بيانات."
@@ -703,12 +703,12 @@ class Database:
         except Exception as e:
             logging.error(f"❌ Backup failed: {e}")
             return False, f"خطأ غير متوقع أثناء النسخ الاحتياطي: {str(e)}"
-        
+
         finally:
             # إغلاق الاتصال وتنظيف الملفات المؤقتة
             if conn_sqlalchemy:
                 conn_sqlalchemy.close()
-            if os.path.exists(temp_dir): 
+            if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
     def restore_database_csv(self, input_zip_path):
@@ -716,7 +716,7 @@ class Database:
         استعادة آمنة: لا تقوم بمسح البيانات إلا إذا كان الملف البديل يحتوي على بيانات فعلاً.
         """
         import numpy as np
-        
+
         temp_dir = 'temp_restore_csv'
         conn = None
         try:
@@ -727,15 +727,15 @@ class Database:
                 zip_ref.extractall(temp_dir)
 
             conn = self.get_raw_connection()
-            conn.start_transaction() 
+            conn.start_transaction()
             cursor = conn.cursor()
-            
+
             # تعطيل القيود مؤقتاً
             cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-            
+
             # تحديد الجداول الموجودة في النسخة الاحتياطية
             backup_files = [f for f in os.listdir(temp_dir) if f.endswith('.csv')]
-            
+
             # قائمة الجداول التي سيتم استعادتها فعلياً (التي تحتوي على بيانات فقط)
             tables_to_restore_data = []
 
@@ -745,17 +745,17 @@ class Database:
             for file_name in backup_files:
                 table_name = file_name.replace('.csv', '')
                 csv_path = os.path.join(temp_dir, file_name)
-                
+
                 try:
                     # قراءة سريعة للتأكد هل الملف فارغ أم لا
-                    df_check = pd.read_csv(csv_path, nrows=1) 
+                    df_check = pd.read_csv(csv_path, nrows=1)
                     if df_check.empty:
                         logging.warning(f"⚠️ Backup file for '{table_name}' is EMPTY. Skipping restore for this table to preserve current data.")
                         continue # تخطي هذا الجدول، لن نمسح البيانات الحالية
-                    
+
                     # إذا وصلنا هنا، فالملف يحتوي على بيانات، نضيفه للقائمة
                     tables_to_restore_data.append(table_name)
-                    
+
                 except Exception as e:
                     logging.warning(f"⚠️ Error checking file {file_name}: {e}")
                     continue
@@ -767,7 +767,7 @@ class Database:
 
             # 2. مرحلة التنظيف (Cleaning Phase) - فقط للجداول التي لها بديل
             logging.info(f"🧹 Cleaning existing data for {len(tables_to_restore_data)} tables...")
-            
+
             cursor.execute("SHOW TABLES")
             existing_db_tables = [row[0] for row in cursor.fetchall()]
 
@@ -783,7 +783,7 @@ class Database:
 
             # 3. مرحلة الاستعادة (Restore Phase)
             logging.info("📥 Restoring data...")
-            
+
             # ترتيب الاستعادة حسب الأهمية
             ordered_tables = [t for t in TABLE_IMPORT_ORDER if t in tables_to_restore_data]
             remaining_tables = [t for t in tables_to_restore_data if t not in TABLE_IMPORT_ORDER]
@@ -791,18 +791,18 @@ class Database:
 
             for table_name in final_restore_list:
                 csv_file = os.path.join(temp_dir, f"{table_name}.csv")
-                
+
                 try:
                     df = pd.read_csv(csv_file, keep_default_na=False, na_values=['<NULL>', 'nan', 'NaN'])
                 except:
                     continue
 
                 df = df.replace({np.nan: None})
-                
+
                 # تنظيف الأعمدة
                 df.columns = df.columns.astype(str)
                 df = df.loc[:, ~df.columns.str.contains('^Unnamed', na=False)]
-                
+
                 # مطابقة الأعمدة مع قاعدة البيانات
                 with self.engine.connect() as conn_inner:
                     try:
@@ -815,7 +815,7 @@ class Database:
                 if not common_cols: continue
 
                 df = df[common_cols]
-                
+
                 cols = ",".join([f"`{col}`" for col in common_cols])
                 placeholders = ",".join(["%s"] * len(common_cols))
                 sql = f"INSERT INTO `{table_name}` ({cols}) VALUES ({placeholders})"
@@ -834,7 +834,7 @@ class Database:
                 for i in range(0, len(cleaned_data), batch_size):
                     batch = cleaned_data[i:i + batch_size]
                     cursor.executemany(sql, batch)
-                
+
                 logging.info(f"✅ Restored {len(cleaned_data)} rows to {table_name}")
 
             cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
@@ -873,19 +873,19 @@ class Database:
                     try:
                         # قراءة البيانات
                         df = pd.read_sql(text(f"SELECT * FROM `{table_name}`"), conn)
-                        
+
                         # حفظ كملف Excel باستخدام engine 'openpyxl'
                         df.to_excel(excel_path, index=False, engine='openpyxl')
                         logging.info(f"✅ Exported: {table_name}")
                     except Exception as e:
                         logging.warning(f"⚠️ Could not backup table {table_name}: {e}")
-            
+
             # ضغط الملفات
             with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root, _, files in os.walk(temp_dir):
                     for file in files:
                         zipf.write(os.path.join(root, file), file)
-            
+
             return True, "Success"
         except Exception as e:
             logging.error(f"❌ Backup failed: {e}")
@@ -908,7 +908,7 @@ class Database:
         temp_dir = 'temp_restore_excel'
         conn = None
         try:
-            if os.path.exists(temp_dir): 
+            if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
             os.makedirs(temp_dir)
 
@@ -918,48 +918,48 @@ class Database:
             conn = self.get_raw_connection()
             conn.start_transaction()
             cursor = conn.cursor()
-            
+
             cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-            
+
             excel_files = [f for f in os.listdir(temp_dir) if f.endswith('.xlsx')]
-            
+
             TABLE_IMPORT_ORDER = [
-                'Users', 'Location_Types', 'Product_Families', 'Packaging_Units', 
-                'Manufacturers', 'Suppliers', 'External_Partners', 'Locations', 
-                'Automates', 'Waste_Reasons', 'Products_Master', 'Purchase_Orders', 
+                'Users', 'Location_Types', 'Product_Families', 'Packaging_Units',
+                'Manufacturers', 'Suppliers', 'External_Partners', 'Locations',
+                'Automates', 'Waste_Reasons', 'Products_Master', 'Purchase_Orders',
                 'PO_Details', 'Reception_Log', 'Reception_Details', 'Inventory_Batches',
                 'Supplier_Credit_Notes','Credit_Note_Details'
             ]
 
             ordered_files = [f"{t}.xlsx" for t in TABLE_IMPORT_ORDER if f"{t}.xlsx" in excel_files]
             other_files = [f for f in excel_files if f not in ordered_files]
-            
+
             for file_name in (ordered_files + other_files):
                 table_name = file_name.replace('.xlsx', '')
                 file_path = os.path.join(temp_dir, file_name)
-                
+
                 try:
                     df = pd.read_excel(file_path, engine='openpyxl')
-                    
+
                     df.columns = df.columns.astype(str)
                     df = df.loc[:, ~df.columns.str.contains('^Unnamed', na=False)]
-                    
+
                     if df.empty:
                         logging.info(f"⚪ Skipping empty table: {table_name}")
                         continue
 
                     cursor.execute(f"DELETE FROM `{table_name}`")
-                    
+
                     cleaned_data = []
                     for _, row_data in df.iterrows():
                         row_list = []
                         for col in df.columns:
                             val = row_data[col]
-                            
+
                             # معالجة خاصة لعمود رقم اللوت (Lot_Number)
                             # إذا كانت القيمة فارغة، نضع قيمة افتراضية لمنع الخطأ 1048
                             if col == 'Lot_Number' and (pd.isna(val) or str(val).strip() == ''):
-                                row_list.append("NON_DEFINI") 
+                                row_list.append("NON_DEFINI")
                             elif pd.isna(val) or str(val).strip() == 'None' or str(val).strip() == 'NaT':
                                 row_list.append(None)
                             else:
@@ -970,7 +970,7 @@ class Database:
                     cols_str = ", ".join([f"`{c}`" for c in df.columns])
                     placeholders = ", ".join(["%s"] * len(df.columns))
                     sql = f"INSERT INTO `{table_name}` ({cols_str}) VALUES ({placeholders})"
-                    
+
                     # تنفيذ الإدخال بالجملة (Bulk Insert)
                     if cleaned_data:
                         cursor.executemany(sql, cleaned_data)
@@ -990,34 +990,34 @@ class Database:
             if conn: conn.rollback()
             logging.error(f"❌ Global Restore Failure: {e}")
             return False, f"فشلت عملية الاستعادة: {str(e)}"
-        
+
         finally:
-            if conn and conn.is_connected(): 
+            if conn and conn.is_connected():
                 conn.close()
-            if os.path.exists(temp_dir): 
+            if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
     def export_and_purge_tables(self, output_zip_path, days_to_keep=365):
         tables_to_archive = ['Stock_Movement_Log', 'Reception_Log']
         cutoff_date = date.today() - timedelta(days=days_to_keep)
         temp_dir = 'temp_archive_logs'
-        
+
         try:
             if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
             os.makedirs(temp_dir)
-            
+
             has_data = False
             with self.engine.connect() as conn:
                 for table in tables_to_archive:
                     col_date = 'Transaction_Date' if table == 'Stock_Movement_Log' else 'Reception_Date'
                     query = text(f"SELECT * FROM {table} WHERE {col_date} < :cutoff")
                     df = pd.read_sql(query, conn, params={"cutoff": cutoff_date})
-                    
+
                     if not df.empty:
                         has_data = True
                         csv_path = os.path.join(temp_dir, f"{table}.csv")
                         df.to_csv(csv_path, index=False, encoding='utf-8')
-            
+
             if has_data:
                 with self.get_db_connection() as del_conn:
                     del_cursor = del_conn.cursor()
@@ -1060,7 +1060,7 @@ class Database:
                     if_exists='append',
                     index=False
                 )
-                
+
             logging.info(f"✅ Successfully restored {len(df)} rows to {table_name}")
             return True
 
@@ -1070,7 +1070,7 @@ class Database:
     def activate_archive_view(self, input_zip_path):
         temp_dir = 'temp_view_archive'
         archive_prefix = "ARCHIVE_VIEW_"
-        
+
         try:
             if hasattr(self, 'is_archive_mode') and self.is_archive_mode:
                 return False, "النظام بالفعل في وضع الأرشيف."
@@ -1083,7 +1083,7 @@ class Database:
 
             conn = self.get_raw_connection()
             cursor = conn.cursor()
-            
+
             files = [f for f in os.listdir(temp_dir) if f.endswith('.csv')]
             if not files:
                 return False, "الملف المحدد لا يحتوي على بيانات CSV صالحة."
@@ -1093,34 +1093,34 @@ class Database:
             for csv_file in files:
                 original_table = os.path.splitext(csv_file)[0]
                 archive_table = f"{archive_prefix}{original_table}"
-                
+
                 cursor.execute(f"DROP TABLE IF EXISTS {archive_table}")
                 cursor.execute(f"CREATE TABLE {archive_table} LIKE {original_table}")
-                
+
                 csv_path = os.path.join(temp_dir, csv_file)
                 df = pd.read_csv(csv_path)
-                
+
                 df.columns = df.columns.astype(str)
                 df = df.loc[:, ~df.columns.str.contains('^Unnamed', na=False)]
                 valid_cols = [c for c in df.columns if c.lower() != 'nan' and c.strip() != '']
                 df = df[valid_cols]
                 df = df.where(pd.notnull(df), None)
-                
+
                 if not df.empty:
                     cols = ",".join([f"`{col}`" for col in df.columns])
                     placeholders = ",".join(["%s"] * len(df.columns))
                     sql = f"INSERT INTO {archive_table} ({cols}) VALUES ({placeholders})"
                     data = [tuple(x) for x in df.to_numpy()]
                     cursor.executemany(sql, data)
-                
+
                 self.table_map[original_table] = archive_table
 
             conn.commit()
             conn.close()
-            
+
             self.is_archive_mode = True
             with open(ARCHIVE_VIEW_FLAG_FILE, 'w') as f: f.write('1')
-            
+
             return True, "تم تفعيل وضع الأرشيف (Read-Only). يمكنك الآن تصفح السجلات القديمة."
 
         except Exception as e:
@@ -1140,8 +1140,8 @@ class Database:
             conn.close()
         except Exception as e:
             logging.error(f"Error cleaning archive views: {e}")
-        
-        self.table_map = {} 
+
+        self.table_map = {}
         self.is_archive_mode = False
         if os.path.exists(ARCHIVE_VIEW_FLAG_FILE):
             os.remove(ARCHIVE_VIEW_FLAG_FILE)
@@ -1151,7 +1151,7 @@ class Database:
         if hasattr(self, 'is_archive_mode') and self.is_archive_mode:
             return self.table_map.get(table_name, table_name)
         return table_name
-    
+
     def export_all_tables_to_csv_zip(self, output_zip_path='backup_csv.zip'): return self.backup_database_csv(output_zip_path)
     def restore_from_archive_zip_destructive(self, input_zip_path, tables_to_restore=None): return self.restore_database_csv(input_zip_path)
     def get_available_archives(self): return []
