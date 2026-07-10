@@ -51,6 +51,7 @@ class InvoiceEditorWidget(QWidget):
         self.last_persist_signature = None
         self.transfer_type_mode = 'Outbound'
         self.locked_return_partner_id = None
+        self.allowed_return_batch_ids = set()
 
         self.init_ui()
         self.apply_internal_styles()
@@ -198,8 +199,34 @@ class InvoiceEditorWidget(QWidget):
     # =========================================================================
 
 
+    def is_return_mode(self):
+        return getattr(self, 'transfer_type_mode', 'Outbound') == 'Return'
+
+    def get_effective_return_partner_id(self):
+        if not self.is_return_mode():
+            return None
+
+        partner_id = self.locked_return_partner_id or self.combo_partner.currentData()
+        try:
+            return int(partner_id) if partner_id else None
+        except (TypeError, ValueError):
+            return None
+
+    def sync_return_partner_combo(self, partner_id):
+        if not partner_id:
+            return
+        index = self.combo_partner.findData(partner_id)
+        if index >= 0 and self.combo_partner.currentIndex() != index:
+            previous_block = self.combo_partner.blockSignals(True)
+            self.combo_partner.setCurrentIndex(index)
+            self.combo_partner.blockSignals(previous_block)
+
     def on_partner_changed(self):
-        if getattr(self, 'transfer_type_mode', 'Outbound') == 'Return':
+        if self.is_return_mode():
+            partner_id = self.get_effective_return_partner_id()
+            if partner_id and not self.locked_return_partner_id:
+                self.locked_return_partner_id = partner_id
+            self.sync_return_partner_combo(partner_id)
             self.refresh_batches_cache(include_zero=True)
             self.table.setRowCount(0)
 
@@ -266,6 +293,7 @@ class InvoiceEditorWidget(QWidget):
         self.table.setRowCount(0)
         self.last_persist_signature = None
         self.locked_return_partner_id = None
+        self.allowed_return_batch_ids = set()
         header = None
 
         if transfer_id:
@@ -337,17 +365,25 @@ class InvoiceEditorWidget(QWidget):
             self.btn_validate_header.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; border-radius: 6px; padding: 0 16px;")
 
     def save_header_only(self, show_message=True):
-        partner_id = self.combo_partner.currentData()
+        transfer_type = getattr(self, 'transfer_type_mode', 'Outbound')
+        partner_id = self.get_effective_return_partner_id() if transfer_type == 'Return' else self.combo_partner.currentData()
         if not partner_id:
             QMessageBox.warning(self, "Attention", "Veuillez selectionner un partenaire.")
             return False
+
+        if transfer_type == 'Return':
+            partner_id = int(partner_id)
+            if self.locked_return_partner_id and partner_id != self.locked_return_partner_id:
+                QMessageBox.warning(self, "Attention", "Le bon de retour doit garder le meme partenaire que le transfert d'origine.")
+                return False
+            self.locked_return_partner_id = partner_id
+            self.sync_return_partner_combo(partner_id)
 
         if self.locked_return_partner_id and int(partner_id) != self.locked_return_partner_id:
             QMessageBox.warning(self, "Attention", "Le bon de retour doit garder le meme partenaire que le transfert d'origine.")
             return False
 
         transaction_date = self.inp_date.date().toString("yyyy-MM-dd") + " 00:00:00"
-        transfer_type = getattr(self, 'transfer_type_mode', 'Outbound')
         success, msg, transfer_id = self.manager.external_transfers.save_transfer_header_only(
             self.current_id,
             partner_id,
@@ -382,15 +418,17 @@ class InvoiceEditorWidget(QWidget):
         # إذا كان النص المكتوب يطابق تماماً أحد الأكواد في القاموس
         if clean_text in self.barcode_map:
             batch = self.barcode_map[clean_text]
+            added = self.add_batch_to_invoice(batch)
 
             # منع التكرار الفوري الناتج عن سرعة الماسح
             self.barcode_input.blockSignals(True)
-            self.add_batch_to_invoice(batch) # استدعاء دالة الإضافة الأصلية
+            # استدعاء دالة الإضافة الأصلية
             self.barcode_input.clear()
             self.barcode_input.blockSignals(False)
 
             # تأثير بصري للنجاح
-            self.barcode_input.setStyleSheet("border: 2px solid #2ecc71; background-color: #e8f5e9;")
+            color = "#2ecc71" if added else "#e74c3c"
+            self.barcode_input.setStyleSheet(f"border: 2px solid {color}; background-color: #e8f5e9;")
             QTimer.singleShot(500, lambda: self.barcode_input.setStyleSheet(""))
 
     def refresh_batches_cache(self, include_zero=False):
@@ -402,8 +440,9 @@ class InvoiceEditorWidget(QWidget):
             # إذا كنا في وضع التعديل، نطلب من المدير جلب حتى المنتجات الصفرية
             ttype = getattr(self, 'transfer_type_mode', 'Outbound')
             if ttype == 'Return':
-                partner_id = self.combo_partner.currentData()
+                partner_id = self.get_effective_return_partner_id()
                 if partner_id:
+                    self.sync_return_partner_combo(partner_id)
                     all_batches = self.manager.external_transfers.get_returnable_batches_for_partner(partner_id, exclude_return_transfer_id=self.current_id)
                     self.barcode_input.setPlaceholderText("🔎 Scanner le code-barres ou rechercher par Nom, Lot...")
                     self.barcode_input.setEnabled(True)
@@ -418,6 +457,7 @@ class InvoiceEditorWidget(QWidget):
                     include_zero_stock=include_zero
                 )
             self.batches_cache = self.filter_batches_for_transfer_scope(all_batches)
+            self.allowed_return_batch_ids = set()
 
             suggestions = []
             self.search_map = {}
@@ -428,6 +468,13 @@ class InvoiceEditorWidget(QWidget):
                 qty = quantity_to_int(qty_source or 0)
                 batch_id = b.get('Batch_ID')
                 is_current_transfer_batch = batch_id in self.current_transfer_batch_ids
+                if ttype == 'Return':
+                    if not self.is_return_batch_allowed(b, allow_zero=True):
+                        continue
+                    try:
+                        self.allowed_return_batch_ids.add(int(batch_id))
+                    except (TypeError, ValueError):
+                        continue
 
                 # بناء الفهارس للبحث السريع
                 if b.get('Internal_Barcode'):
@@ -445,6 +492,33 @@ class InvoiceEditorWidget(QWidget):
                     self.search_map[txt] = b
 
             self.completer.setModel(QStringListModel(suggestions))
+
+    def is_return_batch_allowed(self, batch, allow_zero=False):
+        if not self.is_return_mode():
+            return True
+
+        partner_id = self.get_effective_return_partner_id()
+        if not partner_id or not batch:
+            return False
+
+        batch_partner_id = batch.get('Partner_ID')
+        if batch_partner_id is not None:
+            try:
+                if int(batch_partner_id) != int(partner_id):
+                    return False
+            except (TypeError, ValueError):
+                return False
+
+        try:
+            batch_id = int(batch.get('Batch_ID'))
+        except (TypeError, ValueError):
+            return False
+
+        qty = quantity_to_int(batch.get('Available_To_Return') or 0)
+        if allow_zero:
+            return qty > 0 or batch_id in self.current_transfer_batch_ids
+
+        return batch_id in self.allowed_return_batch_ids and (qty > 0 or batch_id in self.current_transfer_batch_ids)
 
     def filter_batches_for_transfer_scope(self, batches):
         if not self.current_id:
@@ -552,6 +626,15 @@ class InvoiceEditorWidget(QWidget):
             return False
 
         items = self.build_items_data()
+        if self.is_return_mode():
+            invalid_batch_ids = [
+                item['batch_id'] for item in items
+                if item['batch_id'] not in self.allowed_return_batch_ids
+                and item['batch_id'] not in self.current_transfer_batch_ids
+            ]
+            if invalid_batch_ids:
+                QMessageBox.warning(self, "Attention", "Certains lots ne sont pas disponibles pour ce sous-traitant.")
+                return False
         signature = self.items_signature(items)
         if signature == self.last_persist_signature:
             return True
@@ -562,7 +645,7 @@ class InvoiceEditorWidget(QWidget):
             if transfer_type == 'Return':
                 success, result = self.manager.external_transfers.save_and_sync_return_stock(
                     self.current_id,
-                    self.combo_partner.currentData(),
+                    self.get_effective_return_partner_id(),
                     items,
                     self.get_current_user_id()
                 )
@@ -586,6 +669,10 @@ class InvoiceEditorWidget(QWidget):
         return True
 
     def add_batch_to_invoice(self, batch, initial_qty=1):
+        if self.is_return_mode() and not self.is_return_batch_allowed(batch):
+            QMessageBox.warning(self, "Attention", "Ce lot n'appartient pas au sous-traitant selectionne ou n'est plus disponible au retour.")
+            return False
+
         if not self.is_loading_transfer and not self.save_header_only(show_message=False):
             return False
         """إضافة المنتج للجدول مع تصحيح أخطاء sb_qty وربط الحسابات"""

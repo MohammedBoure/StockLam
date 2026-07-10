@@ -820,6 +820,7 @@ class ExternalTransferManager:
 
                 # إعداد النتيجة لتشبه الكاش العادي لكن مع حقل Available_To_Return
                 for r in results:
+                    r['Partner_ID'] = int(partner_id)
                     r['Available_To_Return'] = r['Total_Sent'] - r['Total_Returned']
                 return results
         except Exception as e:
