@@ -9,7 +9,7 @@ class BillingTab(QWidget):
     def __init__(self, data_manager):
         super().__init__()
         self.manager = data_manager
-        
+
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
@@ -25,9 +25,10 @@ class BillingTab(QWidget):
 
         # ربط الإشارات
         self.list_view.request_new.connect(self.open_new_invoice)
+        self.list_view.request_new_return.connect(self.open_new_return)
         self.list_view.request_edit.connect(self.open_edit_invoice)
         self.list_view.request_pdf.connect(self.handle_pdf_request) # تأكد من وجود دالة handle_pdf_request أو ربطها بالـ PDF مباشرة
-        
+
         self.editor_view.request_back.connect(self.show_list)
 
         self.show_list()
@@ -36,11 +37,22 @@ class BillingTab(QWidget):
         self.list_view.load_data()
         self.stack.setCurrentWidget(self.list_view)
 
-    def open_new_invoice(self):
+    def open_new_invoice(self, partner_id=None):
+        self.editor_view.transfer_type_mode = 'Outbound'
         self.editor_view.load_context(None)
+        if partner_id:
+            idx = self.editor_view.combo_partner.findData(partner_id)
+            if idx >= 0:
+                self.editor_view.combo_partner.setCurrentIndex(idx)
+        self.stack.setCurrentWidget(self.editor_view)
+
+    def open_new_return(self, partner_id=None):
+        self.editor_view.transfer_type_mode = 'Return'
+        self.editor_view.load_context(None, preselected_partner_id=partner_id)
         self.stack.setCurrentWidget(self.editor_view)
 
     def open_edit_invoice(self, transfer_id):
+        # type is loaded inside load_context
         self.editor_view.load_context(transfer_id)
         self.stack.setCurrentWidget(self.editor_view)
 

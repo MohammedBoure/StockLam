@@ -2,9 +2,9 @@ import os
 import logging
 from datetime import datetime
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
-    QHeaderView, QPushButton, QLabel, QLineEdit, 
-    QComboBox, QDateEdit, QGroupBox, QTableWidgetItem, 
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
+    QHeaderView, QPushButton, QLabel, QLineEdit,
+    QComboBox, QDateEdit, QGroupBox, QTableWidgetItem,
     QAbstractItemView, QMessageBox, QFileDialog
 )
 from PySide6.QtCore import Qt, QDate, Signal
@@ -29,9 +29,10 @@ class InvoicesListWidget(QWidget):
     Interface for the list of invoices/delivery notes.
     Supports filtering, professional PDF export, and stock-safe deletion.
     """
-    request_new = Signal()
+    request_new = Signal(object)
+    request_new_return = Signal(object)
     request_edit = Signal(int)
-    request_pdf = Signal(int)   
+    request_pdf = Signal(int)
     request_delete = Signal(int)
 
     def __init__(self, manager):
@@ -46,12 +47,12 @@ class InvoicesListWidget(QWidget):
         # --- 1. Filter Bar ---
         filter_group = QGroupBox("Filtres & Recherche")
         filter_layout = QHBoxLayout(filter_group)
-        
+
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_from.setCalendarPopup(True)
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
-        
+
         self.combo_filter_partner = QComboBox()
         self.load_partners()
 
@@ -71,16 +72,21 @@ class InvoicesListWidget(QWidget):
 
         # --- 2. Action Bar ---
         actions_bar = QHBoxLayout()
-        
+
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Rechercher par ID ou par Client...")
         self.search_input.setMinimumHeight(35)
         self.search_input.textChanged.connect(self.filter_table)
-        
-        self.btn_new = QPushButton(" Nouveau")
-        self.btn_new.setIcon(qta.icon("fa5s.plus", color="white"))
+
+        self.btn_new = QPushButton(" Nouveau BL")
+        self.btn_new.setIcon(qta.icon("fa5s.file-export", color="white"))
         self.btn_new.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
-        self.btn_new.clicked.connect(self.request_new.emit)
+        self.btn_new.clicked.connect(self.on_new_clicked)
+
+        self.btn_new_return = QPushButton(" Nouveau Retour")
+        self.btn_new_return.setIcon(qta.icon("fa5s.file-import", color="white"))
+        self.btn_new_return.setStyleSheet("background-color: #8e44ad; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_new_return.clicked.connect(self.on_new_return_clicked)
 
         self.btn_edit = QPushButton(" Modifier")
         self.btn_edit.setIcon(qta.icon("fa5s.edit", color="white"))
@@ -102,22 +108,34 @@ class InvoicesListWidget(QWidget):
 
         actions_bar.addWidget(self.search_input, stretch=1)
         actions_bar.addWidget(self.btn_new)
+        actions_bar.addWidget(self.btn_new_return)
         actions_bar.addWidget(self.btn_edit)
         actions_bar.addWidget(self.btn_pdf)
         actions_bar.addWidget(self.btn_delete)
         layout.addLayout(actions_bar)
 
         # --- 3. Table ---
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["ID Trans.", "Date", "Client / Partenaire", "Montant (DZD)"])
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["ID Trans.", "Type", "Date", "Client / Partenaire", "Montant (DZD)"])
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         self.table.cellDoubleClicked.connect(lambda r, c: self.on_edit_clicked())
-        
+
         layout.addWidget(self.table)
+
+    def on_new_clicked(self):
+        partner_id = self.combo_filter_partner.currentData()
+        self.request_new.emit(partner_id)
+
+    def on_new_return_clicked(self):
+        partner_id = self.get_selected_partner_id() or self.combo_filter_partner.currentData()
+        if not partner_id:
+            QMessageBox.warning(self, "Attention", "Selectionnez un BL ou filtrez par partenaire avant de creer un bon de retour.")
+            return
+        self.request_new_return.emit(partner_id)
 
     def format_id(self, raw_id, date_str):
         """تحويل ID الرقمي إلى تنسيق YYYY/NNN"""
@@ -142,12 +160,20 @@ class InvoicesListWidget(QWidget):
         row = self.table.currentRow()
         if row >= 0:
             item = self.table.item(row, 0)
-            if item: 
+            if item:
                 # نأخذ الـ ID الأصلي المخزن في UserRole
                 return item.data(Qt.UserRole)
         return None
-    
-    
+
+
+
+    def get_selected_partner_id(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            item = self.table.item(row, 0)
+            if item:
+                return item.data(Qt.UserRole + 1)
+        return None
 
     def on_edit_clicked(self):
         tid = self.get_selected_id()
@@ -155,9 +181,9 @@ class InvoicesListWidget(QWidget):
 
     def on_pdf_clicked(self):
         tid = self.get_selected_id()
-        if tid: 
+        if tid:
             # سنقوم بإرسال الإشارة للأب (BillingTab) كما يتوقع
-            self.request_pdf.emit(tid) 
+            self.request_pdf.emit(tid)
             # وأيضاً يمكنك تشغيل الدالة الداخلية التي أضفناها سابقاً إذا أردت
             self.export_transfer_to_pdf(tid)
 
@@ -166,7 +192,7 @@ class InvoicesListWidget(QWidget):
         if not tid: return
 
         reply = QMessageBox.question(
-            self, "Confirmation", 
+            self, "Confirmation",
             f"Voulez-vous vraiment supprimer la transaction N° {tid} ?\n"
             "Cette action restaurera les quantités dans le stock.",
             QMessageBox.Yes | QMessageBox.No
@@ -196,18 +222,19 @@ class InvoicesListWidget(QWidget):
         start = self.date_from.date().toString("yyyy-MM-dd")
         end = self.date_to.date().toString("yyyy-MM-dd") + " 23:59:59"
         p_id = self.combo_filter_partner.currentData()
-        
+
         self.table.setRowCount(0)
         if hasattr(self.manager, 'external_transfers'):
             transfers = self.manager.external_transfers.get_transfers_filtered(start, end, p_id, None)
             for row, t in enumerate(transfers):
                 self.table.insertRow(row)
-                
+
                 # التعديل هنا: استخدام التنسيق الجديد للعرض
                 formatted_ref = self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
                 id_item = QTableWidgetItem(formatted_ref)
                 id_item.setData(Qt.UserRole, t['Transfer_ID']) # حفظ الـ ID الحقيقي في الـ Data للعمليات البرمجية
-                
+                id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
+
                 raw_date = t.get('Transaction_Date')
                 if hasattr(raw_date, 'strftime'):
                     date_text = raw_date.strftime("%Y-%m-%d %H:%M")
@@ -219,11 +246,20 @@ class InvoicesListWidget(QWidget):
                 amount_item = QTableWidgetItem(f"{amount:,.2f}")
                 amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
+                t_type = t.get('Transfer_Type', 'Outbound') or 'Outbound'
+                type_str = "Retour" if t_type == 'Return' else "BL (Sortie)"
+                type_item = QTableWidgetItem(type_str)
+                if t_type == 'Return':
+                    type_item.setForeground(Qt.magenta)
+                else:
+                    type_item.setForeground(Qt.darkGreen)
+
                 self.table.setItem(row, 0, id_item)
-                self.table.setItem(row, 1, QTableWidgetItem(date_text))
-                self.table.setItem(row, 2, QTableWidgetItem(str(partner_text)))
-                self.table.setItem(row, 3, amount_item)
-        
+                self.table.setItem(row, 1, type_item)
+                self.table.setItem(row, 2, QTableWidgetItem(date_text))
+                self.table.setItem(row, 3, QTableWidgetItem(str(partner_text)))
+                self.table.setItem(row, 4, amount_item)
+
         self.on_selection_changed()
         self.filter_table(self.search_input.text())
 
@@ -240,7 +276,7 @@ class InvoicesListWidget(QWidget):
         توليد ملف PDF احترافي مع ترقيم بنظام (السنة/الرقم) YYYY/NNN
         """
         print("\n" + "🚀" * 10 + " PDF DEBUG START " + "🚀" * 10)
-        
+
         if not HAS_REPORTLAB:
             QMessageBox.warning(self, "Error", "The 'reportlab' library is missing.")
             return
@@ -248,7 +284,7 @@ class InvoicesListWidget(QWidget):
         # 1. تحديد المسارات وتحميل الإعدادات
         cwd = os.getcwd()
         settings_path = os.path.join(cwd, "config.json")
-        
+
         try:
             if not os.path.exists(settings_path):
                 # محاولة البحث عن الملف في المجلد الأب إذا لم يوجد في cwd
@@ -299,7 +335,7 @@ class InvoicesListWidget(QWidget):
         # في اسم الملف نستبدل / بـ - لأن أنظمة التشغيل لا تقبل / في أسماء الملفات
         safe_ref_for_filename = formatted_ref.replace("/", "-")
         default_name = f"{settings.get('doc_title', 'BL')}_{partner_clean}_{safe_ref_for_filename}.pdf"
-        
+
         path, _ = QFileDialog.getSaveFileName(self, "Enregistrer PDF", default_name, "PDF Files (*.pdf)")
         if not path: return
 
@@ -308,9 +344,9 @@ class InvoicesListWidget(QWidget):
             PAGE_WIDTH, PAGE_HEIGHT = A4
             primary_color = colors.HexColor(settings.get('theme_color', '#0b666a'))
             banner_h_cm = settings.get('banner_height_cm', 4.8)
-            
+
             doc = SimpleDocTemplate(
-                path, pagesize=A4, rightMargin=30, leftMargin=30, 
+                path, pagesize=A4, rightMargin=30, leftMargin=30,
                 topMargin=(banner_h_cm + 0.5) * cm, bottomMargin=50
             )
 
@@ -324,7 +360,7 @@ class InvoicesListWidget(QWidget):
                 img_h = settings.get('banner_img_h_cm', 4.8) * cm
                 y_offset = settings.get('banner_img_y_cm', 0.2) * cm
                 img_y = PAGE_HEIGHT - img_h - y_offset
-                
+
                 if os.path.exists(logo_path):
                     canvas.drawImage(logo_path, img_x, img_y, width=img_w, height=img_h)
                 else:
@@ -334,7 +370,7 @@ class InvoicesListWidget(QWidget):
 
             # محتوى الترويسة (المعلومات البنكية والزبون)
             current_time = datetime.now().strftime('%d/%m/%Y %H:%M')
-            
+
             # استخدام formatted_ref الجديد هنا ليظهر في ملف الـ PDF
             left_text = (
                 f"<font size=14 color='{settings.get('theme_color')}'><b>{settings.get('doc_title')} N°: {formatted_ref}</b></font><br/><br/>"
@@ -342,13 +378,13 @@ class InvoicesListWidget(QWidget):
                 f"<b>N° Compte :</b> {settings.get('bank_acc', 'N/A')}<br/>"
                 f"<font size=9>Date d'édition : {current_time}</font>"
             )
-            
+
             p_name = partner_info.get('Partner_Name', 'Inconnu')
             p_addr = partner_info.get('Address_Line1') or ""
             p_city = partner_info.get('City') or ""
             right_text = f"<b>Destinataire :</b><br/><font size=11><b>{p_name}</b></font><br/>{p_addr}<br/>{p_city}"
 
-            info_table = Table([[Paragraph(left_text, styles["Normal"]), Paragraph(right_text, styles["Normal"])]], 
+            info_table = Table([[Paragraph(left_text, styles["Normal"]), Paragraph(right_text, styles["Normal"])]],
                                colWidths=[10*cm, 8.4*cm])
             info_table.setStyle(TableStyle([
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -373,7 +409,7 @@ class InvoicesListWidget(QWidget):
 
                 obs = f"{line_val:,.2f} DA" if is_billable else "<font color='red'>Gratuit</font>"
                 p_info = f"<b>{item.get('Product_Name', '-')}</b><br/><font size=8 color='grey'>Lot: {item.get('Lot_Number','-')}</font>"
-                
+
                 table_data.append([Paragraph(p_info, styles["Normal"]), format_quantity(qty), Paragraph(obs, styles["Normal"])])
 
             table_data.append([Paragraph("<b>MONTANT TOTAL À PAYER</b>", styles["Normal"]), "", f"{grand_total:,.2f} DA"])
@@ -394,8 +430,8 @@ class InvoicesListWidget(QWidget):
             # التوقيعات
             f_left = settings.get('footer_left_label', 'Responsable')
             f_right = settings.get('footer_right_label', 'Accusé Client')
-            
-            footer = Table([[Paragraph(f"<b>{f_left}</b>", styles["Normal"]), Paragraph(f"<b>{f_right}</b>", styles["Normal"])]], 
+
+            footer = Table([[Paragraph(f"<b>{f_left}</b>", styles["Normal"]), Paragraph(f"<b>{f_right}</b>", styles["Normal"])]],
                            colWidths=[9.2*cm, 9.2*cm], rowHeights=[2.5*cm])
             footer.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (1,0), (1,-1), 40)]))
             elements.append(footer)
@@ -405,8 +441,8 @@ class InvoicesListWidget(QWidget):
             # فتح الملف تلقائياً
             if os.name == 'nt': os.startfile(path)
             else: os.system(f'xdg-open "{path}"')
-                
+
         except Exception as e:
             QMessageBox.critical(self, "Erreur PDF", f"Build failed: {str(e)}")
-        
+
         print("="*50 + " DEBUG END " + "="*50)
