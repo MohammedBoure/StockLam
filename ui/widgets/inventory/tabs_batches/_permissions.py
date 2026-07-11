@@ -14,6 +14,7 @@ def apply_role_permissions(self, role=None):
 
     self.table.setColumnHidden(11, hide_fin)
     self.table.setColumnHidden(12, hide_fin)
+    self.table.setColumnHidden(13, hide_fin)
 
     if hasattr(self, 'lbl_total_value'):
         if hide_fin:

@@ -173,6 +173,13 @@ def _build_right_filters(self):
 
     # أزرار الإجراءات
     reset_layout = QHBoxLayout()
+    
+    self.chk_reclamation = QCheckBox("Réclamations Uniquement")
+    self.chk_reclamation.setStyleSheet("font-weight: bold; color: #d35400;")
+    self.chk_reclamation.setChecked(False)
+    self.chk_reclamation.stateChanged.connect(self.apply_filters_local)
+    reset_layout.addWidget(self.chk_reclamation)
+    
     reset_layout.addStretch()
 
     btn_refresh = QPushButton("Actualiser")
@@ -208,8 +215,9 @@ def _build_table(self):
     cols = [
         "Désignation Produit", "Famille", "Marque", "Automate",
         "Fournisseur", "Stock (Actuel)", "Date Entrée", "N° Lot",
-        "Date Exp.", "Qté Init.", "Code-Barres", "Prix U.",
-        "Valeur (DA)", "Ref PO", "Emplacement"
+        "Date Exp.", "Qté Init.", "Code-Barres", "Prix U. HT",
+        "Prix U. TTC", "Valeur (DA)", "Ref PO", "Emplacement",
+        "Réclamation"
     ]
     self.table.setColumnCount(len(cols))
     self.table.setHorizontalHeaderLabels(cols)
@@ -223,7 +231,7 @@ def _build_table(self):
     self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
     self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
     self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-    self.table.setAlternatingRowColors(True)
+    self.table.setAlternatingRowColors(False)
     self.table.setStyleSheet(
         "QTableWidget { gridline-color: #ecf0f1; font-size: 12px; }"
     )

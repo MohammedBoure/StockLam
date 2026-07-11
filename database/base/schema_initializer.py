@@ -99,6 +99,13 @@ SCHEMA_QUERIES = [
     # [Migration]: Ensure Permissions column exists for older DBs
     """ALTER TABLE Users ADD COLUMN Permissions JSON DEFAULT NULL;""",
 
+    # --- 1.1 Settings ---
+    """CREATE TABLE IF NOT EXISTS Company_Settings (
+        Settings_ID INT PRIMARY KEY DEFAULT 1,
+        Settings_Data JSON,
+        Banner_Image LONGBLOB
+    );""",
+
     # --- 2. Master Data ---
     """CREATE TABLE IF NOT EXISTS Location_Types (
         Type_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -416,8 +423,10 @@ SCHEMA_QUERIES = [
         Total_Amount DECIMAL(15, 2) DEFAULT 0.00,
         Status ENUM('Draft', 'Completed', 'Cancelled') DEFAULT 'Draft',
         Notes TEXT,
+        Ref_Transfer_ID INT UNSIGNED NULL DEFAULT NULL,
         Created_By INT UNSIGNED,
         FOREIGN KEY (Partner_ID) REFERENCES External_Partners(Partner_ID) ON UPDATE CASCADE,
+        FOREIGN KEY (Ref_Transfer_ID) REFERENCES External_Transfer_Log(Transfer_ID) ON DELETE SET NULL,
         FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
     );""",
     """ALTER TABLE external_partners MODIFY COLUMN Partner_Type ENUM('Laboratory', 'Doctor', 'Hospital', 'Pharmacy', 'CareRoom', 'Clinic', 'Other');""",
@@ -447,7 +456,7 @@ SCHEMA_QUERIES = [
         Movement_Type ENUM(
             'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run',
             'Calibration', 'Adjustment', 'Waste', 'Transfer',
-            'External_Transfer', 'Transfer_Return', 'Return_To_Supplier'
+            'External_Transfer', 'Transfer_Return', 'Return_To_Supplier', 'Sale'
         ) NOT NULL,
         Reason_ID INT UNSIGNED NULL,
         Qty_Change DECIMAL(10, 2) NOT NULL,

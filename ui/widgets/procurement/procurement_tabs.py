@@ -265,14 +265,8 @@ class PurchaseOrdersTab(QWidget):
         else:
             formatted_po_id = raw_po_id
 
-        cwd = os.getcwd()
-        settings_path = os.path.join(cwd, "config.json")
-
         try:
-            if not os.path.exists(settings_path):
-                raise FileNotFoundError(f"Settings file not found at {settings_path}")
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
+            settings = self.manager.company_settings.get_settings()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not load settings: {e}")
             return
@@ -290,7 +284,6 @@ class PurchaseOrdersTab(QWidget):
         try:
             PAGE_WIDTH, PAGE_HEIGHT = A4
             primary_color = colors.HexColor(settings.get('theme_color', '#0b666a'))
-            logo_path = os.path.normpath(settings.get('banner_path', ''))
             banner_h_cm = settings.get('banner_height_cm', 4.8)
 
             doc = SimpleDocTemplate(
@@ -312,9 +305,13 @@ class PurchaseOrdersTab(QWidget):
                 img_h = settings.get('banner_img_h_cm', 4.8) * cm
                 img_y = PAGE_HEIGHT - img_h - (settings.get('banner_img_y_cm', 0.0) * cm)
 
-                if os.path.exists(logo_path):
+                img_bytes = self.manager.company_settings.get_banner_image()
+                if img_bytes:
+                    from reportlab.lib.utils import ImageReader
+                    import io
+                    img = ImageReader(io.BytesIO(img_bytes))
                     canvas.drawImage(
-                        logo_path, img_x, img_y,
+                        img, img_x, img_y,
                         width=img_w, height=img_h, mask='auto'
                     )
                 else:

@@ -38,7 +38,7 @@ from ._actions      import (
     direct_use_process, adjust_stock, waste_batch,
     show_batch_details, open_quick_transfer, open_quick_consume,
     go_to_history, open_history_via_barcode, go_to_reception,
-    handle_barcode_scan,
+    handle_barcode_scan, edit_reclamation
 )
 from ._export       import (
     print_batch_label, export_to_excel, export_to_pdf, get_table_data,
@@ -127,6 +127,7 @@ class BatchesTab(QWidget):
     open_history_via_barcode = open_history_via_barcode
     go_to_reception         = go_to_reception
     handle_barcode_scan     = handle_barcode_scan
+    edit_reclamation        = edit_reclamation
 
     # التصدير
     print_batch_label = print_batch_label

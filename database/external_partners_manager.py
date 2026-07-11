@@ -157,9 +157,11 @@ class ExternalPartnersManager:
                 cursor = conn.cursor(dictionary=True)
                 # استخدام * لضمان جلب كل الأعمدة الجديدة والقديمة
                 query = """
-                    SELECT * FROM External_Partners 
-                    WHERE Deleted_At IS NULL 
-                    ORDER BY Partner_Name ASC
+                    SELECT p.*,
+                           EXISTS(SELECT 1 FROM External_Transfer_Log t WHERE t.Partner_ID = p.Partner_ID AND t.Transfer_Type = 'Return' AND t.Status = 'Completed') as Has_Return
+                    FROM External_Partners p
+                    WHERE p.Deleted_At IS NULL 
+                    ORDER BY p.Partner_Name ASC
                 """
                 cursor.execute(query)
                 return cursor.fetchall()

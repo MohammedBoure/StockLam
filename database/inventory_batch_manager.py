@@ -272,6 +272,20 @@ class InventoryBatchManager:
             logging.error(f"Error checking barcode existence: {e}")
             return True # نفترض وجوده لتجنب الأخطاء
 
+    def update_batch_reception_note(self, batch_id: int, note: str) -> bool:
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE Inventory_Batches SET Reception_Note = %s WHERE Batch_ID = %s",
+                    (note, batch_id)
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"Error updating reception note for batch {batch_id}: {e}")
+            return False
+
     def update_batch_location_status(self, batch_id: int, location_id: Optional[int] = None, new_status: Optional[str] = None) -> bool:
         updates = []
         params = []
@@ -684,8 +698,8 @@ class InventoryBatchManager:
                             INSERT INTO Inventory_Batches 
                             (Product_ID, Location_ID, Lot_Number, Expiry_Date, Quantity_Initial, 
                             Quantity_Current, PO_ID, BR_ID, Status, Internal_Barcode, 
-                            Unit_Price_Received, Tax_Rate_Percent, Discount_Percent, Created_At)
-                            VALUES (%s, %s, %s, %s, 0, %s, %s, %s, 'Available', %s, %s, %s, %s, NOW())
+                            Unit_Price_Received, Tax_Rate_Percent, Discount_Percent, Reception_Note, Created_At)
+                            VALUES (%s, %s, %s, %s, 0, %s, %s, %s, 'Available', %s, %s, %s, %s, %s, NOW())
                         """
                         params = (
                             original['Product_ID'],
@@ -698,7 +712,8 @@ class InventoryBatchManager:
                             target_barcode,
                             original['Unit_Price_Received'],
                             original['Tax_Rate_Percent'],
-                            original['Discount_Percent']
+                            original['Discount_Percent'],
+                            original.get('Reception_Note', '')
                         )
 
                         cursor.execute(insert_query, params)
@@ -897,17 +912,10 @@ class InventoryBatchManager:
                         B.Lot_Number,
                         B.Expiry_Date,
                         B.Quantity_Current,
-                        COALESCE(
-                            NULLIF(B.Quantity_Initial, 0),
-                            (
-                                SELECT SML.Qty_Change
-                                FROM Stock_Movement_Log SML
-                                WHERE SML.Batch_ID = B.Batch_ID
-                                  AND SML.Qty_Change > 0
-                                ORDER BY SML.Transaction_Date ASC, SML.Movement_ID ASC
-                                LIMIT 1
-                            ),
-                            B.Quantity_Initial
+                        (
+                            SELECT SUM(IB2.Quantity_Initial)
+                            FROM Inventory_Batches IB2
+                            WHERE IB2.Internal_Barcode = B.Internal_Barcode
                         ) AS Quantity_Initial,
                         B.Quantity_Initial AS Reception_Quantity_Initial,
                         B.Unit_Price_Received,
@@ -920,7 +928,8 @@ class InventoryBatchManager:
                         B.PO_ID,
                         B.BR_ID,
                         B.Status,
-                        B.Created_At AS Date_Received
+                        B.Created_At AS Date_Received,
+                        B.Reception_Note
                     FROM 
                         Inventory_Batches B
                     INNER JOIN 

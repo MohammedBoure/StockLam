@@ -264,3 +264,8 @@ MODIFY COLUMN Movement_Type ENUM(
 
 
 ALTER TABLE PO_Details ADD COLUMN Ordering_Unit VARCHAR(50) DEFAULT NULL AFTER Qty_Ordered;
+
+
+UPDATE Inventory_Batches
+SET Internal_Barcode = LEFT(Internal_Barcode, LENGTH(Internal_Barcode) - LENGTH(CONCAT('-L', Location_ID)))
+WHERE Internal_Barcode LIKE CONCAT('%-L', Location_ID);

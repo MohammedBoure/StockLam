@@ -830,8 +830,16 @@ class PartnerDialog(BaseDialog):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self.form_widget)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
+        
+        self.tab_info = QWidget()
+        info_layout = QVBoxLayout(self.tab_info)
+        info_layout.setSpacing(15)
+        info_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # This variable points to info_layout so the rest of the code works as is
+        main_layout = info_layout
 
         # ---------------------------------------------------------
         # ZONE 1: Identité & Fiscalité (أعلى)
@@ -844,11 +852,14 @@ class PartnerDialog(BaseDialog):
         
         self.inp_name = QLineEdit()
         self.cb_type = QComboBox()
-        self.cb_type.addItems(["Laboratoire", "Médecin", "Hôpital", "Autre"])
+        self.cb_type.addItems(["Laboratoire", "Médecin", "Hôpital", "Pharmacie", "Salle de Soins", "Clinique", "Autre"])
         self.cb_type.setItemData(0, "Laboratory")
         self.cb_type.setItemData(1, "Doctor")
         self.cb_type.setItemData(2, "Hospital")
-        self.cb_type.setItemData(3, "Other")
+        self.cb_type.setItemData(3, "Pharmacy")
+        self.cb_type.setItemData(4, "CareRoom")
+        self.cb_type.setItemData(5, "Clinic")
+        self.cb_type.setItemData(6, "Other")
         
         self.inp_agrement = QLineEdit()
         self.inp_agrement.setPlaceholderText("Numéro d'agrément officiel")
@@ -939,6 +950,61 @@ class PartnerDialog(BaseDialog):
         
         main_layout.addWidget(grp_bank)
         main_layout.addStretch()
+        
+        self.tabs.addTab(self.tab_info, "Informations Générales")
+        
+        if self.data:
+            self.tab_bl = QWidget()
+            self.tab_br = QWidget()
+            self.tabs.addTab(self.tab_bl, "Bons de Livraison (Sortie)")
+            self.tabs.addTab(self.tab_br, "Bons de Retour")
+            self.init_transfers_tabs()
+
+    def init_transfers_tabs(self):
+        from PySide6.QtWidgets import QTableWidget, QHeaderView, QTableWidgetItem
+        from PySide6.QtCore import Qt
+        
+        # BL
+        bl_layout = QVBoxLayout(self.tab_bl)
+        self.table_bl = QTableWidget(0, 3)
+        self.table_bl.setHorizontalHeaderLabels(["Date", "Total (DZD)", "Statut"])
+        self.table_bl.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        bl_layout.addWidget(self.table_bl)
+        
+        # BR
+        br_layout = QVBoxLayout(self.tab_br)
+        self.table_br = QTableWidget(0, 3)
+        self.table_br.setHorizontalHeaderLabels(["Date", "Total (DZD)", "Statut"])
+        self.table_br.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        br_layout.addWidget(self.table_br)
+        
+        try:
+            manager = self.parent().manager
+            with manager.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT Transaction_Date, Total_Amount, Status, Transfer_Type FROM External_Transfer_Log WHERE Partner_ID = %s ORDER BY Transaction_Date DESC", (self.data['Partner_ID'],))
+                transfers = cursor.fetchall()
+            
+            for t in transfers:
+                row_data = [
+                    str(t.get('Transaction_Date', ''))[:16],
+                    f"{float(t.get('Total_Amount') or 0):,.2f}",
+                    str(t.get('Status', ''))
+                ]
+                ttype = t.get('Transfer_Type') or 'Outbound'
+                target_table = self.table_br if ttype == 'Return' else self.table_bl
+                
+                r = target_table.rowCount()
+                target_table.insertRow(r)
+                for c, val in enumerate(row_data):
+                    item = QTableWidgetItem(val)
+                    item.setTextAlignment(Qt.AlignCenter if c != 1 else (Qt.AlignRight | Qt.AlignVCenter))
+                    if ttype == 'Return':
+                        item.setForeground(Qt.magenta)
+                    target_table.setItem(r, c, item)
+        except Exception as e:
+            import logging
+            logging.error(f"Error loading transfers in dialog: {e}")
 
     def _create_group(self, title, color):
         gb = QGroupBox(title)

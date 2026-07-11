@@ -29,10 +29,13 @@ class ReceptionDialogLogicMixin:
     def setup_connections(self):
         self.cb_product.currentIndexChanged.connect(self.on_product_selected)
 
-        for w in [self.inp_qty, self.inp_price, self.inp_remise]:
+        for w in [self.inp_qty, self.inp_remise]:
             w.valueChanged.connect(self.calculate_live_item_ttc)
         self.cb_remise_type.currentIndexChanged.connect(self.calculate_live_item_ttc)
-        self.chk_tva.stateChanged.connect(self.calculate_live_item_ttc)
+        
+        self.inp_price.valueChanged.connect(self.on_ht_changed)
+        self.inp_price_ttc.valueChanged.connect(self.on_ttc_changed)
+        self.chk_tva.stateChanged.connect(self.on_tva_toggled)
 
         self.btn_validate_ref.clicked.connect(self.validate_header_and_create)
         self.btn_unlock_header.clicked.connect(self.enable_header_editing)
@@ -56,6 +59,29 @@ class ReceptionDialogLogicMixin:
         self.cb_unit_type.addItem(p.get('Stock_Unit', 'U'), 1.0)
         if p.get('Ordering_Unit') and p['Ordering_Unit'] != p.get('Stock_Unit'):
             self.cb_unit_type.addItem(p['Ordering_Unit'], float(p.get('Stock_Qty_Per_Order_Unit', 1.0)))
+
+    def on_ht_changed(self):
+        try:
+            self.inp_price_ttc.blockSignals(True)
+            tva_rate = 0.19 if hasattr(self, 'chk_tva') and self.chk_tva.isChecked() else 0.0
+            ttc = self.inp_price.value() * (1 + tva_rate)
+            self.inp_price_ttc.setValue(ttc)
+        finally:
+            self.inp_price_ttc.blockSignals(False)
+        self.calculate_live_item_ttc()
+
+    def on_ttc_changed(self):
+        try:
+            self.inp_price.blockSignals(True)
+            tva_rate = 0.19 if hasattr(self, 'chk_tva') and self.chk_tva.isChecked() else 0.0
+            ht = self.inp_price_ttc.value() / (1 + tva_rate)
+            self.inp_price.setValue(ht)
+        finally:
+            self.inp_price.blockSignals(False)
+        self.calculate_live_item_ttc()
+        
+    def on_tva_toggled(self):
+        self.on_ht_changed()
 
     def calculate_live_item_ttc(self):
         try:
@@ -177,7 +203,7 @@ class ReceptionDialogLogicMixin:
         for w in [
             self.cb_product, self.cb_unit_type, self.inp_qty,
             self.inp_lot, self.inp_expiry, self.cb_location,
-            self.inp_price, self.inp_remise, self.cb_remise_type,
+            self.inp_price, self.inp_price_ttc, self.inp_remise, self.cb_remise_type,
             self.chk_tva, self.inp_observation,
             self.btn_add, self.btn_modify, self.btn_delete, self.btn_print,
             self.table_items,
@@ -431,6 +457,7 @@ class ReceptionDialogLogicMixin:
             if idx_unit >= 0:
                 self.cb_unit_type.setCurrentIndex(idx_unit)
 
+            self.chk_tva.setChecked(float(meta.get('Tax_Rate_Percent', 0)) > 0)
             self.inp_price.setValue(float(meta.get('Unit_Price_Received', 0.0)))
 
             if float(meta.get('Discount_Percent', 0)) > 0:
@@ -455,7 +482,6 @@ class ReceptionDialogLogicMixin:
                 self.cb_location.setCurrentText(location_name)
 
             self.inp_observation.setText(str(meta.get('Line_Note', '')))
-            self.chk_tva.setChecked(float(meta.get('Tax_Rate_Percent', 0)) > 0)
 
             self.current_editing_row = row
             self.btn_add.setText("💾 Enregistrer Modif.")
@@ -619,6 +645,7 @@ class ReceptionDialogLogicMixin:
         self.inp_lot.clear()
         self.inp_qty.setValue(1)
         self.inp_price.setValue(0.0)
+        self.inp_price_ttc.setValue(0.0)
         self.inp_remise.setValue(0.0)
         self.inp_observation.clear()
         self.inp_expiry.setDate(QDate.currentDate().addYears(2))

@@ -561,7 +561,11 @@ class MainWindow(QMainWindow):
         elif page_id == 6:
             try:
                 widget = BillingTab(self.data_manager)
-            except:
+                
+                widget.list_view.request_view_partner.connect(self.navigate_to_partner_profile)
+                
+            except Exception as e:
+                logging.error(f"Error loading Billing module: {e}")
                 widget = QLabel("Module Facturation non chargé")
 
         elif page_id == 7:
@@ -577,6 +581,36 @@ class MainWindow(QMainWindow):
             self.loaded_pages[page_id] = widget
             return widget
         return None
+
+    def navigate_to_partner_profile(self, partner_id):
+        """تستقبل طلب الانتقال من صفحة الفواتير وتفتح ملف المقاول (Sous-traitant)"""
+        # 1. الانتقال لصفحة البيانات الأساسية (رقم 1)
+        self.switch_page(1)
+        
+        # 2. تحديث الزر الجانبي ليظهر كمحدد
+        if self.nav_group.button(1):
+            self.nav_group.button(1).setChecked(True)
+
+        # 3. الوصول للكائن الخاص بصفحة (Données de Base)
+        master_data_widget = self.loaded_pages.get(1)
+        
+        if master_data_widget and hasattr(master_data_widget, 'tabs'):
+            # 4. فتح التبويب الفرعي الخاص بالشركاء (Partenaires)
+            for i in range(master_data_widget.tabs.count()):
+                if "Partenaires" in master_data_widget.tabs.tabText(i):
+                    master_data_widget.tabs.setCurrentIndex(i)
+                    break
+            
+            # 5. التركيز على الشريك المطلوب في الواجهة
+            if hasattr(master_data_widget, 'tab_partners'):
+                partners_tab = master_data_widget.tab_partners
+                
+                if hasattr(partners_tab, 'search_input'):
+                    partner_data = self.data_manager.partners.get_partner_by_id(partner_id)
+                    if partner_data:
+                        partners_tab.search_input.setText(partner_data.get('Partner_Name', ''))
+                    else:
+                        partners_tab.search_input.setText(str(partner_id))
 
     def switch_page(self, page_id):
         if self.connection_error and page_id != 4:

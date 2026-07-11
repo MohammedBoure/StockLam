@@ -656,7 +656,7 @@ class InventoryCountManager:
             logging.error(f"Error cancelling inventory count session: {err}", exc_info=True)
             return {"success": False, "message": str(err)}
 
-    def apply_session(self, session_id, user_id=None, allow_unknown=False) -> Dict:
+    def apply_session(self, session_id, user_id=None, allow_unknown=False, uncounted_action="ignore") -> Dict:
         conn = None
         cursor = None
         try:
@@ -771,6 +771,9 @@ class InventoryCountManager:
             adjustments = []
 
             for line in lines:
+                if uncounted_action == "ignore" and line.get("Line_Status") == "NOT_COUNTED":
+                    continue
+
                 cursor.execute(
                     """
                     SELECT

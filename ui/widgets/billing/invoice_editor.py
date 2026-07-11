@@ -2,10 +2,10 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QHeaderView,
     QCompleter, QPushButton, QLabel, QLineEdit, QComboBox,
-    QDateEdit, QGroupBox, QSpinBox, QDoubleSpinBox, QMessageBox,
+    QDateEdit, QDateTimeEdit, QGroupBox, QSpinBox, QDoubleSpinBox, QMessageBox,
     QTableWidgetItem, QFrame, QAbstractItemView
 )
-from PySide6.QtCore import Qt, QDate, Signal, QStringListModel, QTimer
+from PySide6.QtCore import Qt, QDate, QDateTime, Signal, QStringListModel, QTimer
 from PySide6.QtGui import QColor, QFont
 import qtawesome as qta
 
@@ -116,7 +116,8 @@ class InvoiceEditorWidget(QWidget):
         header_group = QGroupBox("Informations Générales")
         h_layout = QHBoxLayout(header_group)
 
-        self.inp_date = QDateEdit(QDate.currentDate())
+        self.inp_date = QDateTimeEdit(QDateTime.currentDateTime())
+        self.inp_date.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.inp_date.setCalendarPopup(True)
         self.inp_date.setMinimumHeight(40)
 
@@ -161,7 +162,7 @@ class InvoiceEditorWidget(QWidget):
 
         # الجدول
         self.table = QTableWidget(0, 6)
-        headers = ["Article / Lot / Stock", "Quantité", "P.U (DA)", "Observation", "Total", ""]
+        headers = ["Article / Lot / Stock", "Quantité", "P.U", "Observation", "Total", ""]
         self.table.setHorizontalHeaderLabels(headers)
 
         h_header = self.table.horizontalHeader()
@@ -192,6 +193,7 @@ class InvoiceEditorWidget(QWidget):
         footer_layout.addWidget(self.lbl_total)
         footer_layout.addStretch()
         layout.addWidget(footer_frame)
+        header_group.raise_()
         self.barcode_input.textChanged.connect(self.check_instant_barcode)
 
     # =========================================================================
@@ -243,13 +245,19 @@ class InvoiceEditorWidget(QWidget):
                     self.combo_partner.setCurrentIndex(index)
                     self.combo_partner.blockSignals(previous_block)
                 if header.get('Transaction_Date'):
-                    self.inp_date.setDate(QDate.fromString(str(header['Transaction_Date'])[:10], "yyyy-MM-dd"))
-                # تعيين التاريخ ...
+                    dt_str = str(header['Transaction_Date'])
+                    if len(dt_str) >= 16: # Format: YYYY-MM-DD HH:MM...
+                        self.inp_date.setDateTime(QDateTime.fromString(dt_str[:16], "yyyy-MM-dd HH:mm"))
+                    else:
+                        self.inp_date.setDate(QDate.fromString(dt_str[:10], "yyyy-MM-dd"))
 
             if details is None:
                 details = mgr.get_transfer_details(transfer_id)
             self.table.setRowCount(0)
             self.is_loading_transfer = True
+            
+            if header and header.get('Ref_Transfer_ID'):
+                self.ref_transfer_id = header.get('Ref_Transfer_ID')
 
             for item in details:
                 batch_data = next((b for b in self.batches_cache if b['Batch_ID'] == item['Batch_ID']), None)
@@ -383,13 +391,14 @@ class InvoiceEditorWidget(QWidget):
             QMessageBox.warning(self, "Attention", "Le bon de retour doit garder le meme partenaire que le transfert d'origine.")
             return False
 
-        transaction_date = self.inp_date.date().toString("yyyy-MM-dd") + " 00:00:00"
+        transaction_date = self.inp_date.dateTime().toString("yyyy-MM-dd HH:mm:ss")
         success, msg, transfer_id = self.manager.external_transfers.save_transfer_header_only(
             self.current_id,
             partner_id,
             transaction_date,
             self.get_current_user_id(),
-            transfer_type=transfer_type
+            transfer_type=transfer_type,
+            ref_transfer_id=getattr(self, 'ref_transfer_id', None)
         )
 
         if not success:
@@ -397,7 +406,7 @@ class InvoiceEditorWidget(QWidget):
             return False
 
         self.current_id = transfer_id
-        doc_label = "BON DE RETOUR" if transfer_type == 'Return' else "TRANSACTION / BL"
+        doc_label = "Retourné à Sous-Traitant" if transfer_type == 'Return' else "TRANSACTION / BL"
         self.lbl_title.setText(f"{doc_label} N° {self.format_id(transfer_id)}")
         self.set_header_enabled(False)
         if show_message:
@@ -443,7 +452,7 @@ class InvoiceEditorWidget(QWidget):
                 partner_id = self.get_effective_return_partner_id()
                 if partner_id:
                     self.sync_return_partner_combo(partner_id)
-                    all_batches = self.manager.external_transfers.get_returnable_batches_for_partner(partner_id, exclude_return_transfer_id=self.current_id)
+                    all_batches = self.manager.external_transfers.get_returnable_batches_for_partner(partner_id, exclude_return_transfer_id=self.current_id, ref_transfer_id=getattr(self, 'ref_transfer_id', None))
                     self.barcode_input.setPlaceholderText("🔎 Scanner le code-barres ou rechercher par Nom, Lot...")
                     self.barcode_input.setEnabled(True)
                 else:
@@ -647,7 +656,8 @@ class InvoiceEditorWidget(QWidget):
                     self.current_id,
                     self.get_effective_return_partner_id(),
                     items,
-                    self.get_current_user_id()
+                    self.get_current_user_id(),
+                    ref_transfer_id=getattr(self, 'ref_transfer_id', None)
                 )
             else:
                 success, result = self.manager.external_transfers.save_and_sync_stock(
@@ -695,7 +705,8 @@ class InvoiceEditorWidget(QWidget):
         row = self.table.rowCount()
         self.table.insertRow(row)
 
-        p_name = f"{batch['Product_Name']} (Lot: {batch['Lot_Number']}){status_tag}"
+        barcode_display = batch.get('Barcode') or batch.get('Internal_Barcode', 'N/A')
+        p_name = f"{batch['Product_Name']} (Code: {barcode_display} | Lot: {batch['Lot_Number']}){status_tag}"
         q_item = QTableWidgetItem(p_name)
         q_item.setData(Qt.UserRole, {
             'id': batch['Product_ID'],

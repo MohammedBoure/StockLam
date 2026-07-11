@@ -46,8 +46,16 @@ class BillingTab(QWidget):
                 self.editor_view.combo_partner.setCurrentIndex(idx)
         self.stack.setCurrentWidget(self.editor_view)
 
-    def open_new_return(self, partner_id=None):
+    def open_new_return(self, data=None):
+        if isinstance(data, dict):
+            partner_id = data.get('partner_id')
+            ref_transfer_id = data.get('ref_transfer_id')
+        else:
+            partner_id = data
+            ref_transfer_id = None
+        
         self.editor_view.transfer_type_mode = 'Return'
+        self.editor_view.ref_transfer_id = ref_transfer_id
         self.editor_view.load_context(None, preselected_partner_id=partner_id)
         self.stack.setCurrentWidget(self.editor_view)
 

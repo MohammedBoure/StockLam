@@ -43,6 +43,7 @@ class AutoBackupWorker(QThread):
                 is_enabled = config.get("auto_backup_enabled", False)
                 interval_mins = float(config.get("auto_backup_interval", 60.0))
                 password = config.get("auto_backup_password", "")
+                max_auto_backups = int(config.get("auto_backup_max_files", 5))
                 
                 backup_paths = config.get("backup_paths", [])
                 if not backup_paths and config.get("backup_path"):
@@ -55,7 +56,7 @@ class AutoBackupWorker(QThread):
 
                 # 3. تنفيذ عملية الحفظ
                 # (تم تصحيح الاستدعاء هنا)
-                success, msg = self.data_manager.db.create_multi_backup(backup_paths, password, is_auto=True)
+                success, msg = self.data_manager.db.create_multi_backup(backup_paths, password, is_auto=True, max_auto_backups=max_auto_backups)
                 
                 if success:
                     logging.info(f"✅ Auto-backup success: {msg}")

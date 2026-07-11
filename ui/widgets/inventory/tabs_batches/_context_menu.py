@@ -40,8 +40,9 @@ def show_context_menu(self, pos):
         _add_action(menu, "📜 Voir Historique (Code-Barres)",
                     lambda: self.go_to_history(search_term))
 
-    # --- تفاصيل اللوط (للجميع) ---
+    # --- تفاصيل اللوط وتعديل الشكوى (للجميع) ---
     _add_action(menu, "🔍 Détails du lot", self.show_batch_details)
+    _add_action(menu, "📝 Modifier la réclamation", lambda: self.edit_reclamation(batch_data))
 
     # --- وصل الاستلام (ليس للتقني) ---
     if batch_data.get('BR_ID') and role != 'Technician':

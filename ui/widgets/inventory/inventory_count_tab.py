@@ -366,11 +366,11 @@ class InventoryCountTab(QWidget):
 
         self.sessions_table = QTableWidget(0, 5)
         self.sessions_table.setHorizontalHeaderLabels([
-            "session_id",
-            "session name",
-            "status",
-            "started_at",
-            "Created_by",
+            "ID Session",
+            "Nom Session",
+            "Statut",
+            "Débutée le",
+            "Créée par",
         ])
         self.sessions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -385,16 +385,16 @@ class InventoryCountTab(QWidget):
 
         self.lines_table = QTableWidget(0, 10)
         self.lines_table.setHorizontalHeaderLabels([
-            "produit",
+            "Produit",
             "Code-barres",
             "Lot",
             "Expiration",
             "Emplacement",
-            "Stock\nProgramme",
-            "Stock compte",
-            "Ecart",
-            "status",
-            "commentaire",
+            "Stock\nProgrammé",
+            "Stock\nCompté",
+            "Écart",
+            "Statut",
+            "Commentaire",
         ])
         self.lines_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.lines_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -452,10 +452,10 @@ class InventoryCountTab(QWidget):
         self.summary_cards = {
             "OK": SummaryCard("OK", "#238b55"),
             "SHORT": SummaryCard("Manquant", "#c0392b"),
-            "EXCESS": SummaryCard("excedent", "#d68910"),
-            "NOT_COUNTED": SummaryCard("Non Compte", "#607080"),
+            "EXCESS": SummaryCard("Excédent", "#d68910"),
+            "NOT_COUNTED": SummaryCard("Non compté", "#607080"),
             "UNKNOWN": SummaryCard("Inconnu", "#8e44ad"),
-            "Estimated_Variance_Value": SummaryCard("valeur ecart", "#007572"),
+            "Estimated_Variance_Value": SummaryCard("Valeur écart", "#007572"),
         }
         for card in self.summary_cards.values():
             sidebar_layout.addWidget(card)
@@ -471,7 +471,7 @@ class InventoryCountTab(QWidget):
         filters_layout.addWidget(self.search_input)
 
         self.status_filter = QComboBox()
-        self.status_filter.addItems(["Tous", "OK", "SHORT", "EXCESS", "NOT_COUNTED", "UNKNOWN"])
+        self.status_filter.addItems(["Tous", "OK", "Manquant", "Excédent", "Non compté", "Inconnu"])
         self.status_filter.currentTextChanged.connect(self.load_lines)
         filters_layout.addWidget(self.status_filter)
         sidebar_layout.addSpacing(4)
@@ -632,9 +632,16 @@ class InventoryCountTab(QWidget):
         if not manager or not self.current_session_id:
             return
 
-        status = self.status_filter.currentText()
-        if status == "Tous":
-            status = None
+        status_text = self.status_filter.currentText()
+        status_map = {
+            "Tous": None,
+            "OK": "OK",
+            "Manquant": "SHORT",
+            "Excédent": "EXCESS",
+            "Non compté": "NOT_COUNTED",
+            "Inconnu": "UNKNOWN"
+        }
+        status = status_map.get(status_text)
         search = self.search_input.text().strip() or None
 
         try:
@@ -802,13 +809,38 @@ class InventoryCountTab(QWidget):
             if not allow_unknown:
                 return
 
+        uncounted_qty = summary.get("NOT_COUNTED", 0)
+        uncounted_action = "ignore"
+        if uncounted_qty > 0:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Inventaire")
+            msg_box.setText(f"Il y a {uncounted_qty} produits non comptés. Que voulez-vous faire ?")
+            
+            btn_ignore = msg_box.addButton("Ignorer (Garder le stock)", QMessageBox.ActionRole)
+            btn_zero = msg_box.addButton("Mettre à zéro", QMessageBox.DestructiveRole)
+            btn_cancel = msg_box.addButton("Annuler", QMessageBox.RejectRole)
+            
+            msg_box.exec()
+            
+            if msg_box.clickedButton() == btn_cancel:
+                return
+            elif msg_box.clickedButton() == btn_zero:
+                uncounted_action = "zero"
+            else:
+                uncounted_action = "ignore"
+
         if not self._confirm_sensitive_action(
             "Inventaire",
             "Appliquer les ecarts sur le stock programme ? Cette operation modifie le stock reel.",
         ):
             return
 
-        result = manager.apply_session(self.current_session_id, self._user_id(), allow_unknown=allow_unknown)
+        result = manager.apply_session(
+            self.current_session_id, 
+            self._user_id(), 
+            allow_unknown=allow_unknown,
+            uncounted_action=uncounted_action
+        )
         if result.get("success"):
             QMessageBox.information(self, "Inventaire", result.get("message", "Inventaire applique."))
         else:

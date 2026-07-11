@@ -433,11 +433,13 @@ class BackupManagerMixin:
                 return False, "No Excel files were found in this backup."
 
             EXCEL_IMPORT_ORDER = [
-                'Users', 'Location_Types', 'Product_Families', 'Packaging_Units',
-                'Manufacturers', 'Suppliers', 'External_Partners', 'Locations',
-                'Automates', 'Waste_Reasons', 'Products_Master', 'Purchase_Orders',
-                'PO_Details', 'Reception_Log', 'Reception_Details', 'Inventory_Batches',
-                'Supplier_Credit_Notes', 'Credit_Note_Details'
+                'Users', 'Company_Settings', 'Location_Types', 'Product_Families', 'Packaging_Units',
+                'Manufacturers', 'Suppliers', 'External_Partners', 'Locations', 'Automates', 'Waste_Reasons',
+                'Products_Master', 'Product_Documents', 'Purchase_Orders', 'PO_Details',
+                'Reception_Log', 'Reception_Details', 'Inventory_Batches',
+                'Inventory_Count_Sessions', 'Inventory_Count_Lines', 'Inventory_Count_Scans',
+                'Active_Containers', 'External_Transfer_Log', 'External_Transfer_Details', 'Stock_Movement_Log',
+                'Supplier_Credit_Notes', 'Credit_Note_Details', 'Supplier_Payments', 'SystemLogs'
             ]
 
             ordered_files = [f"{t}.xlsx" for t in EXCEL_IMPORT_ORDER if f"{t}.xlsx" in excel_files]
@@ -587,7 +589,7 @@ class BackupManagerMixin:
     # MULTI-PATH BACKUP (AUTO & MANUAL)
     # -------------------------------------------------------------------------
 
-    def create_multi_backup(self, target_paths: list, password: str = "", is_auto: bool = True):
+    def create_multi_backup(self, target_paths: list, password: str = "", is_auto: bool = True, max_auto_backups: int = 5):
         """
         يقوم بتوليد النسخة الاحتياطية ونسخها إلى جميع المسارات المحددة في القائمة.
         إذا كان is_auto=True: يضعها في مجلد Auto_Backups ويحذف النسخ القديمة.
@@ -664,14 +666,24 @@ class BackupManagerMixin:
                     dest_dir = os.path.join(base_path, "Auto_Backups") if is_auto else base_path
                     os.makedirs(dest_dir, exist_ok=True)
                     
-                    # حذف النسخ التلقائية القديمة في هذا المسار
-                    if is_auto:
+                    # إدارة النسخ التلقائية القديمة في هذا المسار (الاحتفاظ بعدد معين)
+                    if is_auto and max_auto_backups > 0:
+                        existing_backups = []
                         for file_name in os.listdir(dest_dir):
                             if file_name.endswith('.zip') and file_name.startswith('AutoBackup'):
-                                try: 
-                                    os.remove(os.path.join(dest_dir, file_name))
-                                except Exception: 
-                                    pass
+                                existing_backups.append(os.path.join(dest_dir, file_name))
+                        
+                        # ترتيب الملفات من الأقدم للأحدث (حسب وقت الإنشاء/التعديل)
+                        existing_backups.sort(key=os.path.getmtime)
+                        
+                        # حذف الأقدم إذا تجاوزنا الحد الأقصى (الحد - 1 لأننا سنضيف النسخة الجديدة حالاً)
+                        while len(existing_backups) >= max_auto_backups:
+                            oldest_file = existing_backups.pop(0)
+                            try: 
+                                os.remove(oldest_file)
+                                logging.info(f"🗑️ Deleted old backup to respect max limit: {oldest_file}")
+                            except Exception: 
+                                pass
                                 
                     # نسخ الملف إلى الوجهة النهائية
                     final_path = os.path.join(dest_dir, zip_filename)

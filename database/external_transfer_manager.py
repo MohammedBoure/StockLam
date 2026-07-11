@@ -44,6 +44,14 @@ class ExternalTransferManager:
                         MODIFY COLUMN Transfer_Type ENUM('Outbound', 'Return', 'Free', 'Paid') DEFAULT 'Outbound'
                     """)
                     conn.commit()
+                
+                cursor.execute("SHOW COLUMNS FROM External_Transfer_Log LIKE 'Ref_Transfer_ID'")
+                if not cursor.fetchone():
+                    logging.info("Adding Ref_Transfer_ID to External_Transfer_Log...")
+                    cursor.execute("ALTER TABLE External_Transfer_Log ADD COLUMN Ref_Transfer_ID INT UNSIGNED NULL DEFAULT NULL")
+                    cursor.execute("ALTER TABLE External_Transfer_Log ADD CONSTRAINT fk_ref_transfer FOREIGN KEY (Ref_Transfer_ID) REFERENCES External_Transfer_Log(Transfer_ID) ON DELETE SET NULL")
+                    conn.commit()
+                    
                 ExternalTransferManager._transfer_schema_checked = True
         except Exception as e:
             logging.error(f"External transfer schema check error: {e}")
@@ -51,17 +59,17 @@ class ExternalTransferManager:
     # --------------------------------------------------------------------------
     #  Header Operations (Log)
     # --------------------------------------------------------------------------
-    def create_transfer_header(self, partner_id: int, transfer_type: str, notes: str, user_id: int) -> Optional[int]:
+    def create_transfer_header(self, partner_id: int, transfer_type: str, notes: str, user_id: int, ref_transfer_id: Optional[int] = None) -> Optional[int]:
         """إنشاء رأس وثيقة التحويل (Draft)."""
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor()
                 query = """
                     INSERT INTO External_Transfer_Log
-                    (Partner_ID, Transfer_Type, Status, Notes, Created_By, Transaction_Date)
-                    VALUES (%s, %s, 'Draft', %s, %s, NOW())
+                    (Partner_ID, Transfer_Type, Status, Notes, Created_By, Ref_Transfer_ID, Transaction_Date)
+                    VALUES (%s, %s, 'Draft', %s, %s, %s, NOW())
                 """
-                cursor.execute(query, (partner_id, transfer_type, notes, user_id))
+                cursor.execute(query, (partner_id, transfer_type, notes, user_id, ref_transfer_id))
                 conn.commit()
                 return cursor.lastrowid
         except Exception as e:
@@ -89,7 +97,7 @@ class ExternalTransferManager:
             logging.error(f"Error updating transfer {transfer_id}: {e}")
             return False
 
-    def save_transfer_header_only(self, transfer_id, partner_id, transaction_date, user_id, transfer_type='Outbound'):
+    def save_transfer_header_only(self, transfer_id, partner_id, transaction_date, user_id, transfer_type='Outbound', ref_transfer_id=None):
         try:
             self._ensure_transfer_schema()
             with self.db.get_db_connection() as conn:
@@ -621,9 +629,10 @@ class ExternalTransferManager:
                     mov_note = f"Restoration suite à suppression BL #{transfer_id}"
                     qty_c = Decimal(str(item['Qty_Transferred']))
 
-                # تسجيل حركة استعادة في السجل (Adjustment)
+                # تسجيل حركة استعادة في السجل
                 self.movement_manager.create_movement_log(
-                    product_id=item['Product_ID'], movement_type='Adjustment',
+                    product_id=item['Product_ID'], 
+                    movement_type='Transfer_Return' if transfer_type == 'Return' else 'External_Transfer',
                     qty_change=qty_c, unit_used='Unit',
                     batch_id=item['Batch_ID'], user_id=None,
                     notes=mov_note,
@@ -643,9 +652,8 @@ class ExternalTransferManager:
 
     def save_and_sync_stock(self, transfer_id, partner_id, new_items, user_id):
         """
-        الدالة الذكية (Delta Logic):
-        تحسب الفرق بين الكمية القديمة والجديدة وتسجل حركة المخزون للفرق فقط،
-        مما يحافظ على نظافة ودقة سجل الحركات (Stock Movement Log).
+        الدالة الذكية لـ BL (Delta Logic):
+        تحسب الفرق بين الكمية القديمة والجديدة وتعدل المخزون وتحدث الحالة تلقائياً.
         """
         conn = None
         try:
@@ -674,12 +682,18 @@ class ExternalTransferManager:
             grand_total = 0.0
             new_batch_ids = [int(item['batch_id']) for item in new_items]
 
-            # 3. معالجة المنتجات التي تم حذفها من الفاتورة المعدلة (إرجاع كلي)
+            # 3. معالجة المنتجات التي تم حذفها من الفاتورة المعدلة (إرجاع كلي للمخزن وإعادة تنشيط الباتش)
             for old_batch_id, old_data in old_items_dict.items():
                 if old_batch_id not in new_batch_ids:
                     qty_to_restore = float(old_data['Qty_Transferred'])
-                    # إرجاع للمخزون
-                    cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current + %s WHERE Batch_ID = %s", (qty_to_restore, old_batch_id))
+                    # إرجاع للمخزون وتحويل الحالة إلى Available في حال كانت Depleted
+                    cursor.execute("""
+                        UPDATE Inventory_Batches 
+                        SET Quantity_Current = Quantity_Current + %s,
+                            Status = CASE WHEN Status = 'Depleted' THEN 'Available' ELSE Status END
+                        WHERE Batch_ID = %s
+                    """, (qty_to_restore, old_batch_id))
+                    
                     # تسجيل حركة إرجاع
                     self.movement_manager.create_movement_log(
                         product_id=old_data['Product_ID'], movement_type='Adjustment',
@@ -716,14 +730,22 @@ class ExternalTransferManager:
                                 conn.rollback()
                                 return False, f"Stock insuffisant pour le lot {b_id}."
 
-                        # تحديث المخزون (بالفرق فقط)
-                        cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current - %s WHERE Batch_ID = %s", (delta_qty, b_id))
+                        # تحديث المخزون (بالفرق) وتحديث الحالة تلقائياً صعوداً أو نزولاً
+                        cursor.execute("""
+                            UPDATE Inventory_Batches 
+                            SET Quantity_Current = Quantity_Current - %s,
+                                Status = CASE 
+                                    WHEN (Quantity_Current - %s) <= 0 THEN 'Depleted' 
+                                    WHEN (Quantity_Current - %s) > 0 AND Status = 'Depleted' THEN 'Available'
+                                    ELSE Status 
+                                END
+                            WHERE Batch_ID = %s
+                        """, (delta_qty, delta_qty, delta_qty, b_id))
 
                         # تحديد نوع الحركة بناءً على التغيير (+ أو -)
-                        mov_type = 'External_Transfer' if delta_qty > 0 else 'Adjustment'
+                        mov_type = 'External_Transfer'
                         mov_note = f"Ajout suppl. BL #{transfer_id}" if delta_qty > 0 else f"Retour partiel BL #{transfer_id}"
 
-                        # تسجيل الحركة للكمية المضافة/المنقوصة فقط!
                         self.movement_manager.create_movement_log(
                             product_id=p_id, movement_type=mov_type,
                             qty_change=Decimal(str(-delta_qty)), unit_used='Unit',
@@ -731,7 +753,7 @@ class ExternalTransferManager:
                             notes=mov_note, external_cursor=cursor
                         )
 
-                    # تحديث السطر في تفاصيل الفاتورة (السعر والملاحظة والكمية)
+                    # تحديث السطر في تفاصيل الفاتورة
                     cursor.execute("""
                         UPDATE External_Transfer_Details
                         SET Qty_Transferred = %s, Unit_Price = %s, Line_Total = %s, Line_Note = %s
@@ -746,7 +768,13 @@ class ExternalTransferManager:
                         conn.rollback()
                         return False, f"Stock insuffisant pour le lot {b_id}."
 
-                    cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current - %s WHERE Batch_ID = %s", (new_qty, b_id))
+                    # خصم وتحديث الحالة إلى Depleted إذا أصبح الصفر
+                    cursor.execute("""
+                        UPDATE Inventory_Batches 
+                        SET Quantity_Current = Quantity_Current - %s,
+                            Status = CASE WHEN (Quantity_Current - %s) <= 0 THEN 'Depleted' ELSE Status END
+                        WHERE Batch_ID = %s
+                    """, (new_qty, new_qty, b_id))
 
                     self.movement_manager.create_movement_log(
                         product_id=p_id, movement_type='External_Transfer',
@@ -761,7 +789,7 @@ class ExternalTransferManager:
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, (transfer_id, p_id, b_id, new_qty, price, line_total, note))
 
-            # 5. إنهاء وإغلاق
+            # 5. إنهاء وإغلاق المعاملة بنجاح
             cursor.execute("UPDATE External_Transfer_Log SET Status='Completed', Total_Amount=%s, Partner_ID=%s WHERE Transfer_ID=%s", (grand_total, partner_id, transfer_id))
 
             conn.commit()
@@ -787,35 +815,59 @@ class ExternalTransferManager:
             logging.error(f"Error getting transfer header {transfer_id}: {e}")
             return None
 
-    def get_returnable_batches_for_partner(self, partner_id: int, exclude_return_transfer_id: Optional[int] = None) -> List[Dict]:
+    def get_returnable_batches_for_partner(self, partner_id: int, exclude_return_transfer_id: Optional[int] = None, ref_transfer_id: Optional[int] = None) -> List[Dict]:
         """
         يتم حساب الكميات التي يمكن إرجاعها بناءً على ما تم إرساله وطرح ما تم إرجاعه مسبقاً.
         """
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
-                query = """
-                    SELECT
-                        d.Product_ID,
-                        d.Batch_ID,
-                        b.Lot_Number,
-                        p.Product_Name,
-                        b.Expiry_Date,
-                        b.Location_ID,
-                        b.Internal_Barcode,
-                        p.Barcode,
-                        b.Quantity_Current,
-                        SUM(CASE WHEN IFNULL(t.Transfer_Type, 'Outbound') != 'Return' THEN d.Qty_Transferred ELSE 0 END) as Total_Sent,
-                        SUM(CASE WHEN t.Transfer_Type = 'Return' AND (%s IS NULL OR t.Transfer_ID <> %s) THEN d.Qty_Transferred ELSE 0 END) as Total_Returned
-                    FROM External_Transfer_Details d
-                    JOIN External_Transfer_Log t ON d.Transfer_ID = t.Transfer_ID
-                    JOIN Inventory_Batches b ON d.Batch_ID = b.Batch_ID
-                    JOIN Products_Master p ON d.Product_ID = p.Product_ID
-                    WHERE t.Partner_ID = %s AND t.Status = 'Completed'
-                    GROUP BY d.Product_ID, d.Batch_ID, b.Lot_Number, p.Product_Name, b.Expiry_Date, b.Location_ID, b.Internal_Barcode, p.Barcode, b.Quantity_Current
-                    HAVING (Total_Sent - Total_Returned) > 0
-                """
-                cursor.execute(query, (exclude_return_transfer_id, exclude_return_transfer_id, partner_id))
+                if ref_transfer_id is not None:
+                    query = """
+                        SELECT
+                            d.Product_ID,
+                            d.Batch_ID,
+                            b.Lot_Number,
+                            p.Product_Name,
+                            b.Expiry_Date,
+                            b.Location_ID,
+                            b.Internal_Barcode,
+                            p.Barcode,
+                            b.Quantity_Current,
+                            SUM(CASE WHEN t.Transfer_ID = %s THEN d.Qty_Transferred ELSE 0 END) as Total_Sent,
+                            SUM(CASE WHEN t.Transfer_Type = 'Return' AND t.Ref_Transfer_ID = %s AND (%s IS NULL OR t.Transfer_ID <> %s) THEN d.Qty_Transferred ELSE 0 END) as Total_Returned
+                        FROM External_Transfer_Details d
+                        JOIN External_Transfer_Log t ON d.Transfer_ID = t.Transfer_ID
+                        JOIN Inventory_Batches b ON d.Batch_ID = b.Batch_ID
+                        JOIN Products_Master p ON d.Product_ID = p.Product_ID
+                        WHERE t.Partner_ID = %s AND t.Status = 'Completed'
+                        GROUP BY d.Product_ID, d.Batch_ID, b.Lot_Number, p.Product_Name, b.Expiry_Date, b.Location_ID, b.Internal_Barcode, p.Barcode, b.Quantity_Current
+                        HAVING (Total_Sent - Total_Returned) > 0
+                    """
+                    cursor.execute(query, (ref_transfer_id, ref_transfer_id, exclude_return_transfer_id, exclude_return_transfer_id, partner_id))
+                else:
+                    query = """
+                        SELECT
+                            d.Product_ID,
+                            d.Batch_ID,
+                            b.Lot_Number,
+                            p.Product_Name,
+                            b.Expiry_Date,
+                            b.Location_ID,
+                            b.Internal_Barcode,
+                            p.Barcode,
+                            b.Quantity_Current,
+                            SUM(CASE WHEN IFNULL(t.Transfer_Type, 'Outbound') != 'Return' THEN d.Qty_Transferred ELSE 0 END) as Total_Sent,
+                            SUM(CASE WHEN t.Transfer_Type = 'Return' AND (%s IS NULL OR t.Transfer_ID <> %s) THEN d.Qty_Transferred ELSE 0 END) as Total_Returned
+                        FROM External_Transfer_Details d
+                        JOIN External_Transfer_Log t ON d.Transfer_ID = t.Transfer_ID
+                        JOIN Inventory_Batches b ON d.Batch_ID = b.Batch_ID
+                        JOIN Products_Master p ON d.Product_ID = p.Product_ID
+                        WHERE t.Partner_ID = %s AND t.Status = 'Completed'
+                        GROUP BY d.Product_ID, d.Batch_ID, b.Lot_Number, p.Product_Name, b.Expiry_Date, b.Location_ID, b.Internal_Barcode, p.Barcode, b.Quantity_Current
+                        HAVING (Total_Sent - Total_Returned) > 0
+                    """
+                    cursor.execute(query, (exclude_return_transfer_id, exclude_return_transfer_id, partner_id))
                 results = cursor.fetchall()
 
                 # إعداد النتيجة لتشبه الكاش العادي لكن مع حقل Available_To_Return
@@ -827,24 +879,39 @@ class ExternalTransferManager:
             logging.error(f"Error get_returnable_batches_for_partner: {e}")
             return []
 
-    def _get_returnable_quantities_for_partner(self, cursor, partner_id: int, batch_ids: List[int], exclude_return_transfer_id: Optional[int] = None) -> Dict[int, float]:
+    def _get_returnable_quantities_for_partner(self, cursor, partner_id: int, batch_ids: List[int], exclude_return_transfer_id: Optional[int] = None, ref_transfer_id: Optional[int] = None) -> Dict[int, float]:
         if not batch_ids:
             return {}
 
         placeholders = ", ".join(["%s"] * len(batch_ids))
-        query = f"""
-            SELECT
-                d.Batch_ID,
-                SUM(CASE WHEN IFNULL(t.Transfer_Type, 'Outbound') != 'Return' THEN d.Qty_Transferred ELSE 0 END) as Total_Sent,
-                SUM(CASE WHEN t.Transfer_Type = 'Return' AND (%s IS NULL OR t.Transfer_ID <> %s) THEN d.Qty_Transferred ELSE 0 END) as Total_Returned
-            FROM External_Transfer_Details d
-            JOIN External_Transfer_Log t ON d.Transfer_ID = t.Transfer_ID
-            WHERE t.Partner_ID = %s
-              AND t.Status = 'Completed'
-              AND d.Batch_ID IN ({placeholders})
-            GROUP BY d.Batch_ID
-        """
-        params = [exclude_return_transfer_id, exclude_return_transfer_id, partner_id] + batch_ids
+        if ref_transfer_id is not None:
+            query = f"""
+                SELECT
+                    d.Batch_ID,
+                    SUM(CASE WHEN t.Transfer_ID = %s THEN d.Qty_Transferred ELSE 0 END) as Total_Sent,
+                    SUM(CASE WHEN t.Transfer_Type = 'Return' AND t.Ref_Transfer_ID = %s AND (%s IS NULL OR t.Transfer_ID <> %s) THEN d.Qty_Transferred ELSE 0 END) as Total_Returned
+                FROM External_Transfer_Details d
+                JOIN External_Transfer_Log t ON d.Transfer_ID = t.Transfer_ID
+                WHERE t.Partner_ID = %s
+                  AND t.Status = 'Completed'
+                  AND d.Batch_ID IN ({placeholders})
+                GROUP BY d.Batch_ID
+            """
+            params = [ref_transfer_id, ref_transfer_id, exclude_return_transfer_id, exclude_return_transfer_id, partner_id] + batch_ids
+        else:
+            query = f"""
+                SELECT
+                    d.Batch_ID,
+                    SUM(CASE WHEN IFNULL(t.Transfer_Type, 'Outbound') != 'Return' THEN d.Qty_Transferred ELSE 0 END) as Total_Sent,
+                    SUM(CASE WHEN t.Transfer_Type = 'Return' AND (%s IS NULL OR t.Transfer_ID <> %s) THEN d.Qty_Transferred ELSE 0 END) as Total_Returned
+                FROM External_Transfer_Details d
+                JOIN External_Transfer_Log t ON d.Transfer_ID = t.Transfer_ID
+                WHERE t.Partner_ID = %s
+                  AND t.Status = 'Completed'
+                  AND d.Batch_ID IN ({placeholders})
+                GROUP BY d.Batch_ID
+            """
+            params = [exclude_return_transfer_id, exclude_return_transfer_id, partner_id] + batch_ids
         cursor.execute(query, params)
 
         quantities = {}
@@ -854,10 +921,10 @@ class ExternalTransferManager:
             quantities[int(row['Batch_ID'])] = sent - returned
         return quantities
 
-    def save_and_sync_return_stock(self, transfer_id, partner_id, new_items, user_id):
+    def save_and_sync_return_stock(self, transfer_id, partner_id, new_items, user_id, ref_transfer_id=None):
         """
-        الدالة الخاصة بحفظ وتحديث المخزون لمرتجعات الشركاء (Bon de Retour).
-        نفس فكرة Delta Logic لكن بالعكس (الإرجاع يزيد المخزون).
+        الدالة الخاصة بـ Bon de Retour:
+        تضمن عودة المنتجات المرتجعة إلى المخزن وتحويل حالتها تلقائياً إلى Available.
         """
         conn = None
         try:
@@ -885,9 +952,9 @@ class ExternalTransferManager:
                 for row in cursor.fetchall():
                     old_items_dict[row['Batch_ID']] = row
 
-                cursor.execute("UPDATE External_Transfer_Log SET Partner_ID = %s, Transfer_Type = 'Return' WHERE Transfer_ID = %s", (partner_id, transfer_id))
+                cursor.execute("UPDATE External_Transfer_Log SET Partner_ID = %s, Transfer_Type = 'Return', Ref_Transfer_ID = %s WHERE Transfer_ID = %s", (partner_id, ref_transfer_id, transfer_id))
             else:
-                cursor.execute("INSERT INTO External_Transfer_Log (Partner_ID, Transfer_Type, Status, Created_By, Transaction_Date) VALUES (%s, 'Return', 'Draft', %s, NOW())", (partner_id, user_id))
+                cursor.execute("INSERT INTO External_Transfer_Log (Partner_ID, Transfer_Type, Status, Created_By, Ref_Transfer_ID, Transaction_Date) VALUES (%s, 'Return', 'Draft', %s, %s, NOW())", (partner_id, user_id, ref_transfer_id))
                 transfer_id = cursor.lastrowid
 
             grand_total = 0.0
@@ -898,7 +965,7 @@ class ExternalTransferManager:
                 requested_by_batch[b_id] = requested_by_batch.get(b_id, 0.0) + float(item['qty'])
 
             allowed_by_batch = self._get_returnable_quantities_for_partner(
-                cursor, partner_id, list(requested_by_batch.keys()), exclude_return_transfer_id=transfer_id
+                cursor, partner_id, list(requested_by_batch.keys()), exclude_return_transfer_id=transfer_id, ref_transfer_id=ref_transfer_id
             )
             for b_id, requested_qty in requested_by_batch.items():
                 allowed_qty = float(allowed_by_batch.get(b_id, 0.0))
@@ -906,14 +973,19 @@ class ExternalTransferManager:
                     conn.rollback()
                     return False, f"Le lot {b_id} n'est pas disponible pour ce partenaire. Max retour: {allowed_qty:g}."
 
-
+            # التراجع عن المنتجات المحذوفة من وصل الإرجاع (خصمها من المخزن وحمايتها من النزول تحت الصفر)
             for old_batch_id, old_data in old_items_dict.items():
                 if old_batch_id not in new_batch_ids:
                     qty_to_reverse = float(old_data['Qty_Transferred'])
-                    # تراجع عن إرجاع: نخصم المخزون
-                    cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current - %s WHERE Batch_ID = %s", (qty_to_reverse, old_batch_id))
+                    cursor.execute("""
+                        UPDATE Inventory_Batches 
+                        SET Quantity_Current = Quantity_Current - %s,
+                            Status = CASE WHEN (Quantity_Current - %s) <= 0 THEN 'Depleted' ELSE Status END
+                        WHERE Batch_ID = %s
+                    """, (qty_to_reverse, qty_to_reverse, old_batch_id))
+                    
                     self.movement_manager.create_movement_log(
-                        product_id=old_data['Product_ID'], movement_type='Adjustment',
+                        product_id=old_data['Product_ID'], movement_type='Transfer_Return',
                         qty_change=Decimal(str(-qty_to_reverse)), unit_used='Unit',
                         batch_id=old_batch_id, user_id=user_id,
                         notes=f"Annulation retour suite modification BR #{transfer_id}",
@@ -921,6 +993,7 @@ class ExternalTransferManager:
                     )
                     cursor.execute("DELETE FROM External_Transfer_Details WHERE Detail_ID = %s", (old_data['Detail_ID'],))
 
+            # معالجة التحديثات والإضافات الجديدة لوصل الإرجاع
             for item in new_items:
                 b_id = int(item['batch_id'])
                 p_id = int(item['product_id'])
@@ -936,21 +1009,27 @@ class ExternalTransferManager:
                     delta_qty = new_qty - old_qty
 
                     if abs(delta_qty) > 0.0001:
-                        # التغيير: نزيد المخزون بالفرق
-                        cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current + %s WHERE Batch_ID = %s", (delta_qty, b_id))
+                        # زيادة أو نقص المخزن حسب التعديل وتحديث الحالات ديناميكياً
+                        cursor.execute("""
+                            UPDATE Inventory_Batches 
+                            SET Quantity_Current = Quantity_Current + %s,
+                                Status = CASE 
+                                    WHEN (Quantity_Current + %s) <= 0 THEN 'Depleted' 
+                                    WHEN (Quantity_Current + %s) > 0 AND Status = 'Depleted' THEN 'Available'
+                                    ELSE Status 
+                                END
+                            WHERE Batch_ID = %s
+                        """, (delta_qty, delta_qty, delta_qty, b_id))
 
-                        mov_type = 'Transfer_Return' if delta_qty > 0 else 'Adjustment'
+                        mov_type = 'Transfer_Return'
                         mov_note = f"Retour suppl. BR #{transfer_id}" if delta_qty > 0 else f"Annulation partiel retour BR #{transfer_id}"
 
-                        movement_id = self.movement_manager.create_movement_log(
+                        self.movement_manager.create_movement_log(
                             product_id=p_id, movement_type=mov_type,
                             qty_change=Decimal(str(delta_qty)), unit_used='Unit',
                             batch_id=b_id, user_id=user_id,
                             notes=mov_note, external_cursor=cursor
                         )
-                        if movement_id is None:
-                            conn.rollback()
-                            return False, f"Impossible de journaliser le retour du lot {b_id}."
 
                     cursor.execute("""
                         UPDATE External_Transfer_Details
@@ -959,19 +1038,21 @@ class ExternalTransferManager:
                     """, (new_qty, price, line_total, note, old_data['Detail_ID']))
 
                 else:
-                    # منتج يتم إرجاعه لأول مرة في هذا الوصل
-                    cursor.execute("UPDATE Inventory_Batches SET Quantity_Current = Quantity_Current + %s WHERE Batch_ID = %s", (new_qty, b_id))
+                    # منتج يتم إرجاعه لأول مرة في هذا الوصل (زيادة المخزن وتفعيله كـ Available)
+                    cursor.execute("""
+                        UPDATE Inventory_Batches 
+                        SET Quantity_Current = Quantity_Current + %s,
+                            Status = CASE WHEN Status = 'Depleted' THEN 'Available' ELSE Status END
+                        WHERE Batch_ID = %s
+                    """, (new_qty, b_id))
 
-                    movement_id = self.movement_manager.create_movement_log(
+                    self.movement_manager.create_movement_log(
                         product_id=p_id, movement_type='Transfer_Return',
                         qty_change=Decimal(str(new_qty)), unit_used='Unit',
                         batch_id=b_id, user_id=user_id,
                         notes=f"Retour de {partner_name} (BR #{transfer_id})",
                         external_cursor=cursor
                     )
-                    if movement_id is None:
-                        conn.rollback()
-                        return False, f"Impossible de journaliser le retour du lot {b_id}."
 
                     cursor.execute("""
                         INSERT INTO External_Transfer_Details (Transfer_ID, Product_ID, Batch_ID, Qty_Transferred, Unit_Price, Line_Total, Line_Note)

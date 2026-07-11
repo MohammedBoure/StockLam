@@ -73,6 +73,8 @@ def apply_filters_local(self):
         ent_from       = self.date_in_from.date().toPython()
         ent_to         = self.date_in_to.date().toPython()
         current_date   = date.today()
+        
+        use_reclamation = getattr(self, 'chk_reclamation', None) and self.chk_reclamation.isChecked()
 
         temp_filtered = []
 
@@ -131,6 +133,15 @@ def apply_filters_local(self):
                 entry_val = row.get('Date_Received') or row.get('Created_At')
                 e_date    = _parse_date(entry_val)
                 if not e_date or not (ent_from <= e_date <= ent_to):
+                    continue
+
+            # --- فلتر الشكاوى ---
+            if use_reclamation:
+                raw_note = row.get('Reception_Note')
+                rec = str(raw_note).strip() if raw_note is not None else ""
+                if rec.lower() == "none":
+                    rec = ""
+                if not rec:
                     continue
 
             temp_filtered.append(row)
@@ -231,4 +242,6 @@ def reset_filters(self):
     toggle_date_filter(self, 0)
     self.chk_entry_filter.setChecked(False)
     toggle_entry_filter(self, 0)
+    if hasattr(self, 'chk_reclamation'):
+        self.chk_reclamation.setChecked(False)
     load_data(self)

@@ -32,7 +32,6 @@ class SessionManager:
 
     @staticmethod
     def clear_session():
-        """حذف بيانات الدخول (عند الخروج أو فشل الدخول)"""
         if os.path.exists(SessionManager.SESSION_FILE):
             os.remove(SessionManager.SESSION_FILE)
 class LoginDialog(QDialog):
@@ -81,7 +80,6 @@ class LoginDialog(QDialog):
 
         # --- التعديلات المطلوبة ---
 
-        # 1. عند الضغط على Enter في اسم المستخدم -> ينتقل المؤشر إلى كلمة المرور
         self.username_input.returnPressed.connect(self.password_input.setFocus)
         
         # 2. عند الضغط على Enter في كلمة المرور -> يحاول تسجيل الدخول (سيتم التحقق من الخانات داخل الدالة)

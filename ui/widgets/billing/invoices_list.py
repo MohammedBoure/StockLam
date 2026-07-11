@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
     QHeaderView, QPushButton, QLabel, QLineEdit,
     QComboBox, QDateEdit, QGroupBox, QTableWidgetItem,
-    QAbstractItemView, QMessageBox, QFileDialog
+    QAbstractItemView, QMessageBox, QFileDialog, QMenu
 )
 from PySide6.QtCore import Qt, QDate, Signal
 import qtawesome as qta
@@ -34,7 +34,8 @@ class InvoicesListWidget(QWidget):
     request_edit = Signal(int)
     request_pdf = Signal(int)
     request_delete = Signal(int)
-
+    
+    request_view_partner = Signal(int)
     def __init__(self, manager):
         super().__init__()
         self.manager = manager
@@ -124,7 +125,11 @@ class InvoicesListWidget(QWidget):
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         self.table.cellDoubleClicked.connect(lambda r, c: self.on_edit_clicked())
 
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+
         layout.addWidget(self.table)
+        filter_group.raise_()
 
     def on_new_clicked(self):
         partner_id = self.combo_filter_partner.currentData()
@@ -135,7 +140,7 @@ class InvoicesListWidget(QWidget):
         if not partner_id:
             QMessageBox.warning(self, "Attention", "Selectionnez un BL ou filtrez par partenaire avant de creer un bon de retour.")
             return
-        self.request_new_return.emit(partner_id)
+        self.request_new_return.emit({'partner_id': partner_id, 'ref_transfer_id': None})
 
     def format_id(self, raw_id, date_str):
         """تحويل ID الرقمي إلى تنسيق YYYY/NNN"""
@@ -167,6 +172,47 @@ class InvoicesListWidget(QWidget):
 
 
 
+    def show_context_menu(self, pos):
+        item = self.table.itemAt(pos)
+        if not item: return
+        row = item.row()
+        
+        # جلب البيانات المخزنة في السطر الحالي
+        tid = self.table.item(row, 0).data(Qt.UserRole)
+        partner_id = self.table.item(row, 0).data(Qt.UserRole + 1)
+        transfer_type_text = self.table.item(row, 1).text()
+        ref_transfer_id = self.table.item(row, 0).data(Qt.UserRole + 2)
+
+        menu = QMenu(self)
+        
+        # 1. إذا كان السطر المحدد عبارة عن وصل تسليم BL
+        if transfer_type_text == "BL (Sortie)":
+            action_return = menu.addAction("Créer un Bon de Retour pour ce BL")
+            action_return.setIcon(qta.icon("fa5s.file-import", color="#8e44ad"))
+            action_return.triggered.connect(lambda: self.request_new_return.emit({'partner_id': partner_id, 'ref_transfer_id': tid}))
+            
+            menu.addSeparator() # خط فاصل للتنظيم
+            
+            action_partner = menu.addAction("Consulter le Sous-traitant (Profil)")
+            action_partner.setIcon(qta.icon("fa5s.user-tie", color="#2980b9"))
+            action_partner.triggered.connect(lambda: self.request_view_partner.emit(partner_id))
+
+        # 2. إذا كان السطر المحدد عبارة عن وصل إرجاع (Retour)
+        elif transfer_type_text == "Retour":
+            # خيار الانتقال إلى الـ BL الأصلي (يظهر فقط إذا كان مربوطاً بـ BL)
+            if ref_transfer_id:
+                action_orig = menu.addAction("Consulter le BL d'origine")
+                action_orig.setIcon(qta.icon("fa5s.file-invoice", color="#27ae60"))
+                action_orig.triggered.connect(lambda: self.request_edit.emit(ref_transfer_id))
+            
+            # خيار الانتقال مباشرة إلى ملف المقاول / الشريك (يظهر دائماً)
+            action_partner = menu.addAction("Consulter le Sous-traitant (Profil)")
+            action_partner.setIcon(qta.icon("fa5s.user-tie", color="#2980b9"))
+            action_partner.triggered.connect(lambda: self.request_view_partner.emit(partner_id))
+        
+        # إظهار القائمة في موقع مؤشر الفأرة
+        if not menu.isEmpty():
+            menu.exec(self.table.viewport().mapToGlobal(pos))
     def get_selected_partner_id(self):
         row = self.table.currentRow()
         if row >= 0:
@@ -234,6 +280,7 @@ class InvoicesListWidget(QWidget):
                 id_item = QTableWidgetItem(formatted_ref)
                 id_item.setData(Qt.UserRole, t['Transfer_ID']) # حفظ الـ ID الحقيقي في الـ Data للعمليات البرمجية
                 id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
+                id_item.setData(Qt.UserRole + 2, t.get('Ref_Transfer_ID'))
 
                 raw_date = t.get('Transaction_Date')
                 if hasattr(raw_date, 'strftime'):
@@ -269,37 +316,36 @@ class InvoicesListWidget(QWidget):
             self.table.setRowHidden(r, not match)
 
     # =========================================================================
-    # PDF Export Logic - FIXED PATHS & FULL DEBUGGING
+    # PDF Export Logic - PROFESSIONNAL & DYNAMIC (BL / BON DE RETOUR)
     # =========================================================================
     def export_transfer_to_pdf(self, transfer_id):
         """
-        توليد ملف PDF احترافي مع ترقيم بنظام (السنة/الرقم) YYYY/NNN
+        توليد ملف PDF احترافي يدعم كلاً من (Bon de Livraison) و (Bon de Retour)
+        مع تنسيق وتصميم مخصص لكل حالة.
         """
-        print("\n" + "🚀" * 10 + " PDF DEBUG START " + "🚀" * 10)
+        print("\n" + "🚀" * 10 + " PDF EXPORT START " + "🚀" * 10)
 
         if not HAS_REPORTLAB:
-            QMessageBox.warning(self, "Error", "The 'reportlab' library is missing.")
+            QMessageBox.warning(self, "Erreur", "La bibliothèque 'reportlab' est manquante.")
             return
 
         # 1. تحديد المسارات وتحميل الإعدادات
-        cwd = os.getcwd()
-        settings_path = os.path.join(cwd, "config.json")
-
         try:
-            if not os.path.exists(settings_path):
-                # محاولة البحث عن الملف في المجلد الأب إذا لم يوجد في cwd
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                settings_path = os.path.abspath(os.path.join(base_dir, "..", "..", "..", "pdf_settings.json"))
-
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
+            settings = self.manager.company_settings.get_settings()
+            
+            # دمج الإعدادات المحلية (التي تحتوي على معلومات المخبر lab_name, lab_nif الخ)
+            import json, os
+            if os.path.exists("config.json"):
+                with open("config.json", "r", encoding="utf-8") as f:
+                    local_settings = json.load(f)
+                    # التحديث لا يمسح إعدادات قاعدة البيانات بل يضيف إليها معلومات المخبر
+                    for k, v in local_settings.items():
+                        if k not in settings or not settings[k]:
+                            settings[k] = v
+                            
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Configuration error: {str(e)}")
+            QMessageBox.critical(self, "Erreur", f"Configuration error: {str(e)}")
             return
-
-        logo_path = settings.get('banner_path', '')
-        if not os.path.exists(logo_path):
-            logo_path = get_banner_path()
 
         # 2. جلب البيانات من قاعدة البيانات
         try:
@@ -316,26 +362,35 @@ class InvoicesListWidget(QWidget):
             details_data = mgr.get_transfer_details(transfer_id)
             partner_info = self.manager.partners.get_partner_by_id(header_data['Partner_ID'])
         except Exception as e:
-            QMessageBox.critical(self, "DB Error", str(e))
+            QMessageBox.critical(self, "Erreur BD", str(e))
             return
 
-        # --- [تطبيق منطق الترقيم الجديد YYYY/000] ---
-        # استخراج السنة من تاريخ المعاملة
+        # --- التمييز بين الإرجاع والبيع ---
+        transfer_type = header_data.get('Transfer_Type', 'Outbound')
+        is_return = (transfer_type == 'Return')
+        document_title = settings.get('doc_title_rt', 'Retourné à Sous-Traitant') if is_return else settings.get('doc_title_bl', 'BON DE LIVRAISON')
+        
+        # استخراج المرجع المنسق
         raw_date = str(header_data.get('Transaction_Date', ''))
         try:
             year_val = raw_date.split('-')[0] if '-' in raw_date else str(datetime.now().year)
-            # تنسيق الرقم بـ 3 خانات (أو أكثر إذا لزم الأمر)
             formatted_ref = header_data.get('Display_Ref') or f"{year_val}/{int(transfer_id):03d}"
         except:
             formatted_ref = str(transfer_id)
-        # --------------------------------------------
 
-        # 3. حوار حفظ الملف (مع معالجة اسم الملف ليقبل الحفظ)
+        ref_bl_text = ""
+        ref_id = header_data.get('Ref_Transfer_ID')
+        if is_return and ref_id:
+            ref_transfer = mgr.get_transfer_by_id(ref_id)
+            if ref_transfer:
+                ref_bl_display = ref_transfer.get('Display_Ref') or f"{year_val}/{int(ref_id):03d}"
+                ref_bl_text = f"<br/><font color='#e67e22'><b>Réf. BL d'origine : {ref_bl_display}</b></font>"
+
+        # 3. حوار حفظ الملف
         partner_clean = str(header_data.get('Partner_Name', 'Client')).replace(" ", "_")
-        # في اسم الملف نستبدل / بـ - لأن أنظمة التشغيل لا تقبل / في أسماء الملفات
         safe_ref_for_filename = formatted_ref.replace("/", "-")
-        document_title = "Bon de Retour" if (header_data.get('Transfer_Type') or 'Outbound') == 'Return' else settings.get('doc_title', 'BL')
-        default_name = f"{document_title}_{partner_clean}_{safe_ref_for_filename}.pdf"
+        prefix_name = "BR" if is_return else "BL"
+        default_name = f"{prefix_name}_{partner_clean}_{safe_ref_for_filename}.pdf"
 
         path, _ = QFileDialog.getSaveFileName(self, "Enregistrer PDF", default_name, "PDF Files (*.pdf)")
         if not path: return
@@ -343,16 +398,84 @@ class InvoicesListWidget(QWidget):
         # 4. بناء المستند (ReportLab)
         try:
             PAGE_WIDTH, PAGE_HEIGHT = A4
-            primary_color = colors.HexColor(settings.get('theme_color', '#0b666a'))
+            # تغيير لون الثيم بناءً على النوع (استخدام الثيم المحدد للجميع)
+            default_color = settings.get('theme_color', '#0b666a')
+            primary_color = colors.HexColor(default_color)
             banner_h_cm = settings.get('banner_height_cm', 4.8)
 
+            table_start_y_cm = settings.get('table_start_y_cm', 9.5)
+            # ضبط الهوامش لكي تناسب الجدول تماماً
             doc = SimpleDocTemplate(
-                path, pagesize=A4, rightMargin=30, leftMargin=30,
-                topMargin=(banner_h_cm + 0.5) * cm, bottomMargin=50
+                path, pagesize=A4, rightMargin=40, leftMargin=40,
+                topMargin=table_start_y_cm * cm, bottomMargin=50
             )
 
             elements = []
             styles = getSampleStyleSheet()
+
+            current_time = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+            # --- الترويسة العلوية (المعلومات) ---
+            lab_name = settings.get('lab_name', 'Laboratoire')
+            lab_addr = settings.get('lab_address', '')
+            lab_nif = settings.get('lab_nif', '')
+            lab_rc = settings.get('lab_rc', '')
+            
+            lab_info_lines = [
+                f"<font size=14 color='{default_color}'><b>{document_title} N°: {formatted_ref}</b></font>{ref_bl_text}<br/>",
+                f"<font size=10><b>{lab_name}</b></font>"
+            ]
+            def clean_str(val):
+                if not val: return ""
+                v = str(val).replace('\n', '').replace('\r', '').strip()
+                if v.lower() in ["none", "n/a", "null", "nan", "-", "", "."]:
+                    return ""
+                return v
+
+            if clean_str(lab_addr): lab_info_lines.append(f"<font size=9>{clean_str(lab_addr)}</font>")
+            if clean_str(lab_nif): lab_info_lines.append(f"<font size=9>NIF : {clean_str(lab_nif)}</font>")
+            if clean_str(lab_rc): lab_info_lines.append(f"<font size=9>RC : {clean_str(lab_rc)}</font>")
+            
+            bank_name = settings.get('bank_name', '')
+            bank_acc = settings.get('bank_acc', '')
+            
+            if clean_str(bank_name): lab_info_lines.append(f"<font size=9>Banque : {clean_str(bank_name)}</font>")
+            if clean_str(bank_acc): lab_info_lines.append(f"<font size=9>RIB : {clean_str(bank_acc)}</font>")
+            
+            raw_date = header_data.get('Transaction_Date')
+            if hasattr(raw_date, 'strftime'):
+                bon_date = raw_date.strftime("%d/%m/%Y %H:%M")
+            else:
+                bon_date = str(raw_date or "")
+                
+            lab_info_lines.append("")
+            if bon_date:
+                lab_info_lines.append(f"<font size=9>Date du Bon : {bon_date}</font>")
+            lab_info_lines.append(f"<font size=9>Date d'édition : {current_time}</font>")
+            
+            left_text_top = "<br/>".join(lab_info_lines)
+            
+            p_name = partner_info.get('Partner_Name', 'Inconnu')
+            p_type = partner_info.get('Partner_Type', '')
+            p_nif = partner_info.get('Tax_ID_Number', '')
+            p_rc = partner_info.get('Commercial_Reg_No', '')
+            p_bank = partner_info.get('Bank_Name', '')
+            p_iban = partner_info.get('Bank_Account_IBAN', '')
+            
+            dest_label = 'Correspondant:'
+            p_name_clean = str(p_name).replace('\n', '').replace('\r', '').strip()
+            right_text_lines = [
+                f"<b>{dest_label}</b>",
+                "",
+                f"<font size=11><b>{p_name_clean}</b></font>",
+            ]
+            
+            if clean_str(p_nif): right_text_lines.append(f"NIF : {clean_str(p_nif)}")
+            if clean_str(p_rc): right_text_lines.append(f"Reg. Commerce : {clean_str(p_rc)}")
+            if clean_str(p_bank): right_text_lines.append(f"Banque : {clean_str(p_bank)}")
+            if clean_str(p_iban): right_text_lines.append(f"RIB : {clean_str(p_iban)}")
+            
+            right_text = "<br/>".join(right_text_lines)
 
             def draw_header_compact(canvas, doc):
                 canvas.saveState()
@@ -362,44 +485,49 @@ class InvoicesListWidget(QWidget):
                 y_offset = settings.get('banner_img_y_cm', 0.2) * cm
                 img_y = PAGE_HEIGHT - img_h - y_offset
 
-                if os.path.exists(logo_path):
-                    canvas.drawImage(logo_path, img_x, img_y, width=img_w, height=img_h)
+                img_bytes = self.manager.company_settings.get_banner_image()
+                if img_bytes:
+                    from reportlab.lib.utils import ImageReader
+                    import io
+                    img = ImageReader(io.BytesIO(img_bytes))
+                    canvas.drawImage(img, img_x, img_y, width=img_w, height=img_h)
                 else:
                     canvas.setStrokeColor(colors.red)
                     canvas.rect(img_x, img_y, img_w, img_h, stroke=1)
+                    
+                # Draw texts using explicit positions from settings
+                total_h_cm = settings.get('banner_height_cm', 4.8) * cm
+                top_y = PAGE_HEIGHT - total_h_cm - 0.5*cm
+                
+                # We combine everything on the left side to prevent overlap
+                left_p = Paragraph(left_text_top, styles["Normal"])
+                left_w, left_h = left_p.wrap(9.5*cm, 10.0*cm)
+                left_p.drawOn(canvas, doc.leftMargin, top_y - left_h)
+                
+                dest_x = settings.get('dest_box_x_cm', 11.5) * cm
+                dest_y_abs = PAGE_HEIGHT - settings.get('dest_box_y_cm', 6.0) * cm
+                dest_w = settings.get('dest_box_w_cm', 8.0) * cm
+                
+                right_p = Paragraph(right_text, styles["Normal"])
+                right_w, right_h = right_p.wrap(dest_w - 0.5*cm, 10.0*cm)
+                box_h = max(right_h + 1.0 * cm, 2.5 * cm)
+                
+                canvas.setFillColor(colors.HexColor("#f8f9fa"))
+                canvas.setStrokeColor(colors.lightgrey)
+                canvas.setLineWidth(0.5)
+                canvas.rect(dest_x, dest_y_abs - box_h, dest_w, box_h, fill=1, stroke=1)
+                
+                right_p.drawOn(canvas, dest_x + 0.25*cm, dest_y_abs - right_h - 0.5*cm)
                 canvas.restoreState()
 
-            # محتوى الترويسة (المعلومات البنكية والزبون)
-            current_time = datetime.now().strftime('%d/%m/%Y %H:%M')
-
-            # استخدام formatted_ref الجديد هنا ليظهر في ملف الـ PDF
-            left_text = (
-                f"<font size=14 color='{settings.get('theme_color')}'><b>{document_title} N°: {formatted_ref}</b></font><br/><br/>"
-                f"<b>Banque :</b> {settings.get('bank_name', 'N/A')}<br/>"
-                f"<b>N° Compte :</b> {settings.get('bank_acc', 'N/A')}<br/>"
-                f"<font size=9>Date d'édition : {current_time}</font>"
-            )
-
-            p_name = partner_info.get('Partner_Name', 'Inconnu')
-            p_addr = partner_info.get('Address_Line1') or ""
-            p_city = partner_info.get('City') or ""
-            right_text = f"<b>Destinataire :</b><br/><font size=11><b>{p_name}</b></font><br/>{p_addr}<br/>{p_city}"
-
-            info_table = Table([[Paragraph(left_text, styles["Normal"]), Paragraph(right_text, styles["Normal"])]],
-                               colWidths=[10*cm, 8.4*cm])
-            info_table.setStyle(TableStyle([
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('BACKGROUND', (1,0), (1,0), colors.HexColor("#f8f9fa")),
-                ('BOX', (1,0), (1,0), 0.5, colors.lightgrey),
-                ('PADDING', (1,0), (1,0), 10),
-            ]))
-            elements.append(info_table)
-            elements.append(Spacer(1, 0.8 * cm))
-
-            # جدول المنتجات
-            table_data = [["Désignation Produit", "Qté", "Observation"]]
+            # --- جدول المنتجات ---
+            header_col1 = settings.get('col1_name', 'Désignation Produit')
+            header_col2 = settings.get('qty_header_rt', 'Qté Rtr.') if is_return else settings.get('qty_header_bl', 'Qté')
+            header_col3 = settings.get('col3_name', 'P.U')
+            header_col4 = settings.get('col4_name', 'Total / Obs')
+            table_data = [[header_col1, header_col2, header_col3, header_col4]]
+            
             grand_total = 0.0
-
             for item in details_data:
                 is_billable = item.get('Is_Billable', False)
                 qty = item.get('Qty_Transferred', 0)
@@ -408,33 +536,71 @@ class InvoicesListWidget(QWidget):
                 line_val = (qty_numeric * price) if is_billable else 0.0
                 grand_total += line_val
 
-                obs = f"{line_val:,.2f} DA" if is_billable else "<font color='red'>Gratuit</font>"
-                p_info = f"<b>{item.get('Product_Name', '-')}</b><br/><font size=8 color='grey'>Lot: {item.get('Lot_Number','-')}</font>"
+                obs_text = f"{line_val:,.2f}" if is_billable else "<font color='red'>Gratuit</font>"
+                lot_info = item.get('Lot_Number', '-')
+                exp_info = str(item.get('Expiry_Date', '-'))[:10]
+                p_info = f"<b>{item.get('Product_Name', '-')}</b><br/><font size=8 color='#555555'>Lot: {lot_info} | Exp: {exp_info}</font>"
 
-                table_data.append([Paragraph(p_info, styles["Normal"]), format_quantity(qty), Paragraph(obs, styles["Normal"])])
+                table_data.append([
+                    Paragraph(p_info, styles["Normal"]), 
+                    format_quantity(qty), 
+                    f"{price:,.2f}", 
+                    Paragraph(obs_text, styles["Normal"])
+                ])
 
-            table_data.append([Paragraph("<b>MONTANT TOTAL À PAYER</b>", styles["Normal"]), "", f"{grand_total:,.2f} DA"])
+            total_label = settings.get('total_label_rt', 'VALEUR TOTALE DU RETOUR') if is_return else settings.get('total_label_bl', 'MONTANT TOTAL À PAYER')
+            table_data.append([Paragraph(f"<b>{total_label}</b>", styles["Normal"]), "", "", f"{grand_total:,.2f} DA"])
 
-            items_table = Table(table_data, colWidths=[11.0*cm, 2.0*cm, 6.0*cm])
+            items_table = Table(table_data, colWidths=[9.5*cm, 2.0*cm, 2.5*cm, 4.0*cm])
             items_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), primary_color),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('GRID', (0,0), (-1,-1), 0.1, colors.grey),
-                ('ALIGN', (1,0), (1,-1), 'CENTER'),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('SPAN', (0, -1), (1, -1)),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+                ('ALIGN', (1,0), (2,-1), 'CENTER'),
+                ('ALIGN', (3,0), (3,-1), 'RIGHT'),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('SPAN', (0, -1), (2, -1)), # دمج خلايا المجموع
                 ('PADDING', (0,0), (-1,-1), 6),
+                ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f4f6f6")), # لون خلفية للمجموع
             ]))
             elements.append(items_table)
-            elements.append(Spacer(1, 1.5 * cm))
+            footer_y_offset = settings.get('footer_y_offset_cm', 1.5)
+            elements.append(Spacer(1, footer_y_offset * cm))
 
-            # التوقيعات
-            f_left = settings.get('footer_left_label', 'Responsable')
-            f_right = settings.get('footer_right_label', 'Accusé Client')
+            # --- التوقيعات ---
+            if is_return:
+                f_left = settings.get('footer_left_rt', 'Signature Magasin / Expéditeur')
+                f_right = settings.get('footer_right_rt', 'Accusé de Réception (Fournisseur)')
+            else:
+                f_left = settings.get('footer_left_bl', 'Responsable Stock')
+                f_right = settings.get('footer_right_bl', 'Accusé de réception (Client)')
 
-            footer = Table([[Paragraph(f"<b>{f_left}</b>", styles["Normal"]), Paragraph(f"<b>{f_right}</b>", styles["Normal"])]],
-                           colWidths=[9.2*cm, 9.2*cm], rowHeights=[2.5*cm])
-            footer.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP'), ('LEFTPADDING', (1,0), (1,-1), 40)]))
+            footer_height = settings.get('footer_height_cm', 2.5)
+            left_x = settings.get('footer_left_x_cm', 1.0)
+            right_x = settings.get('footer_right_x_cm', 12.0)
+            
+            from reportlab.platypus import Flowable
+            class SignatureFooter(Flowable):
+                def __init__(self, t_left, t_right, x_l, x_r, h):
+                    Flowable.__init__(self)
+                    self.t_left = t_left
+                    self.t_right = t_right
+                    self.x_l = x_l * cm
+                    self.x_r = x_r * cm
+                    self.h = h * cm
+                
+                def wrap(self, availW, availH):
+                    return availW, self.h
+                    
+                def draw(self):
+                    self.canv.saveState()
+                    self.canv.setFont("Helvetica-Bold", 10)
+                    self.canv.drawString(self.x_l, self.h - 15, self.t_left)
+                    self.canv.drawString(self.x_r, self.h - 15, self.t_right)
+                    self.canv.restoreState()
+                    
+            footer = SignatureFooter(f_left, f_right, left_x, right_x, footer_height)
             elements.append(footer)
 
             doc.build(elements, onFirstPage=draw_header_compact, onLaterPages=draw_header_compact)
@@ -444,6 +610,6 @@ class InvoicesListWidget(QWidget):
             else: os.system(f'xdg-open "{path}"')
 
         except Exception as e:
-            QMessageBox.critical(self, "Erreur PDF", f"Build failed: {str(e)}")
+            QMessageBox.critical(self, "Erreur PDF", f"Échec de création du PDF: {str(e)}")
 
-        print("="*50 + " DEBUG END " + "="*50)
+        print("="*50 + " PDF EXPORT END " + "="*50)

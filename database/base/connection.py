@@ -32,7 +32,8 @@ class Database:
             'password': os.getenv('DB_PASSWORD'),
             'database': os.getenv('DB_NAME'),
             'port': int(os.getenv('DB_PORT', 3306)),
-            'connection_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', 5))
+            'connection_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', 5)),
+            'ssl_disabled': True
         }
 
         if not all([self.db_config['user'], self.db_config['password'], self.db_config['database']]):

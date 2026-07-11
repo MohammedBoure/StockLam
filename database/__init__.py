@@ -65,3 +65,5 @@ class LabDataManager:
         self.inventory_counts = InventoryCountManager(db_instance)
 
         self.system_log = SystemLogManager(db_instance)
+        from .company_settings_manager import CompanySettingsManager
+        self.company_settings = CompanySettingsManager(db_instance)

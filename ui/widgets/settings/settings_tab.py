@@ -93,7 +93,7 @@ class SettingsTab(QWidget):
         self._setup_system_tab()
 
         self.tab_system_logs = SystemLogsTab(self.data_manager) if self.data_manager else QWidget()
-        self.tab_pdf_config = PdfConfigWidget(self.settings)
+        self.tab_pdf_config = PdfConfigWidget(self.data_manager)
 
         main_layout.addWidget(self.tabs)
 
@@ -126,8 +126,14 @@ class SettingsTab(QWidget):
         form_info = QFormLayout()
         self.txt_lab_name = QLineEdit(self.settings.get("lab_name", ""))
         self.txt_lab_address = QLineEdit(self.settings.get("lab_address", ""))
+        self.txt_lab_nif = QLineEdit(self.settings.get("lab_nif", ""))
+        self.txt_lab_rc = QLineEdit(self.settings.get("lab_rc", ""))
+        
         form_info.addRow("Nom du laboratoire :", self.txt_lab_name)
         form_info.addRow("Adresse :", self.txt_lab_address)
+        form_info.addRow("NIF :", self.txt_lab_nif)
+        form_info.addRow("Reg Commerce (RC) :", self.txt_lab_rc)
+        
         grp_info.setLayout(form_info)
         left_col.addWidget(grp_info)
 
@@ -197,11 +203,16 @@ class SettingsTab(QWidget):
         
         self.txt_auto_pwd = QLineEdit(self.settings.get("auto_backup_password", ""))
         self.txt_auto_pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_auto_pwd.setPlaceholderText("Laissez vide pour fichier ZIP normal")
+        self.txt_auto_pwd.setPlaceholderText("Optionnel (Chiffrement AES-256)")
+
+        self.spin_max_backups = QSpinBox()
+        self.spin_max_backups.setRange(1, 100)
+        self.spin_max_backups.setValue(int(self.settings.get("auto_backup_max_files", 5)))
 
         form_auto.addRow("", self.chk_auto_backup)
-        form_auto.addRow("Intervalle :", self.spin_auto_interval)
-        form_auto.addRow("Mot de passe ZIP :", self.txt_auto_pwd)
+        form_auto.addRow("⏱️ Intervalle (Minutes) :", self.spin_auto_interval)
+        form_auto.addRow("🔐 Mot de passe ZIP :", self.txt_auto_pwd)
+        form_auto.addRow("📁 Nbre max de sauvegardes :", self.spin_max_backups)
         auto_backup_layout.addLayout(form_auto)
 
         auto_backup_layout.addWidget(QLabel("Dossiers de destination (Cibles multiples) :"))
@@ -405,17 +416,20 @@ class SettingsTab(QWidget):
             logging.warning(f"Impossible de lire les parametres DB depuis .env: {e}")
 
     def save_settings(self):
-        # 1. جلب إعدادات PDF أولاً (الخطوة الحاسمة لعدم مسح البيانات الجديدة)
+        """Sauvegarder toutes les modifications (globales et PDF)"""
+        # 1. Sauvegarder les paramètres PDF (dans la base de données)
         if hasattr(self, 'tab_pdf_config'):
             try:
-                pdf_updates = self.tab_pdf_config.get_updated_settings()
-                self.settings.update(pdf_updates)
+                self.tab_pdf_config.save_settings()
             except Exception as e:
-                logging.error(f"Erreur avec tab_pdf_config: {e}")
+                logging.error(f"Erreur lors de la sauvegarde des paramètres PDF dans la BD: {e}")
 
         # 2. قراءة الإعدادات من الواجهة وتخزينها (تُكتب أخيراً لتكون لها الأولوية المطلقة)
         self.settings["lab_name"] = self.txt_lab_name.text()
         self.settings["lab_address"] = self.txt_lab_address.text()
+        self.settings["lab_nif"] = self.txt_lab_nif.text()
+        self.settings["lab_rc"] = self.txt_lab_rc.text()
+        
         self.settings["expiry_warning_days"] = self.spin_expiry.value()
         self.settings["low_stock_threshold"] = self.spin_stock.value()
         
@@ -438,6 +452,7 @@ class SettingsTab(QWidget):
         self.settings["auto_backup_enabled"] = self.chk_auto_backup.isChecked()
         self.settings["auto_backup_interval"] = self.spin_auto_interval.value()
         self.settings["auto_backup_password"] = self.txt_auto_pwd.text()
+        self.settings["auto_backup_max_files"] = self.spin_max_backups.value()
         self.settings["backup_paths"] = [self.list_backup_paths.item(i).text() for i in range(self.list_backup_paths.count())]
         
         # 3. الكتابة المباشرة في ملف config.json

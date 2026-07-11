@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QStyle, QMessageBox, QAbstractItemView
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor
 
 from .dialogs import PartnerDialog
 
@@ -41,6 +41,9 @@ class ExternalPartnersTab(QWidget):
         self.combo_type.addItem("Laboratoire", "Laboratory")
         self.combo_type.addItem("Médecin", "Doctor")
         self.combo_type.addItem("Hôpital", "Hospital")
+        self.combo_type.addItem("Pharmacie", "Pharmacy")
+        self.combo_type.addItem("Salle de Soins", "CareRoom")
+        self.combo_type.addItem("Clinique", "Clinic")
         self.combo_type.addItem("Autre", "Other")
         self.combo_type.currentIndexChanged.connect(self.apply_filters_local)
 
@@ -131,7 +134,16 @@ class ExternalPartnersTab(QWidget):
             self.table.insertRow(row)
 
             # Col 0 (store full data)
-            item_name = QTableWidgetItem(partner.get('Partner_Name', '---'))
+            has_return = partner.get('Has_Return', False)
+            if has_return:
+                item_name = QTableWidgetItem(f"{partner.get('Partner_Name', '---')} 🔄 (A des retours)")
+                item_name.setForeground(QColor("#8e44ad"))
+                font = QFont()
+                font.setBold(True)
+                item_name.setFont(font)
+            else:
+                item_name = QTableWidgetItem(partner.get('Partner_Name', '---'))
+                
             item_name.setData(Qt.UserRole, partner)
             item_name.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.table.setItem(row, 0, item_name)
@@ -140,6 +152,9 @@ class ExternalPartnersTab(QWidget):
                 "Laboratory": "Laboratoire",
                 "Doctor": "Médecin",
                 "Hospital": "Hôpital",
+                "Pharmacy": "Pharmacie",
+                "CareRoom": "Salle de Soins",
+                "Clinic": "Clinique",
                 "Other": "Autre"
             }
             self.table.setItem(row, 1, QTableWidgetItem(type_map.get(partner.get('Partner_Type'), '---')))

@@ -17,12 +17,15 @@ from ui.formatting import format_money, format_quantity
 # مساعد بناء خلية والتحقق من الصلاحيات
 # ---------------------------------------------------------------------------
 
-def _make_item(val, align=Qt.AlignCenter, color=None, font=None):
+def _make_item(val, align=Qt.AlignCenter, color=None, font=None, bg_color=None):
+    from PySide6.QtGui import QBrush
     s_val = str(val) if val is not None else ""
     it = QTableWidgetItem(s_val)
     it.setTextAlignment(align)
     if color:
         it.setForeground(color)
+    if bg_color:
+        it.setBackground(QBrush(bg_color))
     if font:
         it.setFont(font)
     it.setFlags(it.flags() & ~Qt.ItemIsEditable)
@@ -106,6 +109,7 @@ def _append_rows(self, chunk):
 
     self.table.setColumnHidden(11, hide_fin)
     self.table.setColumnHidden(12, hide_fin)
+    self.table.setColumnHidden(13, hide_fin)
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +144,7 @@ def populate_table(self, data):
     self.table.setSortingEnabled(False)
     self.table.setColumnHidden(11, hide_fin)
     self.table.setColumnHidden(12, hide_fin)
+    self.table.setColumnHidden(13, hide_fin)
 
     if hide_fin:
         self.lbl_total_value.hide()
@@ -151,31 +156,41 @@ def populate_table(self, data):
 def _fill_row(table, r, b, hide_fin):
     """ملء صف واحد بالبيانات"""
     qty = float(b.get('Quantity_Current', 0))
+    raw_note = b.get('Reception_Note')
+    reclamation = str(raw_note).strip() if raw_note is not None else ""
+    if reclamation.lower() == "none":
+        reclamation = ""
+        
+    bg_color = QColor("#ffe4cd") if reclamation else None
 
     prod_item = _make_item(
         b.get('Product_Name', '---'),
-        Qt.AlignLeft | Qt.AlignVCenter
+        Qt.AlignLeft | Qt.AlignVCenter,
+        bg_color=bg_color
     )
     prod_item.setData(Qt.UserRole, b)
     table.setItem(r, 0, prod_item)
 
-    table.setItem(r, 1,  _make_item(b.get('Family_Name', '---')))
-    table.setItem(r, 2,  _make_item(b.get('Manuf_Name', '---')))
-    table.setItem(r, 3,  _make_item(b.get('Automate_Name', '---')))
-    table.setItem(r, 4,  _make_item(b.get('Supplier_Name', '---')))
+    table.setItem(r, 1,  _make_item(b.get('Family_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 2,  _make_item(b.get('Manuf_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 3,  _make_item(b.get('Automate_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 4,  _make_item(b.get('Supplier_Name', '---'), bg_color=bg_color))
     table.setItem(r, 5,  _make_item(
         format_quantity(qty),
         color=QColor("#27ae60"),
-        font=QFont("", -1, QFont.Bold)
+        font=QFont("", -1, QFont.Bold),
+        bg_color=bg_color
     ))
     table.setItem(r, 6,  _make_item(
-        str(b.get('Date_Received') or b.get('Created_At', ''))[:10]
+        str(b.get('Date_Received') or b.get('Created_At', ''))[:10],
+        bg_color=bg_color
     ))
-    table.setItem(r, 7,  _make_item(b.get('Lot_Number', '---')))
-    table.setItem(r, 8,  _make_item(str(b.get('Expiry_Date', ''))[:10]))
-    table.setItem(r, 9,  _make_item(format_quantity(b.get('Quantity_Initial', 0))))
+    table.setItem(r, 7,  _make_item(b.get('Lot_Number', '---'), bg_color=bg_color))
+    table.setItem(r, 8,  _make_item(str(b.get('Expiry_Date', ''))[:10], bg_color=bg_color))
+    table.setItem(r, 9,  _make_item(format_quantity(b.get('Quantity_Initial', 0)), bg_color=bg_color))
     table.setItem(r, 10, _make_item(
-        b.get('Internal_Barcode') or b.get('Barcode')
+        b.get('Internal_Barcode') or b.get('Barcode'),
+        bg_color=bg_color
     ))
 
     # تطبيق الفلتر المالي على الصف
@@ -183,15 +198,19 @@ def _fill_row(table, r, b, hide_fin):
         p  = float(b.get('Unit_Price_Received', 0))
         d  = float(b.get('Discount_Percent', 0)) / 100.0
         t  = float(b.get('Tax_Rate_Percent', 0)) / 100.0
-        lv = qty * p * (1 - d) * (1 + t)
-        table.setItem(r, 11, _make_item(format_money(p)))
-        table.setItem(r, 12, _make_item(format_money(lv)))
+        p_ttc = p * (1 - d) * (1 + t)
+        lv = qty * p_ttc
+        table.setItem(r, 11, _make_item(format_money(p), bg_color=bg_color))
+        table.setItem(r, 12, _make_item(format_money(p_ttc), bg_color=bg_color))
+        table.setItem(r, 13, _make_item(format_money(lv), bg_color=bg_color))
     else:
-        table.setItem(r, 11, QTableWidgetItem(""))
-        table.setItem(r, 12, QTableWidgetItem(""))
+        table.setItem(r, 11, _make_item("", bg_color=bg_color))
+        table.setItem(r, 12, _make_item("", bg_color=bg_color))
+        table.setItem(r, 13, _make_item("", bg_color=bg_color))
 
-    table.setItem(r, 13, _make_item(b.get('PO_ID')))
-    table.setItem(r, 14, _make_item(b.get('Location_Name')))
+    table.setItem(r, 14, _make_item(b.get('PO_ID'), bg_color=bg_color))
+    table.setItem(r, 15, _make_item(b.get('Location_Name'), bg_color=bg_color))
+    table.setItem(r, 16, _make_item(reclamation, bg_color=bg_color))
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +224,9 @@ COL_MAP = {
     6: 'Date_Received',     7: 'Lot_Number',
     8: 'Expiry_Date',       9: 'Quantity_Initial',
     10: 'Internal_Barcode', 11: 'Unit_Price_Received',
-    12: 'Total_Value',      13: 'PO_ID',
-    14: 'Location_Name',
+    12: 'Unit_Price_Received_TTC', 13: 'Total_Value',
+    14: 'PO_ID',            15: 'Location_Name',
+    16: 'Reception_Note'
 }
 
 NUMERIC_COLS = {5, 9, 11}
@@ -214,10 +234,24 @@ DATE_COLS    = {6, 8}
 
 
 def _sort_key(col_index, item):
-    if col_index == 12:
+    if col_index == 13:
         try:
             return (float(item.get('Quantity_Current', 0))
                     * float(item.get('Unit_Price_Received', 0)))
+        except Exception:
+            return 0.0
+    elif col_index == 12:
+        try:
+            qty = float(item.get('Quantity_Current', 0))
+            p  = float(item.get('Unit_Price_Received', 0))
+            d  = float(item.get('Discount_Percent', 0)) / 100.0
+            t  = float(item.get('Tax_Rate_Percent', 0)) / 100.0
+            return p * (1 - d) * (1 + t)
+        except Exception:
+            return 0.0
+    elif col_index in NUMERIC_COLS:
+        try:
+            return float(item.get(COL_MAP.get(col_index), 0))
         except Exception:
             return 0.0
 

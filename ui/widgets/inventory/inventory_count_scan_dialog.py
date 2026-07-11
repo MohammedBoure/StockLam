@@ -263,7 +263,7 @@ class InventoryCountScanDialog(QDialog):
         details_scroll.setMaximumWidth(620)
 
         self.scan_table = QTableWidget(0, 5)
-        self.scan_table.setHorizontalHeaderLabels(["Barcode", "Qty", "Status", "Time", "Message"])
+        self.scan_table.setHorizontalHeaderLabels(["Code-barres", "Quantité", "Statut", "Heure", "Message"])
         self.scan_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.scan_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.scan_table.setAlternatingRowColors(True)

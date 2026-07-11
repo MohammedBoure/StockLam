@@ -53,7 +53,7 @@ class StockMovementLogManager:
                         MODIFY COLUMN Movement_Type ENUM(
                             'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run',
                             'Calibration', 'Adjustment', 'Waste', 'Transfer',
-                            'External_Transfer', 'Transfer_Return', 'Return_To_Supplier'
+                            'External_Transfer', 'Transfer_Return', 'Return_To_Supplier', 'Sale'
                         ) NOT NULL
                     """)
 
@@ -70,7 +70,7 @@ class StockMovementLogManager:
         valid_movements = [
             'Purchase_Receive', 'Open_Pack', 'Patient_Test', 'QC_Run',
             'Calibration', 'Adjustment', 'Waste', 'Transfer',
-            'External_Transfer', 'Transfer_Return', 'Return_To_Supplier'
+            'External_Transfer', 'Transfer_Return', 'Return_To_Supplier', 'Sale'
         ]
 
         if movement_type not in valid_movements:
