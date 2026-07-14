@@ -24,6 +24,8 @@ try:
 except ImportError:
     HAS_REPORTLAB = False
 
+from ui.widgets.settings.pdf_stamp import draw_active_stamp
+
 class InvoicesListWidget(QWidget):
     """
     Interface for the list of invoices/delivery notes.
@@ -518,6 +520,7 @@ class InvoicesListWidget(QWidget):
                 canvas.rect(dest_x, dest_y_abs - box_h, dest_w, box_h, fill=1, stroke=1)
                 
                 right_p.drawOn(canvas, dest_x + 0.25*cm, dest_y_abs - right_h - 0.5*cm)
+                draw_active_stamp(canvas, getattr(self.manager, "company_settings", None), PAGE_WIDTH, PAGE_HEIGHT)
                 canvas.restoreState()
 
             # --- جدول المنتجات ---

@@ -24,6 +24,7 @@ from .avoir import CreditNoteTab
 from .reclamation_tab import ReclamationTab 
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
 from ui.formatting import format_quantity
+from ui.widgets.settings.pdf_stamp import draw_active_stamp
 
 
 def get_resource_path(relative_path):
@@ -321,6 +322,7 @@ class PurchaseOrdersTab(QWidget):
                         PAGE_HEIGHT - 1 * cm,
                         "LOGO NOT FOUND"
                     )
+                draw_active_stamp(canvas, getattr(self.manager, "company_settings", None), PAGE_WIDTH, PAGE_HEIGHT)
                 canvas.restoreState()
 
             title_style = ParagraphStyle(

@@ -101,3 +101,175 @@ class CompanySettingsManager:
         except Exception as e:
             logging.error(f"Error fetching banner image: {e}")
         return None
+
+    def get_stamps(self, include_image=True):
+        """Return the independent PNG stamp library and each stamp's layout."""
+        columns = "Stamp_ID, Stamp_Name, Position_X_CM, Position_Y_CM, Width_CM, Height_CM, Is_Active"
+        if include_image:
+            columns += ", Image_Data"
+
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(
+                    f"SELECT {columns} FROM Company_Stamps ORDER BY Stamp_Name, Stamp_ID"
+                )
+                return cursor.fetchall() or []
+        except Exception as e:
+            logging.error(f"Error fetching company stamps: {e}")
+            return []
+
+    def get_active_stamp(self):
+        """Return the active stamp, or None when stamping is disabled."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    SELECT Stamp_ID, Stamp_Name, Image_Data,
+                           Position_X_CM, Position_Y_CM, Width_CM, Height_CM,
+                           Is_Active
+                    FROM Company_Stamps
+                    WHERE Is_Active = TRUE
+                    ORDER BY Stamp_ID
+                    LIMIT 1
+                    """
+                )
+                return cursor.fetchone()
+        except Exception as e:
+            logging.error(f"Error fetching active company stamp: {e}")
+            return None
+
+    def add_stamp(
+        self,
+        stamp_name,
+        image_bytes,
+        position_x_cm=13.0,
+        position_y_cm=22.0,
+        width_cm=4.0,
+        height_cm=4.0,
+        is_active=False,
+    ):
+        """Add one PNG stamp without modifying the other stored stamps."""
+        if not stamp_name or not image_bytes:
+            return None
+
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM Company_Stamps")
+                is_first_stamp = cursor.fetchone()[0] == 0
+                should_activate = bool(is_active or is_first_stamp)
+                if should_activate:
+                    cursor.execute("UPDATE Company_Stamps SET Is_Active = FALSE")
+
+                cursor.execute(
+                    """
+                    INSERT INTO Company_Stamps
+                        (Stamp_Name, Image_Data, Position_X_CM, Position_Y_CM,
+                         Width_CM, Height_CM, Is_Active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        str(stamp_name).strip()[:150],
+                        image_bytes,
+                        float(position_x_cm),
+                        float(position_y_cm),
+                        float(width_cm),
+                        float(height_cm),
+                        should_activate,
+                    ),
+                )
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            logging.error(f"Error adding company stamp: {e}")
+            return None
+
+    def update_stamp(
+        self,
+        stamp_id,
+        stamp_name,
+        position_x_cm,
+        position_y_cm,
+        width_cm,
+        height_cm,
+    ):
+        """Persist the selected stamp's name and independent layout."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE Company_Stamps
+                    SET Stamp_Name = %s,
+                        Position_X_CM = %s,
+                        Position_Y_CM = %s,
+                        Width_CM = %s,
+                        Height_CM = %s
+                    WHERE Stamp_ID = %s
+                    """,
+                    (
+                        str(stamp_name).strip()[:150],
+                        float(position_x_cm),
+                        float(position_y_cm),
+                        float(width_cm),
+                        float(height_cm),
+                        int(stamp_id),
+                    ),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"Error updating company stamp: {e}")
+            return False
+
+    def set_active_stamp(self, stamp_id):
+        """Make one stamp active for PDFs, or disable stamping with None."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE Company_Stamps SET Is_Active = FALSE")
+                if stamp_id is not None:
+                    cursor.execute(
+                        "UPDATE Company_Stamps SET Is_Active = TRUE WHERE Stamp_ID = %s",
+                        (int(stamp_id),),
+                    )
+                    if cursor.rowcount == 0:
+                        conn.rollback()
+                        return False
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error activating company stamp: {e}")
+            return False
+
+    def delete_stamp(self, stamp_id):
+        """Delete a stamp and keep another stamp active when possible."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(
+                    "SELECT Is_Active FROM Company_Stamps WHERE Stamp_ID = %s",
+                    (int(stamp_id),),
+                )
+                stamp = cursor.fetchone()
+                if not stamp:
+                    return False
+
+                cursor.execute("DELETE FROM Company_Stamps WHERE Stamp_ID = %s", (int(stamp_id),))
+                if stamp.get("Is_Active"):
+                    cursor.execute(
+                        "SELECT Stamp_ID FROM Company_Stamps ORDER BY Stamp_ID LIMIT 1"
+                    )
+                    replacement = cursor.fetchone()
+                    if replacement:
+                        cursor.execute(
+                            "UPDATE Company_Stamps SET Is_Active = TRUE WHERE Stamp_ID = %s",
+                            (replacement["Stamp_ID"],),
+                        )
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error deleting company stamp: {e}")
+            return False

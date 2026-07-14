@@ -6,10 +6,11 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QGroupBox, QFormLayout, QDoubleSpinBox, 
     QFileDialog, QColorDialog, QTabWidget, QScrollArea, 
-    QFrame, QMessageBox, QSizePolicy, QRadioButton, QButtonGroup
+    QFrame, QMessageBox, QSizePolicy, QRadioButton, QButtonGroup,
+    QListWidget, QListWidgetItem
 )
-from PySide6.QtCore import Qt, Signal, QRectF, QRect
-from PySide6.QtGui import QColor, QPixmap, QFont, QPainter, QPen, QBrush
+from PySide6.QtCore import Qt, Signal, QRectF, QRect, QByteArray, QBuffer, QIODevice
+from PySide6.QtGui import QColor, QPixmap, QFont, QPainter, QPen, QBrush, QImage
 
 from .pdf_visual_editor import VisualPdfEditorDialog
 
@@ -21,12 +22,16 @@ class PdfConfigWidget(QWidget):
         self.data_manager = data_manager
         self.new_image_bytes = None
         self.banner_pixmap = QPixmap()
+        self.stamps = []
+        self.current_stamp_id = None
         self.settings = self.load_settings()
         
         if self.data_manager and hasattr(self.data_manager, 'company_settings'):
             img_bytes = self.data_manager.company_settings.get_banner_image()
             if img_bytes:
                 self.banner_pixmap.loadFromData(img_bytes)
+
+        self.stamps = self.load_stamps()
             
         self.init_ui()
 
@@ -81,11 +86,211 @@ class PdfConfigWidget(QWidget):
                 logging.error(f"Error loading PDF settings from DB: {e}")
         return defaults
 
+    def load_stamps(self):
+        manager = getattr(self.data_manager, "company_settings", None)
+        if not manager or not hasattr(manager, "get_stamps"):
+            return []
+        try:
+            return manager.get_stamps(include_image=True) or []
+        except Exception as exc:
+            logging.error(f"Error loading PDF stamps: {exc}")
+            return []
+
+    def refresh_stamp_list(self, select_id=None):
+        if not hasattr(self, "list_stamps"):
+            return
+
+        self.stamps = self.load_stamps()
+        self.list_stamps.blockSignals(True)
+        self.list_stamps.clear()
+
+        active_id = next(
+            (int(stamp["Stamp_ID"]) for stamp in self.stamps if stamp.get("Is_Active")),
+            None,
+        )
+        row_to_select = None
+        for row, stamp in enumerate(self.stamps):
+            stamp_id = int(stamp["Stamp_ID"])
+            active_marker = " [ACTIF]" if stamp_id == active_id else ""
+            item = QListWidgetItem(f"{stamp.get('Stamp_Name') or 'Cachet'}{active_marker}")
+            item.setData(Qt.UserRole, stamp_id)
+            self.list_stamps.addItem(item)
+            if select_id is not None and stamp_id == int(select_id):
+                row_to_select = row
+
+        if row_to_select is None and self.stamps:
+            row_to_select = next(
+                (row for row, stamp in enumerate(self.stamps) if stamp.get("Is_Active")),
+                0,
+            )
+        self.list_stamps.blockSignals(False)
+
+        if row_to_select is None:
+            self.on_stamp_selected(-1)
+        else:
+            self.list_stamps.setCurrentRow(row_to_select)
+
+    def on_stamp_selected(self, row):
+        if row < 0 or row >= len(self.stamps):
+            self.current_stamp_id = None
+            self.stamp_preview.setText("Aucun cachet selectionne")
+            self.stamp_preview.setPixmap(QPixmap())
+            return
+
+        stamp = self.stamps[row]
+        self.current_stamp_id = int(stamp["Stamp_ID"])
+        controls = (
+            self.edit_stamp_name,
+            self.sp_stamp_x,
+            self.sp_stamp_y,
+            self.sp_stamp_w,
+            self.sp_stamp_h,
+        )
+        for control in controls:
+            control.blockSignals(True)
+        self.edit_stamp_name.setText(str(stamp.get("Stamp_Name") or "Cachet"))
+        self.sp_stamp_x.setValue(float(stamp.get("Position_X_CM") or 0.0))
+        self.sp_stamp_y.setValue(float(stamp.get("Position_Y_CM") or 0.0))
+        self.sp_stamp_w.setValue(float(stamp.get("Width_CM") or 4.0))
+        self.sp_stamp_h.setValue(float(stamp.get("Height_CM") or 4.0))
+        for control in controls:
+            control.blockSignals(False)
+
+        image = QPixmap()
+        image_bytes = stamp.get("Image_Data")
+        if image_bytes:
+            image.loadFromData(bytes(image_bytes))
+        self.lbl_stamp_file.setText("Image PNG stockee dans la base de donnees")
+        self.stamp_preview.setText("" if not image.isNull() else "Image PNG invalide")
+        self.stamp_preview.setPixmap(
+            image.scaled(180, 130, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            if not image.isNull() else QPixmap()
+        )
+        self.preview_canvas.active_stamp = stamp
+        self.preview_canvas.active_stamp_pixmap = image
+        self.preview_canvas.update()
+
+    def update_stamp_preview(self):
+        if self.current_stamp_id is None:
+            return
+        stamp = next(
+            (entry for entry in self.stamps if int(entry["Stamp_ID"]) == self.current_stamp_id),
+            None,
+        )
+        if stamp is None:
+            return
+        stamp.update({
+            "Stamp_Name": self.edit_stamp_name.text(),
+            "Position_X_CM": self.sp_stamp_x.value(),
+            "Position_Y_CM": self.sp_stamp_y.value(),
+            "Width_CM": self.sp_stamp_w.value(),
+            "Height_CM": self.sp_stamp_h.value(),
+        })
+        self.preview_canvas.active_stamp = stamp
+        self.preview_canvas.update()
+
+    def add_stamp(self):
+        manager = getattr(self.data_manager, "company_settings", None)
+        if not manager or not hasattr(manager, "add_stamp"):
+            QMessageBox.warning(self, "Cachets", "Le stockage des cachets n'est pas disponible.")
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choisir un cachet PNG",
+            "",
+            "Images PNG (*.png)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "rb") as image_file:
+                image_bytes = image_file.read()
+            image = QPixmap()
+            if not image.loadFromData(image_bytes):
+                raise ValueError("Le fichier selectionne n'est pas une image PNG valide.")
+
+            stamp_id = manager.add_stamp(
+                os.path.splitext(os.path.basename(path))[0],
+                image_bytes,
+                13.0,
+                22.0,
+                4.0,
+                4.0,
+                is_active=not bool(self.stamps),
+            )
+            if stamp_id is None:
+                raise RuntimeError("Impossible d'ajouter le cachet dans la base de donnees.")
+            self.refresh_stamp_list(select_id=stamp_id)
+        except Exception as exc:
+            logging.error(f"Error adding PDF stamp: {exc}")
+            QMessageBox.critical(self, "Cachets", f"Echec de l'ajout du cachet :\n{exc}")
+
+    def save_current_stamp(self, show_message=True):
+        manager = getattr(self.data_manager, "company_settings", None)
+        if self.current_stamp_id is None:
+            return False
+        if not manager or not hasattr(manager, "update_stamp"):
+            return False
+
+        stamp_name = self.edit_stamp_name.text().strip()
+        if not stamp_name:
+            QMessageBox.warning(self, "Cachets", "Donnez un nom au cachet.")
+            return False
+
+        success = manager.update_stamp(
+            self.current_stamp_id,
+            stamp_name,
+            self.sp_stamp_x.value(),
+            self.sp_stamp_y.value(),
+            self.sp_stamp_w.value(),
+            self.sp_stamp_h.value(),
+        )
+        if not success:
+            QMessageBox.critical(self, "Cachets", "Impossible d'enregistrer les proprietes du cachet.")
+            return False
+
+        self.refresh_stamp_list(select_id=self.current_stamp_id)
+        if show_message:
+            QMessageBox.information(self, "Cachets", "Les proprietes du cachet ont ete enregistrees.")
+        return True
+
+    def activate_stamp(self):
+        manager = getattr(self.data_manager, "company_settings", None)
+        if self.current_stamp_id is None or not manager or not hasattr(manager, "set_active_stamp"):
+            return
+        if not self.save_current_stamp(show_message=False):
+            return
+        if manager.set_active_stamp(self.current_stamp_id):
+            self.refresh_stamp_list(select_id=self.current_stamp_id)
+
+    def delete_stamp(self):
+        manager = getattr(self.data_manager, "company_settings", None)
+        if self.current_stamp_id is None or not manager or not hasattr(manager, "delete_stamp"):
+            return
+        reply = QMessageBox.question(
+            self,
+            "Supprimer le cachet",
+            "Supprimer definitivement le cachet selectionne ?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        stamp_id = self.current_stamp_id
+        if manager.delete_stamp(stamp_id):
+            self.refresh_stamp_list()
+        else:
+            QMessageBox.warning(self, "Cachets", "Impossible de supprimer le cachet.")
+
     def get_updated_settings(self):
         return self.settings
 
     def save_settings(self):
         if self.data_manager and hasattr(self.data_manager, 'company_settings'):
+            if self.current_stamp_id is not None and not self.save_current_stamp(show_message=False):
+                raise Exception("Echec de l'enregistrement du cachet selectionne.")
             success = self.data_manager.company_settings.update_settings(self.settings, self.new_image_bytes)
             if success:
                 self.new_image_bytes = None
@@ -236,7 +441,67 @@ class PdfConfigWidget(QWidget):
         tab_sig.setWidgetResizable(True)
         tabs.addTab(tab_sig, "5. Signatures")
 
-        # TAB 6: ÉDITEUR VISUEL (WYSIWYG)
+        # TAB 6: BIBLIOTHEQUE DES CACHETS PNG
+        tab_stamps = QWidget()
+        stamps_layout = QVBoxLayout(tab_stamps)
+        stamps_group = QGroupBox("Bibliotheque des cachets PNG")
+        stamps_group_layout = QVBoxLayout(stamps_group)
+
+        stamps_top = QHBoxLayout()
+        self.list_stamps = QListWidget()
+        self.list_stamps.setMinimumHeight(135)
+        self.list_stamps.setToolTip("Ajoutez plusieurs cachets; un seul est actif sur les PDF a la fois.")
+
+        self.stamp_preview = QLabel("Aucun cachet selectionne")
+        self.stamp_preview.setAlignment(Qt.AlignCenter)
+        self.stamp_preview.setMinimumSize(180, 130)
+        self.stamp_preview.setStyleSheet(
+            "border: 1px dashed #95a5a6; background: #f8f9f9; padding: 8px;"
+        )
+        stamps_top.addWidget(self.list_stamps, stretch=1)
+        stamps_top.addWidget(self.stamp_preview)
+        stamps_group_layout.addLayout(stamps_top)
+
+        stamps_actions = QHBoxLayout()
+        self.btn_add_stamp = QPushButton("Ajouter un cachet PNG")
+        self.btn_delete_stamp = QPushButton("Supprimer le cachet")
+        self.btn_activate_stamp = QPushButton("Definir comme actif")
+        self.btn_delete_stamp.setStyleSheet("color: #c0392b;")
+        self.btn_activate_stamp.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold;")
+        stamps_actions.addWidget(self.btn_add_stamp)
+        stamps_actions.addWidget(self.btn_delete_stamp)
+        stamps_actions.addWidget(self.btn_activate_stamp)
+        stamps_group_layout.addLayout(stamps_actions)
+
+        self.edit_stamp_name = QLineEdit()
+        self.lbl_stamp_file = QLabel("Aucun fichier PNG")
+        self.lbl_stamp_file.setWordWrap(True)
+        self.sp_stamp_x = self._create_spin(0, 21, 13.0)
+        self.sp_stamp_y = self._create_spin(0, 29.7, 22.0)
+        self.sp_stamp_w = self._create_spin(0.5, 21, 4.0)
+        self.sp_stamp_h = self._create_spin(0.5, 29.7, 4.0)
+        self.btn_save_stamp = QPushButton("Enregistrer le nom, la position et la taille")
+        self.btn_save_stamp.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+
+        stamp_form = QFormLayout()
+        stamp_form.addRow("Nom du cachet :", self.edit_stamp_name)
+        stamp_form.addRow("Fichier :", self.lbl_stamp_file)
+        stamp_form.addRow("Position X depuis la gauche (cm) :", self.sp_stamp_x)
+        stamp_form.addRow("Position Y depuis le haut (cm) :", self.sp_stamp_y)
+        stamp_form.addRow("Largeur (cm) :", self.sp_stamp_w)
+        stamp_form.addRow("Hauteur (cm) :", self.sp_stamp_h)
+        stamp_form.addRow("", self.btn_save_stamp)
+        stamps_group_layout.addLayout(stamp_form)
+
+        stamps_layout.addWidget(stamps_group)
+        stamps_layout.addWidget(QLabel(
+            "Les images PNG transparentes ou classiques sont acceptees. "
+            "La position et la taille sont propres a chaque cachet et s'appliquent aux PDF de l'entreprise."
+        ))
+        stamps_layout.addStretch()
+        tabs.addTab(tab_stamps, "6. Cachets")
+
+        # TAB 7: ÉDITEUR VISUEL (WYSIWYG)
         tab_wy = QWidget()
         wy_layout = QVBoxLayout(tab_wy)
         wy_lbl = QLabel("<h3>Éditeur Visuel Interactif (WYSIWYG)</h3><p>Vous manquez d'espace ? Cliquez sur le bouton ci-dessous pour ouvrir l'éditeur de PDF dans une nouvelle fenêtre plein écran où vous pourrez ajuster tous vos éléments à la souris avec précision.</p>")
@@ -253,7 +518,7 @@ class PdfConfigWidget(QWidget):
         wy_layout.addWidget(self.btn_open_visual)
         wy_layout.addStretch()
         
-        tabs.addTab(tab_wy, "6. Éditeur Visuel (WYSIWYG)")
+        tabs.addTab(tab_wy, "7. Éditeur Visuel (WYSIWYG)")
 
         vbox.addWidget(tabs)
 
@@ -285,9 +550,17 @@ class PdfConfigWidget(QWidget):
         self._connect_signals()
         self.btn_color.clicked.connect(self.pick_color)
         self.btn_banner.clicked.connect(self.pick_banner)
+        self.btn_add_stamp.clicked.connect(self.add_stamp)
+        self.btn_delete_stamp.clicked.connect(self.delete_stamp)
+        self.btn_activate_stamp.clicked.connect(self.activate_stamp)
+        self.btn_save_stamp.clicked.connect(self.save_current_stamp)
+        self.list_stamps.currentRowChanged.connect(self.on_stamp_selected)
+        for stamp_spin in (self.sp_stamp_x, self.sp_stamp_y, self.sp_stamp_w, self.sp_stamp_h):
+            stamp_spin.valueChanged.connect(self.update_stamp_preview)
         self.rb_bl.toggled.connect(self.update_preview_mode)
         
-        self.sync_settings() 
+        self.sync_settings()
+        self.refresh_stamp_list()
 
     def _create_spin(self, min_v, max_v, current_v):
         sb = QDoubleSpinBox()
@@ -418,6 +691,8 @@ class LivePreviewCanvas(QWidget):
         super().__init__()
         self.settings = settings
         self.is_retour = False
+        self.active_stamp = None
+        self.active_stamp_pixmap = QPixmap()
         self.setMinimumSize(450, 600)
 
     def paintEvent(self, event):
@@ -452,6 +727,18 @@ class LivePreviewCanvas(QWidget):
             p.drawRect(0, 0, 210, total_h_mm)
             p.drawText(QRect(0, 0, 210, total_h_mm), Qt.AlignCenter, "Zone Image / Header")
         p.restore()
+
+        # Active stamp, using the same top-left centimetre coordinates as the PDF.
+        stamp = getattr(self, "active_stamp", None)
+        stamp_pixmap = getattr(self, "active_stamp_pixmap", QPixmap())
+        if stamp and not stamp_pixmap.isNull():
+            stamp_x = int(float(stamp.get("Position_X_CM", 0.0)) * 10)
+            stamp_y = int(float(stamp.get("Position_Y_CM", 0.0)) * 10)
+            stamp_w = int(float(stamp.get("Width_CM", 4.0)) * 10)
+            stamp_h = int(float(stamp.get("Height_CM", 4.0)) * 10)
+            p.drawPixmap(QRect(stamp_x, stamp_y, stamp_w, stamp_h), stamp_pixmap)
+            p.setPen(QPen(QColor("#e67e22"), 0.6, Qt.DashLine))
+            p.drawRect(stamp_x, stamp_y, stamp_w, stamp_h)
         
         # Get dynamic texts
         title = s.get('doc_title_rt', 'BON DE RETOUR') if self.is_retour else s.get('doc_title_bl', 'BON DE LIVRAISON')

@@ -23,6 +23,7 @@ except ImportError:
     HAS_REPORTLAB = False
 
 from .reception_dialog import ReceptionDialog
+from ui.widgets.settings.pdf_stamp import draw_active_stamp
 
 class ReceptionHistoryTab(QWidget):
     """
@@ -576,7 +577,10 @@ class ReceptionHistoryTab(QWidget):
             elements.append(Spacer(1, 2 * cm))
             elements.append(Table([["Réceptionné par :", "Signature Autorisée :"]], colWidths=[9*cm, 9*cm]))
 
-            doc.build(elements)
+            def draw_stamp(canvas, doc):
+                draw_active_stamp(canvas, getattr(self.manager, "company_settings", None), *A4)
+
+            doc.build(elements, onFirstPage=draw_stamp, onLaterPages=draw_stamp)
             os.startfile(path)
 
         except Exception as e:

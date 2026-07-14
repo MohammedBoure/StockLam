@@ -21,7 +21,7 @@ except (AttributeError, TypeError):
 logger = logging.getLogger("MODERNLAM")
 
 TABLE_IMPORT_ORDER = [
-    'Users', 'Company_Settings', 'Location_Types', 'Product_Families', 'Packaging_Units',
+    'Users', 'Company_Settings', 'Company_Stamps', 'Location_Types', 'Product_Families', 'Packaging_Units',
     'Manufacturers', 'Suppliers', 'External_Partners', 'Locations', 'Automates', 'Waste_Reasons',
     'Products_Master', 'Product_Documents', 'Purchase_Orders', 'PO_Details',
     'Reception_Log', 'Reception_Details', 'Inventory_Batches',
