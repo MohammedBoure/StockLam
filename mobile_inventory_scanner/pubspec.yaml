@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.2
-  mobile_scanner: ^6.0.11
+  mobile_scanner: ^7.2.0
   shared_preferences: ^2.3.2
 
 dev_dependencies:

@@ -656,7 +656,7 @@ class _ScannerHomePageState extends State<ScannerHomePage>
                 final code = firstOrNull(capture.barcodes)?.rawValue;
                 if (code != null) onCameraCode(code);
               },
-              errorBuilder: (context, error, child) => ColoredBox(
+              errorBuilder: (context, error) => ColoredBox(
                 color: Colors.black,
                 child: Center(
                   child: Padding(
