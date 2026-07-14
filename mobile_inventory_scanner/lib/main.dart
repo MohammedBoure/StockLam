@@ -119,13 +119,15 @@ class ScannerHomePage extends StatefulWidget {
   State<ScannerHomePage> createState() => _ScannerHomePageState();
 }
 
-class _ScannerHomePageState extends State<ScannerHomePage> {
+class _ScannerHomePageState extends State<ScannerHomePage>
+    with WidgetsBindingObserver {
   static const serverKey = 'modernstock_server_url';
 
   final serverController = TextEditingController();
   final barcodeController = TextEditingController();
   final barcodeFocus = FocusNode();
   final cameraController = MobileScannerController(
+    autoStart: false,
     facing: CameraFacing.back,
     detectionSpeed: DetectionSpeed.normal,
     detectionTimeoutMs: 400,
@@ -142,22 +144,40 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   bool settingsOpen = true;
   bool cameraOpen = false;
   bool scanBusy = false;
+  bool cameraStarting = false;
 
   ApiClient get api => ApiClient(baseUrl: serverController.text);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadSettings());
   }
 
   @override
   void dispose() {
-    cameraController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(cameraController.dispose());
     serverController.dispose();
     barcodeController.dispose();
     barcodeFocus.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!cameraOpen || !cameraController.value.isInitialized) return;
+
+    switch (state) {
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        unawaited(cameraController.stop());
+      case AppLifecycleState.resumed:
+        unawaited(_startCamera());
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -193,8 +213,8 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
         Datagram? datagram;
         while ((datagram = socket?.receive()) != null) {
           try {
-            final data = jsonDecode(utf8.decode(datagram!.data))
-                as Map<String, dynamic>;
+            final data =
+                jsonDecode(utf8.decode(datagram!.data)) as Map<String, dynamic>;
             if (data['app'] != 'StockLam') continue;
             final address = datagram.address.address;
             final port = int.tryParse('${data['api_port'] ?? 8787}') ?? 8787;
@@ -269,7 +289,8 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   Future<void> checkServer() async {
     final baseUrl = cleanBaseUrl(serverController.text);
     if (baseUrl.isEmpty) {
-      setState(() => status = 'Choisissez un ordinateur ou saisissez son adresse.');
+      setState(
+          () => status = 'Choisissez un ordinateur ou saisissez son adresse.');
       return;
     }
     await _saveSettings();
@@ -280,7 +301,8 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
     try {
       final health = await api.health();
       if (health['remote_input'] != true) {
-        throw Exception('Ce serveur n’est pas une instance ModernStock active.');
+        throw Exception(
+            'Ce serveur n’est pas une instance ModernStock active.');
       }
       final device = DesktopDevice(
         name: '${health['device_name'] ?? Uri.parse(baseUrl).host}',
@@ -352,23 +374,79 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
       cameraOpen = false;
       barcodeController.text = clean;
     });
-    unawaited(cameraController.stop());
-    sendRemoteBarcode(clean).whenComplete(() {
+    unawaited(_completeCameraScan(clean));
+  }
+
+  Future<void> _completeCameraScan(String barcode) async {
+    try {
+      await cameraController.stop();
+      await sendRemoteBarcode(barcode);
+    } finally {
       Timer(const Duration(milliseconds: 700), () => scanBusy = false);
-    });
+    }
+  }
+
+  String _cameraErrorMessage(MobileScannerException error) {
+    final details = error.errorDetails;
+    final technicalDetails = [details?.message, details?.code]
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .join(' - ');
+    final reason =
+        technicalDetails.isEmpty ? error.errorCode.name : technicalDetails;
+    return 'Impossible d\'ouvrir cette caméra.\n$reason\n\n'
+        'Autorisez l\'accès à la caméra et fermez les autres applications qui '
+        'l\'utilisent.';
+  }
+
+  Future<void> _startCamera() async {
+    if (!mounted || !cameraOpen || cameraStarting) return;
+    cameraStarting = true;
+    try {
+      await cameraController.start(cameraDirection: cameraFacing);
+      if (!mounted) return;
+      if (!cameraOpen) {
+        await cameraController.stop();
+        return;
+      }
+      final error = cameraController.value.error;
+      setState(() {
+        status = error == null
+            ? cameraFacing == CameraFacing.back
+                ? 'Caméra arrière active.'
+                : 'Caméra avant active.'
+            : _cameraErrorMessage(error);
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => status = 'Erreur de caméra : $error');
+      }
+    } finally {
+      cameraStarting = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _retryCamera() async {
+    if (!cameraOpen || cameraStarting) return;
+    await cameraController.stop();
+    await _startCamera();
   }
 
   Future<void> toggleCamera() async {
+    if (!cameraOpen || cameraStarting) return;
     try {
       await cameraController.switchCamera();
       if (!mounted) return;
+      final actualFacing = cameraController.value.cameraDirection;
+      final error = cameraController.value.error;
       setState(() {
-        cameraFacing = cameraFacing == CameraFacing.back
-            ? CameraFacing.front
-            : CameraFacing.back;
-        status = cameraFacing == CameraFacing.back
-            ? 'Caméra arrière active.'
-            : 'Caméra avant active.';
+        cameraFacing = actualFacing;
+        status = error == null
+            ? actualFacing == CameraFacing.back
+                ? 'Caméra arrière active.'
+                : 'Caméra avant active.'
+            : _cameraErrorMessage(error);
       });
     } catch (error) {
       if (mounted) {
@@ -377,9 +455,19 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
     }
   }
 
-  void toggleCameraPanel() {
-    setState(() => cameraOpen = !cameraOpen);
-    if (!cameraOpen) unawaited(cameraController.stop());
+  Future<void> toggleCameraPanel() async {
+    if (cameraOpen) {
+      setState(() => cameraOpen = false);
+      await cameraController.stop();
+      return;
+    }
+
+    setState(() {
+      cameraOpen = true;
+      status = 'Ouverture de la caméra...';
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted && cameraOpen) await _startCamera();
   }
 
   @override
@@ -573,10 +661,23 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: Text(
-                      'Impossible d’ouvrir cette caméra.\n${error.errorCode}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _cameraErrorMessage(error),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: cameraStarting
+                              ? null
+                              : () => unawaited(_retryCamera()),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Réessayer'),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -587,7 +688,7 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
               left: 8,
               child: IconButton.filled(
                 tooltip: 'Fermer la caméra',
-                onPressed: toggleCameraPanel,
+                onPressed: () => unawaited(toggleCameraPanel()),
                 icon: const Icon(Icons.close),
               ),
             ),
@@ -598,7 +699,7 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                 tooltip: backCamera
                     ? 'Passer à la caméra avant'
                     : 'Revenir à la caméra arrière',
-                onPressed: toggleCamera,
+                onPressed: () => unawaited(toggleCamera()),
                 icon: const Icon(Icons.cameraswitch),
               ),
             ),
@@ -656,10 +757,10 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                   height: 56,
                   width: 56,
                   child: IconButton.filledTonal(
-                    onPressed: connected ? toggleCameraPanel : null,
+                    onPressed:
+                        connected ? () => unawaited(toggleCameraPanel()) : null,
                     tooltip: 'Ouvrir la caméra arrière',
-                    icon: Icon(
-                        cameraOpen ? Icons.close : Icons.camera_alt),
+                    icon: Icon(cameraOpen ? Icons.close : Icons.camera_alt),
                   ),
                 ),
               ],
@@ -670,8 +771,8 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
               child: FilledButton.icon(
                 onPressed: loading || !connected ? null : sendRemoteBarcode,
                 icon: const Icon(Icons.send),
-                label: Text(
-                    'Envoyer à ${selectedDevice?.name ?? 'ModernStock'}'),
+                label:
+                    Text('Envoyer à ${selectedDevice?.name ?? 'ModernStock'}'),
               ),
             ),
           ],
