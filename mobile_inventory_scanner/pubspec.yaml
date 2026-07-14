@@ -1,5 +1,5 @@
 ﻿name: stocklam_inventory_scanner
-description: Mobile inventory count scanner companion for StockLam Inventaire sessions.
+description: ModernStock mobile barcode scanner companion for StockLam.
 publish_to: 'none'
 version: 1.0.0+1
 

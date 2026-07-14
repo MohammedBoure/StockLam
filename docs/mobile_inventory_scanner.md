@@ -1,78 +1,34 @@
-﻿# StockLam mobile inventory scanner
+# ModernStock mobile barcode bridge
 
-Ready-to-use Android companion for the current StockLam **Inventaire** workflow.
+The Android app is a remote barcode camera for the ModernStock desktop application. It discovers ModernStock computers on the same private LAN, lets the user select one, and sends each scanned barcode to the visible desktop input field.
 
-## What it does
+## Desktop host
 
-- Uses the desktop StockLam database through a small LAN API.
-- Discovers running StockLam computers automatically on the same Wi-Fi/LAN.
-- Connects to a selected computer and sends camera scans to the active StockLam input field.
-- Lists open `Counting` inventory sessions.
-- Scans barcodes with the phone camera.
-- Shows product, lot, expiry, location, program quantity, counted quantity, and status.
-- Saves the physical quantity directly into the selected StockLam inventory session.
-- Uses the same backend method as the desktop scan dialog: `InventoryCountManager.scan_barcode(..., replace_counted=True)`.
-- The phone never receives MySQL credentials.
+When `main.py` finishes login, the desktop application starts automatically:
 
-## Start the desktop host
+- HTTP API: TCP `8787`;
+- LAN discovery: UDP `8788`;
+- desktop barcode bridge: writes into the focused barcode/text field and submits it.
 
-Open StockLam normally with `main.py`. After login, it automatically starts:
+The standalone `tools/inventory_mobile_api.py` script still supports the legacy inventory API, but direct barcode typing requires the ModernStock desktop process because the Qt bridge lives in `main.py`.
 
-- the HTTP API on TCP port `8787`;
-- LAN discovery on UDP port `8788`;
-- the desktop barcode bridge used by **Vers ordinateur** mode.
+Allow private-network inbound TCP `8787` and UDP `8788` in Windows Firewall if discovery or connection fails.
 
-The standalone API script remains available for inventory-only use, but direct typing into StockLam requires the desktop application to be open.
+## Phone workflow
 
-If automatic discovery is blocked, enter the computer address manually, for example:
+1. Install `mobile_inventory_scanner/build/app/outputs/flutter-apk/app-release.apk`.
+2. Connect the phone and computer to the same Wi-Fi/LAN.
+3. Tap **Rechercher les ordinateurs ModernStock**.
+4. Select the target computer and wait for the connected status.
+5. Place the cursor in the barcode field inside ModernStock.
+6. Open the camera and scan. The barcode is sent and submitted on the computer.
+7. The scanner starts with `CameraFacing.back`; the cameraswitch button calls `MobileScannerController.switchCamera()` to move between the rear and front cameras.
 
-```text
-http://192.168.1.10:8787
-```
+Manual fallback: enter `http://MAIN_PC_IP:8787` and connect.
 
-If Windows Firewall blocks the phone, allow private-network inbound TCP `8787` and UDP `8788`.
+## API routes used by ModernStock
 
-## Build or run the Android app
+- `GET /api/health` — desktop identity and remote-input capability;
+- `POST /api/remote-scans` — sends `{ "barcode": "..." }` to the desktop bridge.
 
-```powershell
-cd mobile_inventory_scanner
-flutter pub get
-flutter analyze
-flutter test
-flutter build apk --debug
-```
-
-Debug APK output:
-
-```text
-mobile_inventory_scanner\build\app\outputs\flutter-apk\app-debug.apk
-```
-
-## Practical workflow
-
-1. Open StockLam on the PC.
-2. Create or select an Inventaire session and keep it in `Counting` status.
-3. Start the API on the main PC with `tools\start_inventory_mobile_api.ps1`.
-4. Install/run the Android app on a phone connected to the same Wi-Fi/LAN.
-5. Tap **Rechercher les ordinateurs StockLam** and choose the target PC.
-6. In **Vers ordinateur** mode, place the cursor in a StockLam barcode/text field and scan with the phone camera; the code is written and submitted on the PC.
-7. In **Inventaire** mode, select an open session, scan a product, verify details, enter the physical quantity, then tap **Enregistrer**.
-8. Return to the desktop Inventaire screen and refresh/review/apply as usual.
-
-## API endpoints
-
-- `GET /api/health`
-- `POST /api/remote-scans`
-- `GET /api/inventory-sessions?status=Counting`
-- `GET /api/inventory-sessions/{session_id}/lookup?barcode=...`
-- `POST /api/inventory-sessions/{session_id}/scan`
-
-`POST /scan` body:
-
-```json
-{
-  "barcode": "123456",
-  "qty": 5,
-  "replace_counted": true
-}
-```
+Discovery uses the UDP request `STOCKLAM_DISCOVER_V1` on port `8788`.

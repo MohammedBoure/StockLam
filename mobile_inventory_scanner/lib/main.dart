@@ -9,7 +9,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  runApp(const StockLamInventoryScannerApp());
+  runApp(const ModernStockApp());
 }
 
 T? firstOrNull<T>(Iterable<T> values) {
@@ -22,22 +22,13 @@ const stockLamMobileApiKey = 'StockLam-Inventaire-Mobile-2026';
 String cleanBaseUrl(String value) =>
     value.trim().replaceAll(RegExp(r'/+$'), '');
 
-int asInt(dynamic value) => int.tryParse('${value ?? 0}') ?? 0;
-
-num asNumber(dynamic value) {
-  if (value is num) {
-    return value;
-  }
-  return num.tryParse('${value ?? 0}'.replaceAll(',', '.')) ?? 0;
-}
-
-class StockLamInventoryScannerApp extends StatelessWidget {
-  const StockLamInventoryScannerApp({super.key});
+class ModernStockApp extends StatelessWidget {
+  const ModernStockApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'StockLam Inventaire',
+      title: 'ModernStock',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF007572)),
@@ -48,69 +39,13 @@ class StockLamInventoryScannerApp extends StatelessWidget {
           elevation: 0,
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(8))),
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+          ),
         ),
       ),
       home: const ScannerHomePage(),
     );
   }
-}
-
-class InventorySession {
-  const InventorySession({
-    required this.id,
-    required this.name,
-    required this.status,
-    required this.totalLines,
-    required this.ok,
-    required this.short,
-    required this.excess,
-    required this.notCounted,
-    required this.unknown,
-  });
-
-  final int id;
-  final String name;
-  final String status;
-  final int totalLines;
-  final int ok;
-  final int short;
-  final int excess;
-  final int notCounted;
-  final int unknown;
-
-  int get counted => ok + short + excess + unknown;
-  double get progress => totalLines <= 0 ? 0 : counted / totalLines;
-
-  factory InventorySession.fromJson(Map<String, dynamic> json) {
-    return InventorySession(
-      id: asInt(json['Session_ID']),
-      name: '${json['Session_Name'] ?? 'Session'}',
-      status: '${json['Status'] ?? '-'}',
-      totalLines: asInt(json['Total_Lines']),
-      ok: asInt(json['OK_Count']),
-      short: asInt(json['Short_Count']),
-      excess: asInt(json['Excess_Count']),
-      notCounted: asInt(json['Not_Counted_Count']),
-      unknown: asInt(json['Unknown_Count']),
-    );
-  }
-}
-
-class ScanEntry {
-  const ScanEntry({
-    required this.barcode,
-    required this.qty,
-    required this.status,
-    required this.message,
-    required this.time,
-  });
-
-  final String barcode;
-  final num qty;
-  final String status;
-  final String message;
-  final DateTime time;
 }
 
 class DesktopDevice {
@@ -125,6 +60,18 @@ class DesktopDevice {
   final String baseUrl;
 }
 
+class ScanEntry {
+  const ScanEntry({
+    required this.barcode,
+    required this.message,
+    required this.time,
+  });
+
+  final String barcode;
+  final String message;
+  final DateTime time;
+}
+
 class ApiClient {
   ApiClient({required this.baseUrl});
 
@@ -135,73 +82,31 @@ class ApiClient {
         'X-API-Key': stockLamMobileApiKey,
       };
 
-  Uri uri(String path, [Map<String, String>? query]) {
-    return Uri.parse('${cleanBaseUrl(baseUrl)}$path')
-        .replace(queryParameters: query);
-  }
+  Uri uri(String path) => Uri.parse('${cleanBaseUrl(baseUrl)}$path');
 
-  Future<Map<String, dynamic>> health({Duration timeout = const Duration(seconds: 8)}) async {
-    final res = await http
+  Future<Map<String, dynamic>> health() async {
+    final response = await http
         .get(uri('/api/health'), headers: headers)
-        .timeout(timeout);
-    return _decode(res);
+        .timeout(const Duration(seconds: 8));
+    return _decode(response);
   }
 
   Future<Map<String, dynamic>> sendRemoteBarcode(String barcode) async {
-    final res = await http
+    final response = await http
         .post(
           uri('/api/remote-scans'),
           headers: headers,
           body: jsonEncode({'barcode': barcode}),
         )
         .timeout(const Duration(seconds: 8));
-    return _decode(res);
+    return _decode(response);
   }
 
-  Future<List<InventorySession>> sessions() async {
-    final res = await http
-        .get(uri('/api/inventory-sessions', {'status': 'Counting'}),
-            headers: headers)
-        .timeout(const Duration(seconds: 10));
-    final body = _decode(res);
-    final items = body['sessions'] as List? ?? const [];
-    return items
-        .map((item) =>
-            InventorySession.fromJson(Map<String, dynamic>.from(item as Map)))
-        .toList();
-  }
-
-  Future<Map<String, dynamic>?> lookup(int sessionId, String barcode) async {
-    final res = await http
-        .get(
-            uri('/api/inventory-sessions/$sessionId/lookup',
-                {'barcode': barcode}),
-            headers: headers)
-        .timeout(const Duration(seconds: 8));
-    final body = _decode(res);
-    return body['line'] == null
-        ? null
-        : Map<String, dynamic>.from(body['line'] as Map);
-  }
-
-  Future<Map<String, dynamic>> scan(
-      int sessionId, String barcode, num qty) async {
-    final res = await http
-        .post(
-          uri('/api/inventory-sessions/$sessionId/scan'),
-          headers: headers,
-          body: jsonEncode(
-              {'barcode': barcode, 'qty': qty, 'replace_counted': true}),
-        )
-        .timeout(const Duration(seconds: 10));
-    return _decode(res);
-  }
-
-  Map<String, dynamic> _decode(http.Response res) {
+  Map<String, dynamic> _decode(http.Response response) {
     final decoded =
-        jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    if (res.statusCode >= 400) {
-      throw Exception(decoded['message'] ?? 'Erreur ${res.statusCode}');
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode >= 400) {
+      throw Exception(decoded['message'] ?? 'Erreur ${response.statusCode}');
     }
     return decoded;
   }
@@ -215,25 +120,25 @@ class ScannerHomePage extends StatefulWidget {
 }
 
 class _ScannerHomePageState extends State<ScannerHomePage> {
-  static const serverKey = 'stocklam_server_url';
-  final serverController =
-      TextEditingController(text: 'http://192.168.1.10:8787');
-  final barcodeController = TextEditingController();
-  final qtyController = TextEditingController(text: '1');
-  final barcodeFocus = FocusNode();
-  final qtyFocus = FocusNode();
+  static const serverKey = 'modernstock_server_url';
 
-  List<InventorySession> sessions = const [];
-  List<ScanEntry> recentScans = const [];
+  final serverController = TextEditingController();
+  final barcodeController = TextEditingController();
+  final barcodeFocus = FocusNode();
+  final cameraController = MobileScannerController(
+    facing: CameraFacing.back,
+    detectionSpeed: DetectionSpeed.normal,
+    detectionTimeoutMs: 400,
+  );
+
   List<DesktopDevice> discoveredDevices = const [];
-  InventorySession? selectedSession;
+  List<ScanEntry> recentScans = const [];
   DesktopDevice? selectedDevice;
-  Map<String, dynamic>? currentLine;
-  String status = 'Recherchez puis choisissez un ordinateur StockLam.';
+  CameraFacing cameraFacing = CameraFacing.back;
+  String status = 'Recherchez puis choisissez un ordinateur ModernStock.';
   bool loading = false;
   bool discovering = false;
   bool connected = false;
-  bool directMode = true;
   bool settingsOpen = true;
   bool cameraOpen = false;
   bool scanBusy = false;
@@ -248,37 +153,33 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
 
   @override
   void dispose() {
+    cameraController.dispose();
     serverController.dispose();
     barcodeController.dispose();
-    qtyController.dispose();
     barcodeFocus.dispose();
-    qtyFocus.dispose();
     super.dispose();
   }
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedServer = prefs.getString(serverKey);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      if (savedServer != null && savedServer.isNotEmpty) {
-        serverController.text = savedServer;
-      }
-    });
+    final preferences = await SharedPreferences.getInstance();
+    final savedServer = preferences.getString(serverKey);
+    if (!mounted || savedServer == null || savedServer.isEmpty) return;
+    setState(() => serverController.text = savedServer);
   }
 
   Future<void> _saveSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(serverKey, cleanBaseUrl(serverController.text));
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      serverKey,
+      cleanBaseUrl(serverController.text),
+    );
   }
 
   Future<void> discoverDevices() async {
     if (discovering) return;
     setState(() {
       discovering = true;
-      status = 'Recherche des ordinateurs StockLam sur le réseau...';
+      status = 'Recherche des ordinateurs ModernStock sur le réseau...';
     });
 
     RawDatagramSocket? socket;
@@ -295,20 +196,21 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
             final data = jsonDecode(utf8.decode(datagram!.data))
                 as Map<String, dynamic>;
             if (data['app'] != 'StockLam') continue;
-            final port = asInt(data['api_port']);
             final address = datagram.address.address;
+            final port = int.tryParse('${data['api_port'] ?? 8787}') ?? 8787;
             final id = '${data['device_id'] ?? '$address:$port'}';
             found[id] = DesktopDevice(
               name: '${data['device_name'] ?? address}',
               id: id,
-              baseUrl: 'http://$address:${port == 0 ? 8787 : port}',
+              baseUrl: 'http://$address:$port',
             );
             if (mounted) {
-              setState(() => discoveredDevices = found.values.toList()
-                ..sort((a, b) => a.name.compareTo(b.name)));
+              setState(() {
+                discoveredDevices = _sortedDevices(found.values);
+              });
             }
           } catch (_) {
-            // Ignore packets that are not StockLam discovery replies.
+            // Ignore packets that are not ModernStock discovery replies.
           }
         }
       });
@@ -318,14 +220,15 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
         type: InternetAddressType.IPv4,
         includeLoopback: false,
       );
-      for (final interface in interfaces) {
-        for (final address in interface.addresses) {
+      for (final networkInterface in interfaces) {
+        for (final address in networkInterface.addresses) {
           final parts = address.address.split('.');
           if (parts.length == 4) {
             destinations.add('${parts[0]}.${parts[1]}.${parts[2]}.255');
           }
         }
       }
+
       final request = utf8.encode('STOCKLAM_DISCOVER_V1');
       for (final destination in destinations) {
         socket.send(request, InternetAddress(destination), 8788);
@@ -334,19 +237,24 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
 
       if (!mounted) return;
       setState(() {
-        discoveredDevices = found.values.toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
+        discoveredDevices = _sortedDevices(found.values);
         status = found.isEmpty
             ? 'Aucun ordinateur trouvé. Vérifiez le Wi-Fi et le pare-feu Windows.'
-            : '${found.length} ordinateur(s) StockLam trouvé(s).';
+            : '${found.length} ordinateur(s) ModernStock trouvé(s).';
       });
-    } catch (e) {
-      if (mounted) setState(() => status = 'Erreur de découverte : $e');
+    } catch (error) {
+      if (mounted) setState(() => status = 'Erreur de découverte : $error');
     } finally {
       await subscription?.cancel();
       socket?.close();
       if (mounted) setState(() => discovering = false);
     }
+  }
+
+  List<DesktopDevice> _sortedDevices(Iterable<DesktopDevice> devices) {
+    final result = devices.toList();
+    result.sort((a, b) => a.name.compareTo(b.name));
+    return result;
   }
 
   Future<void> connectDevice(DesktopDevice device) async {
@@ -359,41 +267,49 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   }
 
   Future<void> checkServer() async {
+    final baseUrl = cleanBaseUrl(serverController.text);
+    if (baseUrl.isEmpty) {
+      setState(() => status = 'Choisissez un ordinateur ou saisissez son adresse.');
+      return;
+    }
     await _saveSettings();
     setState(() {
       loading = true;
-      status = 'Test de connexion...';
+      status = 'Test de connexion à ModernStock...';
     });
     try {
       final health = await api.health();
+      if (health['remote_input'] != true) {
+        throw Exception('Ce serveur n’est pas une instance ModernStock active.');
+      }
       final device = DesktopDevice(
-        name: '${health['device_name'] ?? Uri.parse(serverController.text).host}',
-        id: '${health['device_id'] ?? serverController.text}',
-        baseUrl: cleanBaseUrl(serverController.text),
+        name: '${health['device_name'] ?? Uri.parse(baseUrl).host}',
+        id: '${health['device_id'] ?? baseUrl}',
+        baseUrl: baseUrl,
       );
+      if (!mounted) return;
       setState(() {
         connected = true;
         selectedDevice = device;
         settingsOpen = false;
         status = 'Connecté à ${device.name}.';
       });
-      if (!directMode) await loadSessions();
-    } catch (e) {
-      setState(() {
-        connected = false;
-        status = 'Connexion impossible: $e';
-      });
-    } finally {
+    } catch (error) {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() {
+          connected = false;
+          status = 'Connexion impossible : $error';
+        });
       }
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
   }
 
   Future<void> sendRemoteBarcode([String? value]) async {
     final barcode = (value ?? barcodeController.text).trim();
     if (!connected) {
-      setState(() => status = 'Connectez d’abord un ordinateur StockLam.');
+      setState(() => status = 'Connectez d’abord un ordinateur ModernStock.');
       return;
     }
     if (barcode.isEmpty) {
@@ -405,150 +321,26 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
       status = 'Envoi du code vers ${selectedDevice?.name ?? 'ordinateur'}...';
     });
     try {
-      final result = await api.sendRemoteBarcode(barcode);
+      await api.sendRemoteBarcode(barcode);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
-      final entry = ScanEntry(
-        barcode: barcode,
-        qty: 1,
-        status: '${result['status'] ?? 'SENT'}',
-        message: 'Envoyé à ${selectedDevice?.name ?? 'StockLam'}',
-        time: DateTime.now(),
-      );
       setState(() {
-        status = 'Code $barcode envoyé au programme StockLam.';
-        recentScans = [entry, ...recentScans].take(12).toList();
+        status = 'Code $barcode envoyé à ModernStock.';
+        recentScans = [
+          ScanEntry(
+            barcode: barcode,
+            message: 'Envoyé à ${selectedDevice?.name ?? 'ModernStock'}',
+            time: DateTime.now(),
+          ),
+          ...recentScans,
+        ].take(12).toList();
         barcodeController.clear();
       });
       barcodeFocus.requestFocus();
-    } catch (e) {
-      if (mounted) setState(() => status = 'Erreur d’envoi : $e');
+    } catch (error) {
+      if (mounted) setState(() => status = 'Erreur d’envoi : $error');
     } finally {
       if (mounted) setState(() => loading = false);
-    }
-  }
-
-  Future<void> loadSessions() async {
-    await _saveSettings();
-    setState(() {
-      loading = true;
-      status = 'Chargement des sessions ouvertes...';
-    });
-    try {
-      final data = await api.sessions();
-      final selected = selectedSession == null
-          ? null
-          : firstOrNull(data.where((s) => s.id == selectedSession!.id));
-      setState(() {
-        sessions = data;
-        selectedSession = selected ?? (data.isEmpty ? null : data.first);
-        settingsOpen = data.isEmpty;
-        status = data.isEmpty
-            ? 'Aucune session Counting ouverte dans StockLam.'
-            : '${data.length} session(s) ouverte(s).';
-      });
-    } catch (e) {
-      setState(() => status = 'Erreur sessions: $e');
-    } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
-    }
-  }
-
-  Future<void> lookupBarcode([String? value]) async {
-    final session = selectedSession;
-    final barcode = (value ?? barcodeController.text).trim();
-    if (session == null) {
-      setState(() => status = 'Selectionnez une session Inventaire ouverte.');
-      return;
-    }
-    if (barcode.isEmpty) {
-      barcodeFocus.requestFocus();
-      return;
-    }
-    setState(() {
-      loading = true;
-      status = 'Recherche du code...';
-    });
-    try {
-      final line = await api.lookup(session.id, barcode);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        currentLine = line;
-        if (line == null) {
-          status = 'Code inconnu. Enregistrer le comptera comme UNKNOWN.';
-          qtyController.text = '1';
-        } else {
-          status =
-              '${line['Product_Name'] ?? barcode} trouve. Entrez la quantite physique.';
-          final lineStatus = '${line['Line_Status'] ?? ''}';
-          final defaultQty = lineStatus == 'NOT_COUNTED'
-              ? line['Program_Qty_Snapshot']
-              : line['Counted_Qty'];
-          qtyController.text = '${defaultQty ?? 1}';
-        }
-      });
-      qtyFocus.requestFocus();
-      qtyController.selection =
-          TextSelection(baseOffset: 0, extentOffset: qtyController.text.length);
-    } catch (e) {
-      setState(() => status = 'Erreur recherche: $e');
-    } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
-    }
-  }
-
-  Future<void> saveScan() async {
-    final session = selectedSession;
-    final barcode = barcodeController.text.trim();
-    final qty = num.tryParse(qtyController.text.replaceAll(',', '.'));
-    if (session == null) {
-      setState(() => status = 'Selectionnez une session Inventaire ouverte.');
-      return;
-    }
-    if (barcode.isEmpty || qty == null || qty < 0) {
-      setState(() => status = 'Code-barres et quantite valide obligatoires.');
-      return;
-    }
-    setState(() {
-      loading = true;
-      status = 'Enregistrement du comptage...';
-    });
-    try {
-      final result = await api.scan(session.id, barcode, qty);
-      final entry = ScanEntry(
-        barcode: barcode,
-        qty: qty,
-        status: '${result['status'] ?? 'OK'}',
-        message: '${result['message'] ?? ''}',
-        time: DateTime.now(),
-      );
-      if (!mounted) {
-        return;
-      }
-      HapticFeedback.mediumImpact();
-      setState(() {
-        currentLine = result['line'] == null
-            ? null
-            : Map<String, dynamic>.from(result['line'] as Map);
-        status = '${entry.status} - ${entry.message}';
-        recentScans = [entry, ...recentScans].take(12).toList();
-        barcodeController.clear();
-        qtyController.text = '1';
-      });
-      await loadSessions();
-      barcodeFocus.requestFocus();
-    } catch (e) {
-      setState(() => status = 'Erreur enregistrement: $e');
-    } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
     }
   }
 
@@ -560,10 +352,34 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
       cameraOpen = false;
       barcodeController.text = clean;
     });
-    final operation = directMode ? sendRemoteBarcode(clean) : lookupBarcode(clean);
-    operation.whenComplete(() {
+    unawaited(cameraController.stop());
+    sendRemoteBarcode(clean).whenComplete(() {
       Timer(const Duration(milliseconds: 700), () => scanBusy = false);
     });
+  }
+
+  Future<void> toggleCamera() async {
+    try {
+      await cameraController.switchCamera();
+      if (!mounted) return;
+      setState(() {
+        cameraFacing = cameraFacing == CameraFacing.back
+            ? CameraFacing.front
+            : CameraFacing.back;
+        status = cameraFacing == CameraFacing.back
+            ? 'Caméra arrière active.'
+            : 'Caméra avant active.';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => status = 'Impossible de changer de caméra : $error');
+      }
+    }
+  }
+
+  void toggleCameraPanel() {
+    setState(() => cameraOpen = !cameraOpen);
+    if (!cameraOpen) unawaited(cameraController.stop());
   }
 
   @override
@@ -572,18 +388,16 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F8),
       appBar: AppBar(
-        title: const Text('StockLam Scanner'),
+        title: const Text('ModernStock'),
         actions: [
           IconButton(
-            tooltip: 'Parametres serveur',
+            tooltip: 'Ordinateurs ModernStock',
             onPressed: () => setState(() => settingsOpen = !settingsOpen),
             icon: Icon(settingsOpen ? Icons.expand_less : Icons.settings),
           ),
           IconButton(
-            tooltip: directMode ? 'Rechercher les ordinateurs' : 'Actualiser les sessions',
-            onPressed: loading || discovering
-                ? null
-                : (directMode ? discoverDevices : loadSessions),
+            tooltip: 'Rechercher les ordinateurs',
+            onPressed: loading || discovering ? null : discoverDevices,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -596,16 +410,12 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
               children: [
                 if (settingsOpen) _serverCard(),
                 if (settingsOpen) const SizedBox(height: 10),
-                _modeCard(),
+                _connectionCard(),
                 const SizedBox(height: 10),
-                if (!directMode) _sessionCard(),
-                if (!directMode) const SizedBox(height: 10),
                 if (cameraOpen) _cameraCard(),
                 if (cameraOpen) const SizedBox(height: 10),
                 _scanCard(),
                 const SizedBox(height: 10),
-                if (!directMode) _detailsCard(),
-                if (!directMode) const SizedBox(height: 10),
                 _recentCard(),
                 const SizedBox(height: 28),
               ],
@@ -641,12 +451,14 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                   : const Icon(Icons.radar),
               label: Text(discovering
                   ? 'Recherche en cours...'
-                  : 'Rechercher les ordinateurs StockLam'),
+                  : 'Rechercher les ordinateurs ModernStock'),
             ),
             if (discoveredDevices.isNotEmpty) ...[
               const SizedBox(height: 10),
-              const Text('Appareils disponibles',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Ordinateurs disponibles',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 4),
               RadioGroup<String>(
                 groupValue: selectedDevice?.id,
@@ -658,12 +470,14 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                 },
                 child: Column(
                   children: discoveredDevices
-                      .map((device) => RadioListTile<String>(
-                            value: device.id,
-                            title: Text(device.name),
-                            subtitle: Text(device.baseUrl),
-                            secondary: const Icon(Icons.computer),
-                          ))
+                      .map(
+                        (device) => RadioListTile<String>(
+                          value: device.id,
+                          title: Text(device.name),
+                          subtitle: Text(device.baseUrl),
+                          secondary: const Icon(Icons.computer),
+                        ),
+                      )
                       .toList(),
                 ),
               ),
@@ -672,7 +486,9 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
             TextField(
               controller: serverController,
               decoration: const InputDecoration(
-                  labelText: 'Adresse manuelle', prefixIcon: Icon(Icons.lan)),
+                labelText: 'Adresse manuelle',
+                prefixIcon: Icon(Icons.lan),
+              ),
               keyboardType: TextInputType.url,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => checkServer(),
@@ -689,7 +505,7 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
     );
   }
 
-  Widget _modeCard() {
+  Widget _connectionCard() {
     final error = status.startsWith('Erreur') ||
         status.startsWith('Connexion impossible') ||
         status.startsWith('Aucun ordinateur');
@@ -699,31 +515,6 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: true,
-                  icon: Icon(Icons.keyboard_alt),
-                  label: Text('Vers ordinateur'),
-                ),
-                ButtonSegment(
-                  value: false,
-                  icon: Icon(Icons.inventory_2),
-                  label: Text('Inventaire'),
-                ),
-              ],
-              selected: {directMode},
-              onSelectionChanged: (values) async {
-                final direct = values.first;
-                setState(() {
-                  directMode = direct;
-                  cameraOpen = false;
-                  currentLine = null;
-                });
-                if (!direct && connected) await loadSessions();
-              },
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Icon(
@@ -734,7 +525,7 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                 Expanded(
                   child: Text(
                     connected
-                        ? 'Connecté à ${selectedDevice?.name ?? 'StockLam'}'
+                        ? 'Connecté à ${selectedDevice?.name ?? 'ModernStock'}'
                         : 'Aucun ordinateur connecté',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
@@ -746,67 +537,17 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
               ],
             ),
             const SizedBox(height: 6),
-            Text(status, style: TextStyle(color: error ? Colors.red : const Color(0xFF23423F))),
-            if (directMode) ...[
-              const SizedBox(height: 6),
-              const Text(
-                'Placez le curseur dans un champ StockLam sur le PC, puis scannez avec la caméra.',
-                style: TextStyle(color: Colors.black54),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _sessionCard() {
-    final session = selectedSession;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            InputDecorator(
-              decoration:
-                  const InputDecoration(labelText: 'Session Inventaire'),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: session?.id,
-                  isExpanded: true,
-                  hint: const Text('Aucune session ouverte'),
-                  items: sessions
-                      .map((s) => DropdownMenuItem(
-                          value: s.id, child: Text('#${s.id} ${s.name}')))
-                      .toList(),
-                  onChanged: (id) => setState(() => selectedSession =
-                      firstOrNull(sessions.where((s) => s.id == id))),
-                ),
+            Text(
+              status,
+              style: TextStyle(
+                color: error ? Colors.red : const Color(0xFF23423F),
               ),
             ),
-            const SizedBox(height: 10),
-            if (session != null) ...[
-              Row(
-                children: [
-                  Expanded(child: Text('Statut: ${session.status}')),
-                  Text('${session.counted}/${session.totalLines}'),
-                ],
-              ),
-              const SizedBox(height: 6),
-              LinearProgressIndicator(
-                  value: session.progress.clamp(0, 1), minHeight: 8),
-              const SizedBox(height: 6),
-              Text(
-                  'OK ${session.ok} | Short ${session.short} | Excess ${session.excess} | Non comptes ${session.notCounted} | Inconnus ${session.unknown}'),
-            ],
-            const SizedBox(height: 8),
-            Text(status,
-                style: TextStyle(
-                    color: status.startsWith('Erreur') ||
-                            status.startsWith('Connexion impossible')
-                        ? Colors.red
-                        : const Color(0xFF23423F))),
+            const SizedBox(height: 6),
+            const Text(
+              'Ouvrez un champ code-barres dans ModernStock, puis utilisez la caméra du téléphone.',
+              style: TextStyle(color: Colors.black54),
+            ),
           ],
         ),
       ),
@@ -814,26 +555,74 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   }
 
   Widget _cameraCard() {
+    final backCamera = cameraFacing == CameraFacing.back;
     return SizedBox(
-      height: 300,
+      height: 360,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Stack(
           children: [
             MobileScanner(
+              controller: cameraController,
               onDetect: (capture) {
                 final code = firstOrNull(capture.barcodes)?.rawValue;
-                if (code != null) {
-                  onCameraCode(code);
-                }
+                if (code != null) onCameraCode(code);
               },
+              errorBuilder: (context, error, child) => ColoredBox(
+                color: Colors.black,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'Impossible d’ouvrir cette caméra.\n${error.errorCode}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: IconButton.filled(
+                tooltip: 'Fermer la caméra',
+                onPressed: toggleCameraPanel,
+                icon: const Icon(Icons.close),
+              ),
             ),
             Positioned(
               top: 8,
               right: 8,
               child: IconButton.filled(
-                onPressed: () => setState(() => cameraOpen = false),
-                icon: const Icon(Icons.close),
+                tooltip: backCamera
+                    ? 'Passer à la caméra avant'
+                    : 'Revenir à la caméra arrière',
+                onPressed: toggleCamera,
+                icon: const Icon(Icons.cameraswitch),
+              ),
+            ),
+            Positioned(
+              bottom: 12,
+              left: 12,
+              right: 12,
+              child: Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      backCamera ? 'Caméra arrière' : 'Caméra avant',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -855,11 +644,11 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                     controller: barcodeController,
                     focusNode: barcodeFocus,
                     decoration: const InputDecoration(
-                        labelText: 'Code-barres',
-                        prefixIcon: Icon(Icons.qr_code_2)),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) =>
-                        directMode ? sendRemoteBarcode() : lookupBarcode(),
+                      labelText: 'Code-barres',
+                      prefixIcon: Icon(Icons.qr_code_2),
+                    ),
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => sendRemoteBarcode(),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -867,91 +656,24 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                   height: 56,
                   width: 56,
                   child: IconButton.filledTonal(
-                    onPressed: directMode && !connected
-                        ? null
-                        : () => setState(() => cameraOpen = !cameraOpen),
-                    icon: Icon(cameraOpen ? Icons.close : Icons.camera_alt),
+                    onPressed: connected ? toggleCameraPanel : null,
+                    tooltip: 'Ouvrir la caméra arrière',
+                    icon: Icon(
+                        cameraOpen ? Icons.close : Icons.camera_alt),
                   ),
                 ),
               ],
             ),
-            if (!directMode) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: qtyController,
-                focusNode: qtyFocus,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: 'Quantité physique',
-                    prefixIcon: Icon(Icons.numbers)),
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => saveScan(),
-              ),
-            ],
             const SizedBox(height: 12),
-            if (directMode)
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: loading || !connected ? null : sendRemoteBarcode,
-                  icon: const Icon(Icons.send_to_mobile),
-                  label: Text(
-                      'Envoyer à ${selectedDevice?.name ?? 'l’ordinateur'}'),
-                ),
-              )
-            else
-              Row(
-                children: [
-                  Expanded(
-                      child: OutlinedButton.icon(
-                          onPressed: loading ? null : () => lookupBarcode(),
-                          icon: const Icon(Icons.search),
-                          label: const Text('Vérifier'))),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: FilledButton.icon(
-                          onPressed: loading ? null : saveScan,
-                          icon: const Icon(Icons.save),
-                          label: const Text('Enregistrer'))),
-                ],
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: loading || !connected ? null : sendRemoteBarcode,
+                icon: const Icon(Icons.send),
+                label: Text(
+                    'Envoyer à ${selectedDevice?.name ?? 'ModernStock'}'),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _detailsCard() {
-    final line = currentLine;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                    child: Text('Produit scanne',
-                        style: TextStyle(fontWeight: FontWeight.bold))),
-                if (line != null) _statusChip('${line['Line_Status'] ?? '-'}'),
-              ],
             ),
-            const SizedBox(height: 8),
-            if (line == null)
-              const Text('Aucun produit charge.')
-            else ...[
-              Text('${line['Product_Name'] ?? line['Internal_Barcode'] ?? '-'}',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text('Barcode: ${line['Internal_Barcode'] ?? '-'}'),
-              Text(
-                  'Lot: ${line['Lot_Number'] ?? '-'} | Exp: ${line['Expiry_Date'] ?? '-'}'),
-              Text('Emplacement: ${line['Location_Name'] ?? '-'}'),
-              Text(
-                  'Programme: ${line['Program_Qty_Snapshot'] ?? 0} | Compte: ${line['Counted_Qty'] ?? 0} | Ecart: ${line['Difference_Qty'] ?? 0}'),
-            ],
           ],
         ),
       ),
@@ -965,13 +687,13 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Derniers scans',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text(
+              'Derniers envois',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             if (recentScans.isEmpty)
-              Text(directMode
-                  ? 'Aucun code envoyé à l’ordinateur.'
-                  : 'Aucun scan enregistré dans cette session mobile.')
+              const Text('Aucun code envoyé à ModernStock.')
             else
               ...recentScans.map(
                 (scan) => ListTile(
@@ -979,31 +701,13 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(scan.barcode),
                   subtitle: Text(
-                      '${scan.time.hour.toString().padLeft(2, '0')}:${scan.time.minute.toString().padLeft(2, '0')} | Qty ${scan.qty} | ${scan.message}'),
-                  trailing: _statusChip(scan.status),
+                      '${scan.time.hour.toString().padLeft(2, '0')}:${scan.time.minute.toString().padLeft(2, '0')} | ${scan.message}'),
+                  trailing: const Icon(Icons.check_circle, color: Colors.green),
                 ),
               ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _statusChip(String status) {
-    final normalized = status.toUpperCase();
-    final color = switch (normalized) {
-      'MATCHED' || 'OK' || 'SENT' => Colors.green,
-      'UNKNOWN' => Colors.orange,
-      'SHORT' => Colors.redAccent,
-      'EXCESS' => Colors.blue,
-      _ => Colors.blueGrey,
-    };
-    return Chip(
-      label: Text(status,
-          style: const TextStyle(color: Colors.white, fontSize: 12)),
-      backgroundColor: color,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
     );
   }
 }

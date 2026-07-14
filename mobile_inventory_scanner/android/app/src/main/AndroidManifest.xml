@@ -7,7 +7,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
     <application
-        android:label="StockLam Inventaire"
+        android:label="ModernStock"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

@@ -1,27 +1,40 @@
-﻿# StockLam Inventaire Mobile
+# ModernStock mobile barcode scanner
 
-Android companion app for physical inventory count sessions in StockLam.
+The Android companion connects to a running ModernStock desktop application on the same Wi-Fi/LAN and sends barcode scans to the active desktop input field.
 
-The app connects to the LAN API from `tools/inventory_mobile_api.py`, lists open `Counting` sessions, scans barcodes with the phone camera, and writes the physical quantity into the same session used by the desktop application.
+## Desktop host
 
-## Daily use
+Open the ModernStock desktop application normally. After login it starts:
 
-1. On the main PC, open or create an Inventaire session in StockLam.
-2. Start the API:
+- HTTP API on TCP port `8787`;
+- device discovery on UDP port `8788`;
+- the desktop barcode bridge.
 
-   ```powershell
-   venv\Scripts\python.exe tools\inventory_mobile_api.py --host 0.0.0.0 --port 8787
-   ```
+If Windows Firewall blocks the phone, allow private-network inbound TCP `8787` and UDP `8788`.
 
-3. Install/run this Flutter app on an Android phone connected to the same LAN.
-4. Set the server URL to `http://MAIN_PC_IP:8787`. The app key is built in automatically.
-5. Load sessions, choose the open session, scan, enter quantity, save.
+## Phone workflow
 
-## Development
+1. Install the release APK on the Android phone.
+2. Connect the phone and computer to the same Wi-Fi/LAN.
+3. Tap **Rechercher les ordinateurs ModernStock**.
+4. Select the computer and wait for the connected status.
+5. In ModernStock, place the cursor in the barcode input field.
+6. Open the camera and scan. The code is sent and submitted on the computer.
+7. The camera starts on the rear camera. Use the cameraswitch button to switch between rear and front cameras.
+
+Manual fallback: enter `http://MAIN_PC_IP:8787` and connect.
+
+## Development and build
 
 ```powershell
 flutter pub get
 flutter analyze
 flutter test
-flutter build apk --debug
+flutter build apk --release
+```
+
+Release APK:
+
+```text
+build\app\outputs\flutter-apk\app-release.apk
 ```
