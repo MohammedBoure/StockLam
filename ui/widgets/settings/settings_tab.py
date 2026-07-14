@@ -342,8 +342,8 @@ class SettingsTab(QWidget):
 
         title = QLabel("<h2>Configuration PDF locale</h2>")
         description = QLabel(
-            "Les reglages PDF, les cachets et leur position sont propres a l'utilisateur "
-            "sur cet appareil. Ouvrez la fenetre dediee pour disposer de tout l'espace necessaire."
+            "Les réglages PDF, les cachets et leur position sont propres à l'utilisateur "
+            "sur cet appareil. Ouvrez la fenêtre dédiée pour disposer de tout l'espace nécessaire."
         )
         description.setWordWrap(True)
 
@@ -356,8 +356,8 @@ class SettingsTab(QWidget):
         open_button.clicked.connect(self.open_pdf_config_dialog)
 
         load_hint = QLabel(
-            "La fenetre propose aussi un chargement volontaire depuis la base de donnees. "
-            "Aucun chargement distant n'est effectue automatiquement."
+            "La fenêtre propose aussi un chargement volontaire depuis la base de données. "
+            "Aucun chargement distant n'est effectué automatiquement."
         )
         load_hint.setWordWrap(True)
         load_hint.setStyleSheet("color: #566573;")

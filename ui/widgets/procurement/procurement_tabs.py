@@ -24,7 +24,7 @@ from .avoir import CreditNoteTab
 from .reclamation_tab import ReclamationTab 
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
 from ui.formatting import format_quantity
-from ui.widgets.settings.pdf_stamp import draw_active_stamp
+from ui.widgets.settings.pdf_stamp import fit_stamp_size_cm, get_active_stamp
 from ui.widgets.settings.local_settings import get_local_settings_store
 
 
@@ -324,7 +324,6 @@ class PurchaseOrdersTab(QWidget):
                         PAGE_HEIGHT - 1 * cm,
                         "LOGO NOT FOUND"
                     )
-                draw_active_stamp(canvas, local_store, PAGE_WIDTH, PAGE_HEIGHT)
                 canvas.restoreState()
 
             title_style = ParagraphStyle(
@@ -394,15 +393,34 @@ class PurchaseOrdersTab(QWidget):
             elements.append(items_table)
 
             elements.append(Spacer(1, 2 * cm))
-            footer_label = settings.get('footer_left_label', 'Signature et Cachet')
-
-            sig_table = Table(
-                [[Paragraph(f"<b>{footer_label}</b>", styles["Normal"])]],
-                colWidths=[18.4 * cm]
+            footer_label = settings.get(
+                'footer_left_bl',
+                settings.get('footer_left_label', 'Responsable Stock'),
             )
-            sig_table.setStyle(TableStyle([
-                ('ALIGN', (0, 0), (-1, -1), 'RIGHT')
-            ]))
+            active_stamp = get_active_stamp(local_store)
+            stamp_gap = float(settings.get('footer_stamp_gap_cm', 0.3))
+            stamp_area_w = float(settings.get('footer_stamp_area_w_cm', 6.0))
+            stamp_area_h = float(settings.get('footer_stamp_area_h_cm', 3.5))
+
+            footer_rows = [[Paragraph(f"<b>{footer_label}</b>", styles["Normal"])] ]
+            footer_styles = [('ALIGN', (0, 0), (-1, -1), 'RIGHT')]
+            if active_stamp:
+                stamp_w_cm, stamp_h_cm = fit_stamp_size_cm(
+                    active_stamp,
+                    stamp_area_w,
+                    stamp_area_h,
+                )
+                import io
+                stamp_image = Image(
+                    io.BytesIO(active_stamp["Image_Data"]),
+                    width=stamp_w_cm * cm,
+                    height=stamp_h_cm * cm,
+                )
+                footer_rows.append([stamp_image])
+                footer_styles.append(('TOPPADDING', (0, 1), (-1, 1), stamp_gap * cm))
+
+            sig_table = Table(footer_rows, colWidths=[18.4 * cm])
+            sig_table.setStyle(TableStyle(footer_styles))
 
             elements.append(sig_table)
 

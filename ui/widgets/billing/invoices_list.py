@@ -24,7 +24,12 @@ try:
 except ImportError:
     HAS_REPORTLAB = False
 
-from ui.widgets.settings.pdf_stamp import draw_active_stamp
+from ui.widgets.settings.pdf_stamp import (
+    FOOTER_TITLE_HEIGHT_CM,
+    fit_stamp_size_cm,
+    get_active_stamp,
+    draw_stamp_image,
+)
 from ui.widgets.settings.local_settings import get_local_settings_store
 
 class InvoicesListWidget(QWidget):
@@ -511,7 +516,6 @@ class InvoicesListWidget(QWidget):
                 canvas.rect(dest_x, dest_y_abs - box_h, dest_w, box_h, fill=1, stroke=1)
                 
                 right_p.drawOn(canvas, dest_x + 0.25*cm, dest_y_abs - right_h - 0.5*cm)
-                draw_active_stamp(canvas, local_store, PAGE_WIDTH, PAGE_HEIGHT)
                 canvas.restoreState()
 
             # --- جدول المنتجات ---
@@ -573,16 +577,28 @@ class InvoicesListWidget(QWidget):
             footer_height = settings.get('footer_height_cm', 2.5)
             left_x = settings.get('footer_left_x_cm', 1.0)
             right_x = settings.get('footer_right_x_cm', 12.0)
+            stamp_gap = float(settings.get('footer_stamp_gap_cm', 0.3))
+            stamp_area_w = float(settings.get('footer_stamp_area_w_cm', 6.0))
+            stamp_area_h = float(settings.get('footer_stamp_area_h_cm', 3.5))
+            footer_height = max(
+                float(footer_height),
+                FOOTER_TITLE_HEIGHT_CM + stamp_gap + stamp_area_h,
+            )
+            active_stamp = get_active_stamp(local_store)
             
             from reportlab.platypus import Flowable
             class SignatureFooter(Flowable):
-                def __init__(self, t_left, t_right, x_l, x_r, h):
+                def __init__(self, t_left, t_right, x_l, x_r, h, stamp, stamp_gap, stamp_area_w, stamp_area_h):
                     Flowable.__init__(self)
                     self.t_left = t_left
                     self.t_right = t_right
                     self.x_l = x_l * cm
                     self.x_r = x_r * cm
                     self.h = h * cm
+                    self.stamp = stamp
+                    self.stamp_gap = float(stamp_gap) * cm
+                    self.stamp_area_w = float(stamp_area_w) * cm
+                    self.stamp_area_h = float(stamp_area_h) * cm
                 
                 def wrap(self, availW, availH):
                     return availW, self.h
@@ -592,9 +608,38 @@ class InvoicesListWidget(QWidget):
                     self.canv.setFont("Helvetica-Bold", 10)
                     self.canv.drawString(self.x_l, self.h - 15, self.t_left)
                     self.canv.drawString(self.x_r, self.h - 15, self.t_right)
+                    if self.stamp:
+                        stamp_w_cm, stamp_h_cm = fit_stamp_size_cm(
+                            self.stamp,
+                            self.stamp_area_w / cm,
+                            self.stamp_area_h / cm,
+                        )
+                        stamp_w = stamp_w_cm * cm
+                        stamp_h = stamp_h_cm * cm
+                        stamp_x = self.x_l + max(0, (self.stamp_area_w - stamp_w) / 2)
+                        stamp_top = self.h - 15 - FOOTER_TITLE_HEIGHT_CM * cm - self.stamp_gap
+                        stamp_y = max(0, stamp_top - stamp_h)
+                        draw_stamp_image(
+                            self.canv,
+                            self.stamp,
+                            stamp_x,
+                            stamp_y,
+                            stamp_w,
+                            stamp_h,
+                        )
                     self.canv.restoreState()
                     
-            footer = SignatureFooter(f_left, f_right, left_x, right_x, footer_height)
+            footer = SignatureFooter(
+                f_left,
+                f_right,
+                left_x,
+                right_x,
+                footer_height,
+                active_stamp,
+                stamp_gap,
+                stamp_area_w,
+                stamp_area_h,
+            )
             elements.append(footer)
 
             doc.build(elements, onFirstPage=draw_header_compact, onLaterPages=draw_header_compact)

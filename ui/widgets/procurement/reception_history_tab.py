@@ -23,7 +23,7 @@ except ImportError:
     HAS_REPORTLAB = False
 
 from .reception_dialog import ReceptionDialog
-from ui.widgets.settings.pdf_stamp import draw_active_stamp
+from ui.widgets.settings.pdf_stamp import fit_stamp_size_cm, get_active_stamp
 from ui.widgets.settings.local_settings import get_local_settings_store
 
 class ReceptionHistoryTab(QWidget):
@@ -576,12 +576,25 @@ class ReceptionHistoryTab(QWidget):
             t_ttc = float(header.get('Invoice_Total_TTC') or 0)
             elements.append(Paragraph(f"<para align='right'><b>TOTAL TTC : {t_ttc:,.2f} DZD</b></para>", styles["Normal"]))
             elements.append(Spacer(1, 2 * cm))
-            elements.append(Table([["Réceptionné par :", "Signature Autorisée :"]], colWidths=[9*cm, 9*cm]))
+            local_store = get_local_settings_store(self.manager)
+            active_stamp = get_active_stamp(local_store)
+            footer_rows = [["Réceptionné par :", "Signature Autorisée :"]]
+            if active_stamp:
+                stamp_w_cm, stamp_h_cm = fit_stamp_size_cm(
+                    active_stamp,
+                    6.0,
+                    3.5,
+                )
+                import io
+                stamp_image = Image(
+                    io.BytesIO(active_stamp["Image_Data"]),
+                    width=stamp_w_cm * cm,
+                    height=stamp_h_cm * cm,
+                )
+                footer_rows.append([stamp_image, ""])
+            elements.append(Table(footer_rows, colWidths=[9*cm, 9*cm]))
 
-            def draw_stamp(canvas, doc):
-                draw_active_stamp(canvas, get_local_settings_store(self.manager), *A4)
-
-            doc.build(elements, onFirstPage=draw_stamp, onLaterPages=draw_stamp)
+            doc.build(elements)
             os.startfile(path)
 
         except Exception as e:

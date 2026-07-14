@@ -31,11 +31,11 @@ class PdfConfigDialog(QDialog):
         layout.addWidget(self.config_widget, stretch=1)
 
         actions = QHBoxLayout()
-        self.btn_load_db = QPushButton("تحميل معاينة الإعدادات من قاعدة البيانات")
-        self.btn_save_local = QPushButton("حفظ محلي لهذا المستخدم")
-        self.btn_close = QPushButton("إغلاق")
+        self.btn_load_db = QPushButton("Charger un aperçu depuis la base de données")
+        self.btn_save_local = QPushButton("Enregistrer localement pour cet utilisateur")
+        self.btn_close = QPushButton("Fermer")
         self.btn_load_db.setToolTip(
-            "يقرأ إعدادات PDF والختوم من قاعدة البيانات دون الكتابة فوق الملفات المحلية حتى تضغط حفظ."
+            "Charge les paramètres PDF et les cachets sans modifier les fichiers locaux avant l'enregistrement."
         )
         self.btn_save_local.setStyleSheet(
             "background-color: #27ae60; color: white; font-weight: bold; padding: 8px;"
@@ -55,8 +55,8 @@ class PdfConfigDialog(QDialog):
             QMessageBox.information(
                 self,
                 "Configuration PDF",
-                "Les réglages ont été chargés en mémoire depuis la base. "
-                "Cliquez sur « حفظ محلي » pour les conserver sur cet appareil.",
+                "Les réglages ont été chargés en mémoire depuis la base de données. "
+                "Cliquez sur « Enregistrer localement » pour les conserver sur cet appareil.",
             )
 
     def save_local(self):

@@ -14,6 +14,7 @@ from PySide6.QtGui import QColor, QPixmap, QFont, QPainter, QPen, QBrush, QImage
 
 from .pdf_visual_editor import VisualPdfEditorDialog
 from .local_settings import LocalSettingsStore
+from .pdf_stamp import FOOTER_TITLE_HEIGHT_CM, fit_stamp_size_cm
 
 class PdfConfigWidget(QWidget):
     settings_updated = Signal(dict)
@@ -86,7 +87,10 @@ class PdfConfigWidget(QWidget):
             "footer_y_offset_cm": 1.5,
             "footer_height_cm": 2.5,
             "footer_left_x_cm": 1.0,
-            "footer_right_x_cm": 12.0
+            "footer_right_x_cm": 12.0,
+            "footer_stamp_gap_cm": 0.3,
+            "footer_stamp_area_w_cm": 6.0,
+            "footer_stamp_area_h_cm": 3.5
         }
 
     def load_settings(self):
@@ -134,7 +138,7 @@ class PdfConfigWidget(QWidget):
     def on_stamp_selected(self, row):
         if row < 0 or row >= len(self.stamps):
             self.current_stamp_id = None
-            self.stamp_preview.setText("Aucun cachet selectionne")
+            self.stamp_preview.setText("Aucun cachet sélectionné")
             self.stamp_preview.setPixmap(QPixmap())
             self.preview_canvas.active_stamp = None
             self.preview_canvas.active_stamp_pixmap = QPixmap()
@@ -164,7 +168,7 @@ class PdfConfigWidget(QWidget):
         image_bytes = stamp.get("Image_Data")
         if image_bytes:
             image.loadFromData(bytes(image_bytes))
-        self.lbl_stamp_file.setText("Image PNG stockee dans la base de donnees")
+        self.lbl_stamp_file.setText("Image PNG enregistrée localement")
         self.stamp_preview.setText("" if not image.isNull() else "Image PNG invalide")
         self.stamp_preview.setPixmap(
             image.scaled(180, 130, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -212,7 +216,7 @@ class PdfConfigWidget(QWidget):
                 image_bytes = image_file.read()
             image = QPixmap()
             if not image.loadFromData(image_bytes):
-                raise ValueError("Le fichier selectionne n'est pas une image PNG valide.")
+                raise ValueError("Le fichier sélectionné n'est pas une image PNG valide.")
 
             stamp_id = uuid4().hex
             self.stamps.append({
@@ -228,7 +232,7 @@ class PdfConfigWidget(QWidget):
             self.refresh_stamp_list(select_id=stamp_id, reload=False)
         except Exception as exc:
             logging.error(f"Error adding PDF stamp: {exc}")
-            QMessageBox.critical(self, "Cachets", f"Echec de l'ajout du cachet :\n{exc}")
+            QMessageBox.critical(self, "Cachets", f"Échec de l'ajout du cachet :\n{exc}")
 
     def save_current_stamp(self, show_message=True):
         if self.current_stamp_id is None:
@@ -244,7 +248,7 @@ class PdfConfigWidget(QWidget):
             None,
         )
         if stamp is None:
-            QMessageBox.critical(self, "Cachets", "Impossible de trouver le cachet selectionne.")
+            QMessageBox.critical(self, "Cachets", "Impossible de trouver le cachet sélectionné.")
             return False
         stamp.update({
             "Stamp_Name": stamp_name,
@@ -281,7 +285,7 @@ class PdfConfigWidget(QWidget):
         reply = QMessageBox.question(
             self,
             "Supprimer le cachet",
-            "Supprimer definitivement le cachet selectionne ?",
+            "Supprimer définitivement le cachet sélectionné ?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -337,6 +341,9 @@ class PdfConfigWidget(QWidget):
             "sp_footer_h": "footer_height_cm",
             "sp_footer_left_x": "footer_left_x_cm",
             "sp_footer_right_x": "footer_right_x_cm",
+            "sp_footer_stamp_gap": "footer_stamp_gap_cm",
+            "sp_footer_stamp_w": "footer_stamp_area_w_cm",
+            "sp_footer_stamp_h": "footer_stamp_area_h_cm",
         }
 
         controls = [getattr(self, name) for name in text_fields]
@@ -364,7 +371,7 @@ class PdfConfigWidget(QWidget):
         """Read DB settings into the dialog without persisting them locally."""
         manager = getattr(self.data_manager, "company_settings", None)
         if manager is None:
-            QMessageBox.warning(self, "Configuration PDF", "Le gestionnaire des parametres de base de donnees est indisponible.")
+            QMessageBox.warning(self, "Configuration PDF", "Le gestionnaire des paramètres de la base de données est indisponible.")
             return False
 
         try:
@@ -378,7 +385,7 @@ class PdfConfigWidget(QWidget):
             if self.new_image_bytes:
                 self.banner_pixmap.loadFromData(self.new_image_bytes)
             self.lbl_path.setText(
-                "Image chargee depuis la base de donnees" if not self.banner_pixmap.isNull() else "Aucune image"
+                "Image chargée depuis la base de données" if not self.banner_pixmap.isNull() else "Aucune image"
             )
 
             self.stamps = self.local_store.import_database_stamps(
@@ -394,12 +401,12 @@ class PdfConfigWidget(QWidget):
             return True
         except Exception as exc:
             logging.error(f"Error loading PDF settings from database: {exc}")
-            QMessageBox.critical(self, "Configuration PDF", f"Echec du chargement depuis la base :\n{exc}")
+            QMessageBox.critical(self, "Configuration PDF", f"Échec du chargement depuis la base :\n{exc}")
             return False
 
     def save_settings(self):
         if self.current_stamp_id is not None and not self.save_current_stamp(show_message=False):
-            raise Exception("Echec de l'enregistrement du cachet selectionne.")
+            raise Exception("Échec de l'enregistrement du cachet sélectionné.")
         banner_bytes = self.new_image_bytes
         if banner_bytes is None and not self.clear_banner_on_save:
             banner_bytes = self.local_store.load_banner_bytes(self.settings)
@@ -433,8 +440,8 @@ class PdfConfigWidget(QWidget):
         self.color_preview.setFixedSize(50, 20)
         self.color_preview.setStyleSheet(f"background-color: {self.settings.get('theme_color', '#0b666a')}; border: 1px solid gray;")
         
-        self.btn_banner = QPushButton("Choisir l'image Banner...")
-        self.lbl_path = QLabel("Image chargée depuis la BDD" if not self.banner_pixmap.isNull() else "Aucune image")
+        self.btn_banner = QPushButton("Choisir l'image de l'en-tête...")
+        self.lbl_path = QLabel("Image locale chargée" if not self.banner_pixmap.isNull() else "Aucune image")
         self.lbl_path.setStyleSheet("color: #2c3e50; font-weight: bold; font-size: 10px;")
         
         self.sp_banner_total_h = self._create_spin(1.0, 15.0, self.settings.get('banner_height_cm', 4.8))
@@ -446,9 +453,9 @@ class PdfConfigWidget(QWidget):
         branding_form.addRow("Couleur Thème:", self.btn_color)
         branding_form.addRow("Aperçu Couleur:", self.color_preview)
         branding_form.addRow(QLabel(""))
-        branding_form.addRow("Image Banner:", self.btn_banner)
+        branding_form.addRow("Image de l'en-tête :", self.btn_banner)
         branding_form.addRow("", self.lbl_path)
-        branding_form.addRow("Hauteur Zone Header (cm):", self.sp_banner_total_h)
+        branding_form.addRow("Hauteur de la zone d'en-tête (cm):", self.sp_banner_total_h)
         branding_form.addRow("Position Image X (cm):", self.sp_img_x)
         branding_form.addRow("Position Image Y (cm):", self.sp_img_y)
         branding_form.addRow("Largeur Image (cm):", self.sp_img_w)
@@ -513,6 +520,9 @@ class PdfConfigWidget(QWidget):
         self.sp_footer_h = self._create_spin(1, 15, self.settings.get('footer_height_cm', 2.5))
         self.sp_footer_left_x = self._create_spin(0, 21, self.settings.get('footer_left_x_cm', 1.0))
         self.sp_footer_right_x = self._create_spin(0, 21, self.settings.get('footer_right_x_cm', 12.0))
+        self.sp_footer_stamp_gap = self._create_spin(0, 5, self.settings.get('footer_stamp_gap_cm', 0.3))
+        self.sp_footer_stamp_w = self._create_spin(1, 21, self.settings.get('footer_stamp_area_w_cm', 6.0))
+        self.sp_footer_stamp_h = self._create_spin(1, 15, self.settings.get('footer_stamp_area_h_cm', 3.5))
         
         pos_form.addRow("Nom Banque:", self.edit_bank)
         pos_form.addRow("N° Compte (RIB):", self.edit_rib)
@@ -549,6 +559,10 @@ class PdfConfigWidget(QWidget):
         sig_form.addRow("Signature Droite X (cm):", self.sp_footer_right_x)
         sig_form.addRow("Signatures Y Offset (cm):", self.sp_footer_y)
         sig_form.addRow("Hauteur de la Signature (cm):", self.sp_footer_h)
+        sig_form.addRow(QLabel("--- Zone du cachet sous « Responsable Stock » ---"))
+        sig_form.addRow("Espace sous le titre (cm):", self.sp_footer_stamp_gap)
+        sig_form.addRow("Largeur de la zone du cachet (cm):", self.sp_footer_stamp_w)
+        sig_form.addRow("Hauteur de la zone du cachet (cm):", self.sp_footer_stamp_h)
         
         tab_sig.setWidget(sig_content)
         tab_sig.setWidgetResizable(True)
@@ -557,15 +571,15 @@ class PdfConfigWidget(QWidget):
         # TAB 6: BIBLIOTHEQUE DES CACHETS PNG
         tab_stamps = QWidget()
         stamps_layout = QVBoxLayout(tab_stamps)
-        stamps_group = QGroupBox("Bibliotheque des cachets PNG")
+        stamps_group = QGroupBox("Bibliothèque des cachets PNG")
         stamps_group_layout = QVBoxLayout(stamps_group)
 
         stamps_top = QHBoxLayout()
         self.list_stamps = QListWidget()
         self.list_stamps.setMinimumHeight(135)
-        self.list_stamps.setToolTip("Ajoutez plusieurs cachets; un seul est actif sur les PDF a la fois.")
+        self.list_stamps.setToolTip("Ajoutez plusieurs cachets ; un seul est actif à la fois dans les PDF.")
 
-        self.stamp_preview = QLabel("Aucun cachet selectionne")
+        self.stamp_preview = QLabel("Aucun cachet sélectionné")
         self.stamp_preview.setAlignment(Qt.AlignCenter)
         self.stamp_preview.setMinimumSize(180, 130)
         self.stamp_preview.setStyleSheet(
@@ -578,7 +592,7 @@ class PdfConfigWidget(QWidget):
         stamps_actions = QHBoxLayout()
         self.btn_add_stamp = QPushButton("Ajouter un cachet PNG")
         self.btn_delete_stamp = QPushButton("Supprimer le cachet")
-        self.btn_activate_stamp = QPushButton("Definir comme actif")
+        self.btn_activate_stamp = QPushButton("Définir comme actif")
         self.btn_delete_stamp.setStyleSheet("color: #c0392b;")
         self.btn_activate_stamp.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold;")
         stamps_actions.addWidget(self.btn_add_stamp)
@@ -605,8 +619,9 @@ class PdfConfigWidget(QWidget):
         stamp_form = QFormLayout()
         stamp_form.addRow("Nom du cachet :", self.edit_stamp_name)
         stamp_form.addRow("Fichier :", self.lbl_stamp_file)
-        stamp_form.addRow("Position X depuis la gauche (cm) :", self.sp_stamp_x)
-        stamp_form.addRow("Position Y depuis le haut (cm) :", self.sp_stamp_y)
+        stamp_form.addRow(QLabel(
+            "Le cachet est automatiquement placé sous le premier titre de signature."
+        ))
         stamp_form.addRow("Largeur (cm) :", self.sp_stamp_w)
         stamp_form.addRow("Hauteur (cm) :", self.sp_stamp_h)
         stamp_form.addRow("", self.btn_save_stamp)
@@ -614,7 +629,7 @@ class PdfConfigWidget(QWidget):
 
         stamps_layout.addWidget(stamps_group)
         stamps_layout.addWidget(QLabel(
-            "Les images PNG transparentes ou classiques sont acceptees. "
+            "Les images PNG transparentes ou classiques sont acceptées. "
             "La position et la taille sont propres a chaque cachet et s'appliquent aux PDF de l'entreprise."
         ))
         stamps_layout.addStretch()
@@ -701,7 +716,8 @@ class PdfConfigWidget(QWidget):
         spin_widgets = [
             self.sp_banner_total_h, self.sp_img_x, self.sp_img_y, self.sp_img_w, self.sp_img_h,
             self.sp_bank_y, self.sp_dest_x, self.sp_dest_y, self.sp_dest_w, self.sp_table_y,
-            self.sp_footer_y, self.sp_footer_h, self.sp_footer_left_x, self.sp_footer_right_x
+            self.sp_footer_y, self.sp_footer_h, self.sp_footer_left_x, self.sp_footer_right_x,
+            self.sp_footer_stamp_gap, self.sp_footer_stamp_w, self.sp_footer_stamp_h
         ]
         for s in spin_widgets: s.valueChanged.connect(self.sync_settings)
 
@@ -736,7 +752,7 @@ class PdfConfigWidget(QWidget):
         self.settings_updated.emit(self.settings)
 
     def pick_banner(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Choisir Banner", "", "Images (*.png *.jpg *.jpeg)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choisir l'image de l'en-tête", "", "Images (*.png *.jpg *.jpeg)")
         if path:
             self.lbl_path.setText(os.path.basename(path))
             try:
@@ -800,7 +816,10 @@ class PdfConfigWidget(QWidget):
             "footer_y_offset_cm": self.sp_footer_y.value(),
             "footer_height_cm": self.sp_footer_h.value(),
             "footer_left_x_cm": self.sp_footer_left_x.value(),
-            "footer_right_x_cm": self.sp_footer_right_x.value()
+            "footer_right_x_cm": self.sp_footer_right_x.value(),
+            "footer_stamp_gap_cm": self.sp_footer_stamp_gap.value(),
+            "footer_stamp_area_w_cm": self.sp_footer_stamp_w.value(),
+            "footer_stamp_area_h_cm": self.sp_footer_stamp_h.value()
         })
         self.preview_canvas.settings = self.settings
         self.preview_canvas.update()
@@ -845,21 +864,9 @@ class LivePreviewCanvas(QWidget):
         else:
             p.setPen(QPen(Qt.lightGray, 0.5, Qt.DashLine))
             p.drawRect(0, 0, 210, total_h_mm)
-            p.drawText(QRect(0, 0, 210, total_h_mm), Qt.AlignCenter, "Zone Image / Header")
+            p.drawText(QRect(0, 0, 210, total_h_mm), Qt.AlignCenter, "Zone image / en-tête")
         p.restore()
 
-        # Active stamp, using the same top-left centimetre coordinates as the PDF.
-        stamp = getattr(self, "active_stamp", None)
-        stamp_pixmap = getattr(self, "active_stamp_pixmap", QPixmap())
-        if stamp and not stamp_pixmap.isNull():
-            stamp_x = int(float(stamp.get("Position_X_CM", 0.0)) * 10)
-            stamp_y = int(float(stamp.get("Position_Y_CM", 0.0)) * 10)
-            stamp_w = int(float(stamp.get("Width_CM", 4.0)) * 10)
-            stamp_h = int(float(stamp.get("Height_CM", 4.0)) * 10)
-            p.drawPixmap(QRect(stamp_x, stamp_y, stamp_w, stamp_h), stamp_pixmap)
-            p.setPen(QPen(QColor("#e67e22"), 0.6, Qt.DashLine))
-            p.drawRect(stamp_x, stamp_y, stamp_w, stamp_h)
-        
         # Get dynamic texts
         title = s.get('doc_title_rt', 'BON DE RETOUR') if self.is_retour else s.get('doc_title_bl', 'BON DE LIVRAISON')
         dest_label = s.get('dest_label_rt', 'Retourné à (Sous-traitant) :') if self.is_retour else s.get('dest_label_bl', 'Destinataire :')
@@ -906,7 +913,11 @@ class LivePreviewCanvas(QWidget):
         f_left_x = int(s.get('footer_left_x_cm', 1.0) * 10)
         f_right_x = int(s.get('footer_right_x_cm', 12.0) * 10)
         f_height = int(s.get('footer_height_cm', 2.5) * 10)
-        
+        stamp_gap = float(s.get('footer_stamp_gap_cm', 0.3)) * 10
+        stamp_area_w = float(s.get('footer_stamp_area_w_cm', 6.0)) * 10
+        stamp_area_h = float(s.get('footer_stamp_area_h_cm', 3.5)) * 10
+        f_height = max(f_height, int(FOOTER_TITLE_HEIGHT_CM * 10 + stamp_gap + stamp_area_h))
+
         p.setPen(Qt.black)
         p.drawText(f_left_x, signature_y, f_left)
         p.drawText(f_right_x, signature_y, f_right)
@@ -915,3 +926,24 @@ class LivePreviewCanvas(QWidget):
         p.setPen(QPen(Qt.gray, 0.2, Qt.DashLine))
         p.drawRect(f_left_x, signature_y, 60, f_height)
         p.drawRect(f_right_x, signature_y, 60, f_height)
+
+        # The selected stamp is anchored under the first signature title.
+        stamp = getattr(self, "active_stamp", None)
+        stamp_pixmap = getattr(self, "active_stamp_pixmap", QPixmap())
+        area_x = f_left_x
+        area_y = signature_y + FOOTER_TITLE_HEIGHT_CM * 10 + stamp_gap
+        p.setPen(QPen(QColor("#95a5a6"), 0.4, Qt.DashLine))
+        p.drawRect(area_x, area_y, stamp_area_w, stamp_area_h)
+        if stamp and not stamp_pixmap.isNull():
+            stamp_w_cm, stamp_h_cm = fit_stamp_size_cm(
+                stamp,
+                float(s.get('footer_stamp_area_w_cm', 6.0)),
+                float(s.get('footer_stamp_area_h_cm', 3.5)),
+            )
+            stamp_w = int(stamp_w_cm * 10)
+            stamp_h = int(stamp_h_cm * 10)
+            stamp_x = int(area_x + (stamp_area_w - stamp_w) / 2)
+            stamp_y = int(area_y)
+            p.drawPixmap(QRect(stamp_x, stamp_y, stamp_w, stamp_h), stamp_pixmap)
+            p.setPen(QPen(QColor("#e67e22"), 0.6, Qt.DashLine))
+            p.drawRect(stamp_x, stamp_y, stamp_w, stamp_h)
