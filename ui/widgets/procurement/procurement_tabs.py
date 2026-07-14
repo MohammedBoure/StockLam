@@ -25,6 +25,7 @@ from .reclamation_tab import ReclamationTab
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
 from ui.formatting import format_quantity
 from ui.widgets.settings.pdf_stamp import draw_active_stamp
+from ui.widgets.settings.local_settings import get_local_settings_store
 
 
 def get_resource_path(relative_path):
@@ -267,7 +268,8 @@ class PurchaseOrdersTab(QWidget):
             formatted_po_id = raw_po_id
 
         try:
-            settings = self.manager.company_settings.get_settings()
+            local_store = get_local_settings_store(self.manager)
+            settings = local_store.load_merged_pdf_settings()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not load settings: {e}")
             return
@@ -306,7 +308,7 @@ class PurchaseOrdersTab(QWidget):
                 img_h = settings.get('banner_img_h_cm', 4.8) * cm
                 img_y = PAGE_HEIGHT - img_h - (settings.get('banner_img_y_cm', 0.0) * cm)
 
-                img_bytes = self.manager.company_settings.get_banner_image()
+                img_bytes = local_store.load_banner_bytes(settings)
                 if img_bytes:
                     from reportlab.lib.utils import ImageReader
                     import io
@@ -322,7 +324,7 @@ class PurchaseOrdersTab(QWidget):
                         PAGE_HEIGHT - 1 * cm,
                         "LOGO NOT FOUND"
                     )
-                draw_active_stamp(canvas, getattr(self.manager, "company_settings", None), PAGE_WIDTH, PAGE_HEIGHT)
+                draw_active_stamp(canvas, local_store, PAGE_WIDTH, PAGE_HEIGHT)
                 canvas.restoreState()
 
             title_style = ParagraphStyle(

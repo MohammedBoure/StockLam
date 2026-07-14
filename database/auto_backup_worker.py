@@ -1,23 +1,15 @@
 # database/auto_backup_worker.py
 
-import os
-import sys
-import json
 import time
 import logging
 from PySide6.QtCore import QThread
-
-def get_external_path(filename):
-    """ضمان الوصول للمسار الصحيح لملف الإعدادات سواء في بيئة التطوير أو كملف تنفيذي"""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(os.path.dirname(sys.executable), filename)
-    return os.path.join(os.path.abspath("."), filename)
+from ui.widgets.settings.local_settings import get_local_settings_store
 
 class AutoBackupWorker(QThread):
     def __init__(self, data_manager):
         super().__init__()
         self.data_manager = data_manager
-        self.config_file = get_external_path("config.json")
+        self.local_settings = get_local_settings_store(data_manager)
         self.running = True
 
     def run(self):
@@ -32,12 +24,7 @@ class AutoBackupWorker(QThread):
         while self.running:
             try:
                 # 1. قراءة الإعدادات
-                if not os.path.exists(self.config_file):
-                    self._sleep_check(60)
-                    continue
-
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
+                config = self.local_settings.load_general()
 
                 # 2. استخراج قيم الحفظ التلقائي
                 is_enabled = config.get("auto_backup_enabled", False)

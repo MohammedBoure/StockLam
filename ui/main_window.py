@@ -21,6 +21,7 @@ from .widgets.master_data.locations_tab import LocationsTab
 from .widgets.master_data.automates_tab import AutomatesTab
 from .widgets.master_data.waste_reasons_tab import WasteReasonsTab
 from .widgets.settings.settings_tab import SettingsTab
+from .widgets.settings.local_settings import LocalSettingsStore
 from .widgets.master_data.product_families_tab import ProductFamiliesTab
 from .widgets.master_data.packaging_units_tab import PackagingUnitsTab
 from .widgets.user_management_tab import UserManagementTab
@@ -43,6 +44,13 @@ class MainWindow(QMainWindow):
         self.data_manager = data_manager
         self.current_user = current_user 
         self.connection_error = connection_error
+        self.local_settings = LocalSettingsStore(current_user)
+        if self.data_manager is not None:
+            self.data_manager.current_user = current_user
+            self.data_manager.local_settings = self.local_settings
+            self.data_manager.can_manage_stamps = self.has_permission("act_manage_stamps")
+            if hasattr(self.data_manager, "printer") and hasattr(self.data_manager.printer, "set_local_settings"):
+                self.data_manager.printer.set_local_settings(self.local_settings)
 
         if self.current_user:
             # نستخدم get للبحث عن User_ID أو id لتجنب أخطاء المفاتيح

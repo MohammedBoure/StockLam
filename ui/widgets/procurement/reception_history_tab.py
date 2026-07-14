@@ -24,6 +24,7 @@ except ImportError:
 
 from .reception_dialog import ReceptionDialog
 from ui.widgets.settings.pdf_stamp import draw_active_stamp
+from ui.widgets.settings.local_settings import get_local_settings_store
 
 class ReceptionHistoryTab(QWidget):
     """
@@ -578,7 +579,7 @@ class ReceptionHistoryTab(QWidget):
             elements.append(Table([["Réceptionné par :", "Signature Autorisée :"]], colWidths=[9*cm, 9*cm]))
 
             def draw_stamp(canvas, doc):
-                draw_active_stamp(canvas, getattr(self.manager, "company_settings", None), *A4)
+                draw_active_stamp(canvas, get_local_settings_store(self.manager), *A4)
 
             doc.build(elements, onFirstPage=draw_stamp, onLaterPages=draw_stamp)
             os.startfile(path)

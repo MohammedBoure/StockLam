@@ -5,7 +5,6 @@ from .base import Database
 class CompanySettingsManager:
     def __init__(self, db_instance: Database):
         self.db = db_instance
-        self.sync_to_local()
 
     def sync_to_local(self):
         """
@@ -83,7 +82,6 @@ class CompanySettingsManager:
                             (settings_json,)
                         )
                 
-                self.sync_to_local()
                 return True
         except Exception as e:
             logging.error(f"Error updating company settings: {e}")

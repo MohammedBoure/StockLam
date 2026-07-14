@@ -25,6 +25,7 @@ except ImportError:
     HAS_REPORTLAB = False
 
 from ui.widgets.settings.pdf_stamp import draw_active_stamp
+from ui.widgets.settings.local_settings import get_local_settings_store
 
 class InvoicesListWidget(QWidget):
     """
@@ -333,18 +334,8 @@ class InvoicesListWidget(QWidget):
 
         # 1. تحديد المسارات وتحميل الإعدادات
         try:
-            settings = self.manager.company_settings.get_settings()
-            
-            # دمج الإعدادات المحلية (التي تحتوي على معلومات المخبر lab_name, lab_nif الخ)
-            import json, os
-            if os.path.exists("config.json"):
-                with open("config.json", "r", encoding="utf-8") as f:
-                    local_settings = json.load(f)
-                    # التحديث لا يمسح إعدادات قاعدة البيانات بل يضيف إليها معلومات المخبر
-                    for k, v in local_settings.items():
-                        if k not in settings or not settings[k]:
-                            settings[k] = v
-                            
+            local_store = get_local_settings_store(self.manager)
+            settings = local_store.load_merged_pdf_settings()
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Configuration error: {str(e)}")
             return
@@ -487,7 +478,7 @@ class InvoicesListWidget(QWidget):
                 y_offset = settings.get('banner_img_y_cm', 0.2) * cm
                 img_y = PAGE_HEIGHT - img_h - y_offset
 
-                img_bytes = self.manager.company_settings.get_banner_image()
+                img_bytes = local_store.load_banner_bytes(settings)
                 if img_bytes:
                     from reportlab.lib.utils import ImageReader
                     import io
@@ -520,7 +511,7 @@ class InvoicesListWidget(QWidget):
                 canvas.rect(dest_x, dest_y_abs - box_h, dest_w, box_h, fill=1, stroke=1)
                 
                 right_p.drawOn(canvas, dest_x + 0.25*cm, dest_y_abs - right_h - 0.5*cm)
-                draw_active_stamp(canvas, getattr(self.manager, "company_settings", None), PAGE_WIDTH, PAGE_HEIGHT)
+                draw_active_stamp(canvas, local_store, PAGE_WIDTH, PAGE_HEIGHT)
                 canvas.restoreState()
 
             # --- جدول المنتجات ---

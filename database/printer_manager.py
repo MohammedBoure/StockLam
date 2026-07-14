@@ -25,6 +25,7 @@ class PrinterManager:
     """
     def __init__(self, db_instance=None):
         self.db = db_instance
+        self.local_settings = None
         self.config = {
             "selected_printer": "",
             "label_width": 50,
@@ -36,17 +37,26 @@ class PrinterManager:
         }
         self.reload_settings()
 
+    def set_local_settings(self, local_settings):
+        """Use the current user's local settings for printer configuration."""
+        self.local_settings = local_settings
+        self.reload_settings()
+
     def reload_settings(self):
-        """ Recharge les paramètres depuis le fichier de configuration JSON """
-        if os.path.exists(CONFIG_FILE):
-            try:
+        """Recharge printer settings from the current user's local store."""
+        try:
+            if self.local_settings is not None:
+                data = self.local_settings.load_general(self.config)
+            elif os.path.exists(CONFIG_FILE):
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    for key in self.config.keys():
-                        if key in data:
-                            self.config[key] = data[key]
-            except Exception as e:
-                logging.error(f"PrinterManager : Erreur lors du chargement des paramètres : {e}")
+            else:
+                data = {}
+            for key in self.config.keys():
+                if key in data:
+                    self.config[key] = data[key]
+        except Exception as e:
+            logging.error(f"PrinterManager settings load failed: {e}")
 
     def get_available_printers(self):
         """ Retourne la liste des imprimantes installées sur le système """

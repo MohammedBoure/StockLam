@@ -1,6 +1,6 @@
 import os
-import json
 import logging
+from uuid import uuid4
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
@@ -13,23 +13,37 @@ from PySide6.QtCore import Qt, Signal, QRectF, QRect, QByteArray, QBuffer, QIODe
 from PySide6.QtGui import QColor, QPixmap, QFont, QPainter, QPen, QBrush, QImage
 
 from .pdf_visual_editor import VisualPdfEditorDialog
+from .local_settings import LocalSettingsStore
 
 class PdfConfigWidget(QWidget):
     settings_updated = Signal(dict)
 
-    def __init__(self, data_manager=None):
+    def __init__(
+        self,
+        data_manager=None,
+        current_user=None,
+        can_manage_stamps=None,
+        local_store=None,
+    ):
         super().__init__()
         self.data_manager = data_manager
+        self.current_user = current_user or getattr(data_manager, "current_user", None)
+        self.can_manage_stamps = (
+            bool(can_manage_stamps)
+            if can_manage_stamps is not None
+            else bool(getattr(data_manager, "can_manage_stamps", False))
+        )
+        self.local_store = local_store or LocalSettingsStore(self.current_user)
         self.new_image_bytes = None
+        self.clear_banner_on_save = False
         self.banner_pixmap = QPixmap()
         self.stamps = []
         self.current_stamp_id = None
         self.settings = self.load_settings()
-        
-        if self.data_manager and hasattr(self.data_manager, 'company_settings'):
-            img_bytes = self.data_manager.company_settings.get_banner_image()
-            if img_bytes:
-                self.banner_pixmap.loadFromData(img_bytes)
+
+        img_bytes = self.local_store.load_banner_bytes(self.settings)
+        if img_bytes:
+            self.banner_pixmap.loadFromData(img_bytes)
 
         self.stamps = self.load_stamps()
             
@@ -77,45 +91,32 @@ class PdfConfigWidget(QWidget):
 
     def load_settings(self):
         defaults = self.get_default_settings()
-        if self.data_manager and hasattr(self.data_manager, 'company_settings'):
-            try:
-                db_settings = self.data_manager.company_settings.get_settings()
-                if db_settings:
-                    return {**defaults, **db_settings}
-            except Exception as e:
-                logging.error(f"Error loading PDF settings from DB: {e}")
-        return defaults
+        return self.local_store.load_pdf(defaults)
 
     def load_stamps(self):
-        manager = getattr(self.data_manager, "company_settings", None)
-        if not manager or not hasattr(manager, "get_stamps"):
-            return []
-        try:
-            return manager.get_stamps(include_image=True) or []
-        except Exception as exc:
-            logging.error(f"Error loading PDF stamps: {exc}")
-            return []
+        return self.local_store.load_stamps()
 
-    def refresh_stamp_list(self, select_id=None):
+    def refresh_stamp_list(self, select_id=None, reload=True):
         if not hasattr(self, "list_stamps"):
             return
 
-        self.stamps = self.load_stamps()
+        if reload:
+            self.stamps = self.load_stamps()
         self.list_stamps.blockSignals(True)
         self.list_stamps.clear()
 
         active_id = next(
-            (int(stamp["Stamp_ID"]) for stamp in self.stamps if stamp.get("Is_Active")),
+            (str(stamp["Stamp_ID"]) for stamp in self.stamps if stamp.get("Is_Active")),
             None,
         )
         row_to_select = None
         for row, stamp in enumerate(self.stamps):
-            stamp_id = int(stamp["Stamp_ID"])
+            stamp_id = str(stamp["Stamp_ID"])
             active_marker = " [ACTIF]" if stamp_id == active_id else ""
             item = QListWidgetItem(f"{stamp.get('Stamp_Name') or 'Cachet'}{active_marker}")
             item.setData(Qt.UserRole, stamp_id)
             self.list_stamps.addItem(item)
-            if select_id is not None and stamp_id == int(select_id):
+            if select_id is not None and stamp_id == str(select_id):
                 row_to_select = row
 
         if row_to_select is None and self.stamps:
@@ -135,10 +136,13 @@ class PdfConfigWidget(QWidget):
             self.current_stamp_id = None
             self.stamp_preview.setText("Aucun cachet selectionne")
             self.stamp_preview.setPixmap(QPixmap())
+            self.preview_canvas.active_stamp = None
+            self.preview_canvas.active_stamp_pixmap = QPixmap()
+            self.preview_canvas.update()
             return
 
         stamp = self.stamps[row]
-        self.current_stamp_id = int(stamp["Stamp_ID"])
+        self.current_stamp_id = str(stamp["Stamp_ID"])
         controls = (
             self.edit_stamp_name,
             self.sp_stamp_x,
@@ -174,7 +178,7 @@ class PdfConfigWidget(QWidget):
         if self.current_stamp_id is None:
             return
         stamp = next(
-            (entry for entry in self.stamps if int(entry["Stamp_ID"]) == self.current_stamp_id),
+            (entry for entry in self.stamps if str(entry["Stamp_ID"]) == self.current_stamp_id),
             None,
         )
         if stamp is None:
@@ -190,9 +194,8 @@ class PdfConfigWidget(QWidget):
         self.preview_canvas.update()
 
     def add_stamp(self):
-        manager = getattr(self.data_manager, "company_settings", None)
-        if not manager or not hasattr(manager, "add_stamp"):
-            QMessageBox.warning(self, "Cachets", "Le stockage des cachets n'est pas disponible.")
+        if not self.can_manage_stamps:
+            QMessageBox.warning(self, "Cachets", "Vous n'avez pas la permission de gérer les cachets.")
             return
 
         path, _ = QFileDialog.getOpenFileName(
@@ -211,27 +214,24 @@ class PdfConfigWidget(QWidget):
             if not image.loadFromData(image_bytes):
                 raise ValueError("Le fichier selectionne n'est pas une image PNG valide.")
 
-            stamp_id = manager.add_stamp(
-                os.path.splitext(os.path.basename(path))[0],
-                image_bytes,
-                13.0,
-                22.0,
-                4.0,
-                4.0,
-                is_active=not bool(self.stamps),
-            )
-            if stamp_id is None:
-                raise RuntimeError("Impossible d'ajouter le cachet dans la base de donnees.")
-            self.refresh_stamp_list(select_id=stamp_id)
+            stamp_id = uuid4().hex
+            self.stamps.append({
+                "Stamp_ID": stamp_id,
+                "Stamp_Name": os.path.splitext(os.path.basename(path))[0][:150],
+                "Image_Data": image_bytes,
+                "Position_X_CM": 13.0,
+                "Position_Y_CM": 22.0,
+                "Width_CM": 4.0,
+                "Height_CM": 4.0,
+                "Is_Active": not self.stamps,
+            })
+            self.refresh_stamp_list(select_id=stamp_id, reload=False)
         except Exception as exc:
             logging.error(f"Error adding PDF stamp: {exc}")
             QMessageBox.critical(self, "Cachets", f"Echec de l'ajout du cachet :\n{exc}")
 
     def save_current_stamp(self, show_message=True):
-        manager = getattr(self.data_manager, "company_settings", None)
         if self.current_stamp_id is None:
-            return False
-        if not manager or not hasattr(manager, "update_stamp"):
             return False
 
         stamp_name = self.edit_stamp_name.text().strip()
@@ -239,35 +239,44 @@ class PdfConfigWidget(QWidget):
             QMessageBox.warning(self, "Cachets", "Donnez un nom au cachet.")
             return False
 
-        success = manager.update_stamp(
-            self.current_stamp_id,
-            stamp_name,
-            self.sp_stamp_x.value(),
-            self.sp_stamp_y.value(),
-            self.sp_stamp_w.value(),
-            self.sp_stamp_h.value(),
+        stamp = next(
+            (entry for entry in self.stamps if str(entry.get("Stamp_ID")) == self.current_stamp_id),
+            None,
         )
-        if not success:
-            QMessageBox.critical(self, "Cachets", "Impossible d'enregistrer les proprietes du cachet.")
+        if stamp is None:
+            QMessageBox.critical(self, "Cachets", "Impossible de trouver le cachet selectionne.")
             return False
+        stamp.update({
+            "Stamp_Name": stamp_name,
+            "Position_X_CM": self.sp_stamp_x.value(),
+            "Position_Y_CM": self.sp_stamp_y.value(),
+            "Width_CM": self.sp_stamp_w.value(),
+            "Height_CM": self.sp_stamp_h.value(),
+        })
 
-        self.refresh_stamp_list(select_id=self.current_stamp_id)
+        self.refresh_stamp_list(select_id=self.current_stamp_id, reload=False)
         if show_message:
             QMessageBox.information(self, "Cachets", "Les proprietes du cachet ont ete enregistrees.")
         return True
 
     def activate_stamp(self):
-        manager = getattr(self.data_manager, "company_settings", None)
-        if self.current_stamp_id is None or not manager or not hasattr(manager, "set_active_stamp"):
+        if self.current_stamp_id is None:
             return
         if not self.save_current_stamp(show_message=False):
             return
-        if manager.set_active_stamp(self.current_stamp_id):
-            self.refresh_stamp_list(select_id=self.current_stamp_id)
+        found = False
+        for stamp in self.stamps:
+            active = str(stamp.get("Stamp_ID")) == self.current_stamp_id
+            stamp["Is_Active"] = active
+            found = found or active
+        if found:
+            self.refresh_stamp_list(select_id=self.current_stamp_id, reload=False)
 
     def delete_stamp(self):
-        manager = getattr(self.data_manager, "company_settings", None)
-        if self.current_stamp_id is None or not manager or not hasattr(manager, "delete_stamp"):
+        if not self.can_manage_stamps:
+            QMessageBox.warning(self, "Cachets", "Vous n'avez pas la permission de gérer les cachets.")
+            return
+        if self.current_stamp_id is None:
             return
         reply = QMessageBox.question(
             self,
@@ -279,25 +288,129 @@ class PdfConfigWidget(QWidget):
         if reply != QMessageBox.Yes:
             return
         stamp_id = self.current_stamp_id
-        if manager.delete_stamp(stamp_id):
-            self.refresh_stamp_list()
-        else:
+        remaining = [
+            stamp for stamp in self.stamps
+            if str(stamp.get("Stamp_ID")) != stamp_id
+        ]
+        if len(remaining) == len(self.stamps):
             QMessageBox.warning(self, "Cachets", "Impossible de supprimer le cachet.")
+            return
+        if remaining and not any(stamp.get("Is_Active") for stamp in remaining):
+            remaining[0]["Is_Active"] = True
+        self.stamps = remaining
+        self.current_stamp_id = None
+        self.refresh_stamp_list(reload=False)
 
     def get_updated_settings(self):
         return self.settings
 
+    def load_settings_into_widgets(self):
+        """Apply an in-memory settings snapshot to the already-built editor."""
+        text_fields = {
+            "edit_bank": "bank_name",
+            "edit_rib": "bank_acc",
+            "edit_title_bl": "doc_title_bl",
+            "edit_dest_bl": "dest_label_bl",
+            "edit_qty_bl": "qty_header_bl",
+            "edit_tot_bl": "total_label_bl",
+            "edit_fl_bl": "footer_left_bl",
+            "edit_fr_bl": "footer_right_bl",
+            "edit_title_rt": "doc_title_rt",
+            "edit_dest_rt": "dest_label_rt",
+            "edit_qty_rt": "qty_header_rt",
+            "edit_tot_rt": "total_label_rt",
+            "edit_fl_rt": "footer_left_rt",
+            "edit_fr_rt": "footer_right_rt",
+        }
+        spin_fields = {
+            "sp_banner_total_h": "banner_height_cm",
+            "sp_img_x": "banner_img_x_cm",
+            "sp_img_y": "banner_img_y_cm",
+            "sp_img_w": "banner_img_w_cm",
+            "sp_img_h": "banner_img_h_cm",
+            "sp_bank_y": "bank_y_offset_cm",
+            "sp_dest_x": "dest_box_x_cm",
+            "sp_dest_y": "dest_box_y_cm",
+            "sp_dest_w": "dest_box_w_cm",
+            "sp_table_y": "table_start_y_cm",
+            "sp_footer_y": "footer_y_offset_cm",
+            "sp_footer_h": "footer_height_cm",
+            "sp_footer_left_x": "footer_left_x_cm",
+            "sp_footer_right_x": "footer_right_x_cm",
+        }
+
+        controls = [getattr(self, name) for name in text_fields]
+        controls += [getattr(self, name) for name in spin_fields]
+        for control in controls:
+            control.blockSignals(True)
+        try:
+            for widget_name, setting_name in text_fields.items():
+                getattr(self, widget_name).setText(str(self.settings.get(setting_name, "")))
+            for widget_name, setting_name in spin_fields.items():
+                getattr(self, widget_name).setValue(float(self.settings.get(setting_name, 0.0)))
+        finally:
+            for control in controls:
+                control.blockSignals(False)
+
+        self.color_preview.setStyleSheet(
+            f"background-color: {self.settings.get('theme_color', '#0b666a')}; border: 1px solid gray;"
+        )
+        self.preview_canvas.settings = self.settings
+        self.preview_canvas.banner_pixmap = self.banner_pixmap
+        self.preview_canvas.update()
+        self.sync_settings()
+
+    def load_from_database(self):
+        """Read DB settings into the dialog without persisting them locally."""
+        manager = getattr(self.data_manager, "company_settings", None)
+        if manager is None:
+            QMessageBox.warning(self, "Configuration PDF", "Le gestionnaire des parametres de base de donnees est indisponible.")
+            return False
+
+        try:
+            db_settings = manager.get_settings() or {}
+            self.settings = {**self.get_default_settings(), **db_settings}
+
+            banner_bytes = manager.get_banner_image()
+            self.new_image_bytes = bytes(banner_bytes) if banner_bytes else None
+            self.clear_banner_on_save = not bool(self.new_image_bytes)
+            self.banner_pixmap = QPixmap()
+            if self.new_image_bytes:
+                self.banner_pixmap.loadFromData(self.new_image_bytes)
+            self.lbl_path.setText(
+                "Image chargee depuis la base de donnees" if not self.banner_pixmap.isNull() else "Aucune image"
+            )
+
+            self.stamps = self.local_store.import_database_stamps(
+                manager.get_stamps(include_image=True)
+            )
+            active_id = next(
+                (stamp["Stamp_ID"] for stamp in self.stamps if stamp.get("Is_Active")),
+                None,
+            )
+            self.current_stamp_id = None
+            self.load_settings_into_widgets()
+            self.refresh_stamp_list(select_id=active_id, reload=False)
+            return True
+        except Exception as exc:
+            logging.error(f"Error loading PDF settings from database: {exc}")
+            QMessageBox.critical(self, "Configuration PDF", f"Echec du chargement depuis la base :\n{exc}")
+            return False
+
     def save_settings(self):
-        if self.data_manager and hasattr(self.data_manager, 'company_settings'):
-            if self.current_stamp_id is not None and not self.save_current_stamp(show_message=False):
-                raise Exception("Echec de l'enregistrement du cachet selectionne.")
-            success = self.data_manager.company_settings.update_settings(self.settings, self.new_image_bytes)
-            if success:
-                self.new_image_bytes = None
-            else:
-                raise Exception("Échec de l'enregistrement dans la base de données.")
-        else:
-            raise Exception("Manager de base de données non disponible.")
+        if self.current_stamp_id is not None and not self.save_current_stamp(show_message=False):
+            raise Exception("Echec de l'enregistrement du cachet selectionne.")
+        banner_bytes = self.new_image_bytes
+        if banner_bytes is None and not self.clear_banner_on_save:
+            banner_bytes = self.local_store.load_banner_bytes(self.settings)
+        self.local_store.save_pdf(
+            self.settings,
+            banner_bytes=banner_bytes,
+            clear_banner=self.clear_banner_on_save,
+        )
+        self.local_store.save_stamps(self.stamps)
+        self.new_image_bytes = None
+        self.clear_banner_on_save = False
 
     def init_ui(self):
         main_layout = QHBoxLayout(self)
@@ -482,6 +595,12 @@ class PdfConfigWidget(QWidget):
         self.sp_stamp_h = self._create_spin(0.5, 29.7, 4.0)
         self.btn_save_stamp = QPushButton("Enregistrer le nom, la position et la taille")
         self.btn_save_stamp.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+        self.btn_add_stamp.setEnabled(self.can_manage_stamps)
+        self.btn_delete_stamp.setEnabled(self.can_manage_stamps)
+        if not self.can_manage_stamps:
+            permission_hint = "Permission requise pour ajouter ou supprimer des cachets."
+            self.btn_add_stamp.setToolTip(permission_hint)
+            self.btn_delete_stamp.setToolTip(permission_hint)
 
         stamp_form = QFormLayout()
         stamp_form.addRow("Nom du cachet :", self.edit_stamp_name)
@@ -629,6 +748,7 @@ class PdfConfigWidget(QWidget):
                 buffer.open(QIODevice.WriteOnly)
                 img.save(buffer, "JPEG", 85)
                 self.new_image_bytes = ba.data()
+                self.clear_banner_on_save = False
                 
                 self.banner_pixmap.loadFromData(self.new_image_bytes)
                 self.preview_canvas.banner_pixmap = self.banner_pixmap
