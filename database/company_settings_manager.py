@@ -49,8 +49,8 @@ class CompanySettingsManager:
             logging.error(f"Error fetching company settings: {e}")
         return {}
 
-    def update_settings(self, settings_dict, image_bytes=None):
-        """Updates the settings and optionally the banner image."""
+    def update_settings(self, settings_dict, image_bytes=None, clear_banner=False):
+        """Update the shared PDF template without touching local user settings."""
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -71,7 +71,12 @@ class CompanySettingsManager:
                             (settings_json,)
                         )
                 else:
-                    if image_bytes:
+                    if clear_banner:
+                        cursor.execute(
+                            "UPDATE Company_Settings SET Settings_Data = %s, Banner_Image = NULL WHERE Settings_ID = 1;",
+                            (settings_json,)
+                        )
+                    elif image_bytes:
                         cursor.execute(
                             "UPDATE Company_Settings SET Settings_Data = %s, Banner_Image = %s WHERE Settings_ID = 1;",
                             (settings_json, image_bytes)

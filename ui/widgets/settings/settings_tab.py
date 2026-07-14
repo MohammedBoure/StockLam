@@ -109,7 +109,11 @@ class SettingsTab(QWidget):
 
         # Bottom buttons setup
         btn_layout = QHBoxLayout()
-        btn_save = QPushButton("💾 Enregistrer les paramètres")
+        btn_save = QPushButton("💾 Enregistrer les paramètres du programme")
+        btn_save.setToolTip(
+            "Enregistre uniquement les réglages généraux locaux. "
+            "Les réglages PDF se gèrent dans la fenêtre Configuration PDF."
+        )
         btn_save.setStyleSheet("background-color: #27ae60; color: white; padding: 10px; font-weight: bold;")
         btn_save.clicked.connect(self.save_settings)
         

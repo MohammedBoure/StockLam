@@ -405,6 +405,7 @@ class PdfConfigWidget(QWidget):
             return False
 
     def save_settings(self):
+        """Save this user's PDF settings and stamp library locally only."""
         if self.current_stamp_id is not None and not self.save_current_stamp(show_message=False):
             raise Exception("Échec de l'enregistrement du cachet sélectionné.")
         banner_bytes = self.new_image_bytes
@@ -419,16 +420,37 @@ class PdfConfigWidget(QWidget):
         self.new_image_bytes = None
         self.clear_banner_on_save = False
 
+    def save_to_database(self):
+        """Save the shared PDF layout and banner to the database on explicit request."""
+        manager = getattr(self.data_manager, "company_settings", None)
+        if manager is None or not hasattr(manager, "update_settings"):
+            raise Exception("Le gestionnaire des paramètres PDF de la base de données est indisponible.")
+
+        self.sync_settings()
+        banner_bytes = self.new_image_bytes
+        if banner_bytes is None and not self.clear_banner_on_save:
+            banner_bytes = self.local_store.load_banner_bytes(self.settings)
+
+        success = manager.update_settings(
+            dict(self.settings),
+            bytes(banner_bytes) if banner_bytes else None,
+            clear_banner=self.clear_banner_on_save,
+        )
+        if not success:
+            raise Exception("Échec de l'enregistrement des paramètres PDF dans la base de données.")
+
     def init_ui(self):
         main_layout = QHBoxLayout(self)
         main_layout.setSpacing(15)
 
         control_panel = QWidget()
-        control_panel.setFixedWidth(500)
+        control_panel.setMinimumWidth(500)
         vbox = QVBoxLayout(control_panel)
         
-        tabs = QTabWidget()
+        self.tabs = QTabWidget()
+        tabs = self.tabs
         tabs.setStyleSheet("QTabBar::tab { height: 30px; padding: 5px; font-weight: bold; }")
+        tabs.tabBar().hide()
 
         # TAB 1: IDENTITÉ & IMAGE
         tab_branding = QScrollArea()
