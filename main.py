@@ -42,6 +42,8 @@ from database import LabDataManager
 from ui.main_window import MainWindow
 from ui.login_dialog import LoginDialog 
 from tools.inventory_mobile_api import build_server as build_inventory_mobile_server
+from tools.inventory_mobile_api import build_discovery_server as build_inventory_discovery_server
+from tools.mobile_barcode_bridge import MobileBarcodeBridge
 
 # =========================================================================
 # 1. إعدادات التسجيل (Logging) المتقدمة
@@ -74,6 +76,9 @@ logger = logging.getLogger(__name__)
 DB_CONNECTION_ATTEMPTS = 2
 _mobile_api_server = None
 _mobile_api_thread = None
+_mobile_discovery_server = None
+_mobile_discovery_thread = None
+_mobile_barcode_bridge = None
 
 # =========================================================================
 # 2. صائد الأخطاء المفاجئة (Global Crash Handler)
@@ -182,17 +187,33 @@ def connect_to_database_with_retry(app):
     return None, detailed_error
 
 
-def start_inventory_mobile_api(data_manager):
+def start_inventory_mobile_api(data_manager, window):
     global _mobile_api_server, _mobile_api_thread
+    global _mobile_discovery_server, _mobile_discovery_thread, _mobile_barcode_bridge
 
-    if not data_manager or _mobile_api_server is not None:
+    if not data_manager:
+        return
+
+    if _mobile_barcode_bridge is None:
+        _mobile_barcode_bridge = MobileBarcodeBridge(window)
+    else:
+        _mobile_barcode_bridge.set_window(window)
+
+    if _mobile_api_server is not None:
+        _mobile_api_server.data_manager = data_manager
         return
 
     host = os.getenv("INVENTORY_MOBILE_API_HOST", "0.0.0.0")
     port = int(os.getenv("INVENTORY_MOBILE_API_PORT", "8787"))
+    discovery_port = int(os.getenv("INVENTORY_MOBILE_DISCOVERY_PORT", "8788"))
 
     try:
-        _mobile_api_server = build_inventory_mobile_server(host, port, data_manager=data_manager)
+        _mobile_api_server = build_inventory_mobile_server(
+            host,
+            port,
+            data_manager=data_manager,
+            remote_scan_callback=_mobile_barcode_bridge.submit,
+        )
         _mobile_api_thread = threading.Thread(
             target=_mobile_api_server.serve_forever,
             name="InventoryMobileAPI",
@@ -204,23 +225,55 @@ def start_inventory_mobile_api(data_manager):
         _mobile_api_server = None
         _mobile_api_thread = None
         logger.warning("Inventory mobile API could not start on %s:%s: %s", host, port, error)
+        return
+
+    try:
+        _mobile_discovery_server = build_inventory_discovery_server(
+            host,
+            discovery_port,
+            port,
+            device_name=_mobile_api_server.device_name,
+            device_id=_mobile_api_server.device_id,
+        )
+        _mobile_discovery_thread = threading.Thread(
+            target=_mobile_discovery_server.serve_forever,
+            name="InventoryMobileDiscovery",
+            daemon=True,
+        )
+        _mobile_discovery_thread.start()
+        logger.info("Inventory mobile discovery started on UDP %s:%s", host, discovery_port)
+    except OSError as error:
+        _mobile_discovery_server = None
+        _mobile_discovery_thread = None
+        logger.warning(
+            "Inventory mobile discovery could not start on UDP %s:%s: %s. Manual connection remains available.",
+            host,
+            discovery_port,
+            error,
+        )
 
 
 def stop_inventory_mobile_api():
     global _mobile_api_server, _mobile_api_thread
-
-    if _mobile_api_server is None:
-        return
+    global _mobile_discovery_server, _mobile_discovery_thread, _mobile_barcode_bridge
 
     try:
-        _mobile_api_server.shutdown()
-        _mobile_api_server.server_close()
-        logger.info("Inventory mobile API stopped.")
+        if _mobile_discovery_server is not None:
+            _mobile_discovery_server.shutdown()
+            _mobile_discovery_server.server_close()
+            logger.info("Inventory mobile discovery stopped.")
+        if _mobile_api_server is not None:
+            _mobile_api_server.shutdown()
+            _mobile_api_server.server_close()
+            logger.info("Inventory mobile API stopped.")
     except Exception:
-        logger.warning("Inventory mobile API stop failed.", exc_info=True)
+        logger.warning("Inventory mobile services stop failed.", exc_info=True)
     finally:
         _mobile_api_server = None
         _mobile_api_thread = None
+        _mobile_discovery_server = None
+        _mobile_discovery_thread = None
+        _mobile_barcode_bridge = None
 
 
 # =========================================================================
@@ -316,10 +369,9 @@ def main():
                 return 
 
         # تشغيل النافذة الرئيسية
-        if data_manager and not connection_error:
-            start_inventory_mobile_api(data_manager)
-
         window = MainWindow(data_manager, current_user, connection_error)
+        if data_manager and not connection_error:
+            start_inventory_mobile_api(data_manager, window)
         window.showMaximized() 
         
         exit_code = app.exec()

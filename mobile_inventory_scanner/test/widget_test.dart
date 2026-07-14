@@ -8,11 +8,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(const StockLamInventoryScannerApp());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('StockLam Inventaire'), findsOneWidget);
-    expect(find.text('Serveur API'), findsOneWidget);
-    expect(find.text('Session Inventaire'), findsOneWidget);
+    expect(find.text('StockLam Scanner'), findsOneWidget);
+    expect(find.text('Rechercher les ordinateurs StockLam'), findsOneWidget);
+    expect(find.text('Vers ordinateur'), findsOneWidget);
     expect(find.text('Code-barres'), findsOneWidget);
   });
 }

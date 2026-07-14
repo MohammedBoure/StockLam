@@ -12,6 +12,9 @@ import argparse
 import json
 import logging
 import os
+import socket
+import threading
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from http import HTTPStatus
@@ -22,13 +25,12 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FIXED_API_TOKEN = "StockLam-Inventaire-Mobile-2026"
+DISCOVERY_PORT = 8788
+DISCOVERY_REQUEST = b"STOCKLAM_DISCOVER_V1"
 import sys
 
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
-
-from database import Database, LabDataManager  # noqa: E402
-
 
 def _json_default(value: Any):
     if isinstance(value, Decimal):
@@ -123,7 +125,14 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
 
         try:
             if path == "/api/health":
-                self._send_json(HTTPStatus.OK, {"success": True, "app": "StockLam", "service": "inventory_mobile_api"})
+                self._send_json(HTTPStatus.OK, {
+                    "success": True,
+                    "app": "StockLam",
+                    "service": "inventory_mobile_api",
+                    "device_name": self.server.device_name,  # type: ignore[attr-defined]
+                    "device_id": self.server.device_id,  # type: ignore[attr-defined]
+                    "remote_input": callable(getattr(self.server, "remote_scan_callback", None)),
+                })
                 return
 
             if not self._is_authorized():
@@ -164,6 +173,34 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+
+        if path == "/api/remote-scans":
+            try:
+                data = self._read_body()
+                barcode = str(data.get("barcode") or "").strip()
+                if not barcode:
+                    self._send_error(HTTPStatus.BAD_REQUEST, "Barcode is required.")
+                    return
+                callback = getattr(self.server, "remote_scan_callback", None)
+                if not callable(callback):
+                    self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Desktop barcode input is not available.")
+                    return
+                if callback(barcode) is False:
+                    self._send_error(HTTPStatus.CONFLICT, "Desktop rejected the barcode.")
+                    return
+                self._send_json(HTTPStatus.OK, {
+                    "success": True,
+                    "status": "SENT",
+                    "barcode": barcode,
+                    "message": "Barcode sent to the StockLam desktop application.",
+                })
+            except json.JSONDecodeError:
+                self._send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON body.")
+            except Exception as exc:
+                logging.exception("Remote barcode delivery failed")
+                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+            return
+
         session_id, action = self._parse_session_route(path)
         if not session_id or action != "scan":
             self._send_error(HTTPStatus.NOT_FOUND, "Endpoint not found.")
@@ -187,12 +224,79 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
 
-def build_server(host: str, port: int, data_manager=None):
+def _device_identity():
+    name = socket.gethostname() or "StockLam PC"
+    return name, f"{name}-{uuid.getnode():012x}"
+
+
+class InventoryDiscoveryServer:
+    """Small UDP responder used by the phone to find StockLam PCs on the LAN."""
+
+    def __init__(self, host: str, port: int, api_port: int, device_name: str, device_id: str):
+        self.host = host
+        self.port = int(port)
+        self.api_port = int(api_port)
+        self.device_name = device_name
+        self.device_id = device_id
+        self._stopped = threading.Event()
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.bind((host, self.port))
+        self._socket.settimeout(0.5)
+
+    def serve_forever(self):
+        while not self._stopped.is_set():
+            try:
+                payload, address = self._socket.recvfrom(1024)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if payload.strip() != DISCOVERY_REQUEST:
+                continue
+            response = json.dumps({
+                "app": "StockLam",
+                "service": "inventory_mobile_api",
+                "device_name": self.device_name,
+                "device_id": self.device_id,
+                "api_port": self.api_port,
+            }, ensure_ascii=False).encode("utf-8")
+            try:
+                self._socket.sendto(response, address)
+            except OSError:
+                logging.debug("Unable to answer StockLam discovery request", exc_info=True)
+
+    def shutdown(self):
+        self._stopped.set()
+        self._socket.close()
+
+    def server_close(self):
+        self.shutdown()
+
+
+def build_discovery_server(host: str, port: int, api_port: int, device_name=None, device_id=None):
+    default_name, default_id = _device_identity()
+    return InventoryDiscoveryServer(
+        host,
+        port,
+        api_port,
+        device_name or default_name,
+        device_id or default_id,
+    )
+
+
+def build_server(host: str, port: int, data_manager=None, remote_scan_callback=None, device_name=None, device_id=None):
     if data_manager is None:
+        from database import Database, LabDataManager
+
         db = Database()
         data_manager = LabDataManager(db)
+    default_name, default_id = _device_identity()
     server = ThreadingHTTPServer((host, port), InventoryMobileApi)
     server.data_manager = data_manager  # type: ignore[attr-defined]
+    server.remote_scan_callback = remote_scan_callback  # type: ignore[attr-defined]
+    server.device_name = device_name or default_name  # type: ignore[attr-defined]
+    server.device_id = device_id or default_id  # type: ignore[attr-defined]
     return server
 
 
@@ -204,6 +308,25 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     server = build_server(args.host, args.port)
+    discovery_server = None
+    discovery_thread = None
+    try:
+        discovery_server = build_discovery_server(
+            args.host,
+            int(os.getenv("INVENTORY_MOBILE_DISCOVERY_PORT", str(DISCOVERY_PORT))),
+            args.port,
+            device_name=server.device_name,  # type: ignore[attr-defined]
+            device_id=server.device_id,  # type: ignore[attr-defined]
+        )
+        discovery_thread = threading.Thread(
+            target=discovery_server.serve_forever,
+            name="InventoryMobileDiscovery",
+            daemon=True,
+        )
+        discovery_thread.start()
+        logging.info("StockLam discovery listening on UDP %s", discovery_server.port)
+    except OSError as exc:
+        logging.warning("StockLam discovery is unavailable: %s", exc)
     logging.info("Inventory mobile API listening on http://%s:%s", args.host, args.port)
     logging.info("Built-in mobile app key protection is enabled.")
     try:
@@ -211,6 +334,8 @@ def main():
     except KeyboardInterrupt:
         logging.info("Stopping inventory mobile API.")
     finally:
+        if discovery_server is not None:
+            discovery_server.shutdown()
         server.server_close()
 
 
