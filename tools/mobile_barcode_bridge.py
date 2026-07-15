@@ -1,8 +1,9 @@
 """Thread-safe bridge from the mobile HTTP API to StockLam barcode fields."""
 
 import logging
+from threading import Lock
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication, QLineEdit
 
 
@@ -12,7 +13,14 @@ class MobileBarcodeBridge(QObject):
     def __init__(self, window=None):
         super().__init__()
         self.window = window
-        self.barcode_received.connect(self._deliver)
+        self._submit_lock = Lock()
+        self._delivery_result = False
+        # The HTTP server runs outside Qt's GUI thread. Wait until the GUI has
+        # actually handled the barcode before reporting success to the phone.
+        self.barcode_received.connect(
+            self._deliver,
+            Qt.ConnectionType.BlockingQueuedConnection,
+        )
 
     def set_window(self, window):
         self.window = window
@@ -21,14 +29,29 @@ class MobileBarcodeBridge(QObject):
         clean = str(barcode or "").strip()
         if not clean:
             return False
-        self.barcode_received.emit(clean)
-        return True
+
+        with self._submit_lock:
+            # BlockingQueuedConnection cannot be used when the caller is
+            # already the GUI thread, otherwise Qt would deadlock itself.
+            if QThread.currentThread() == self.thread():
+                return self._deliver(clean)
+
+            self._delivery_result = False
+            try:
+                self.barcode_received.emit(clean)
+            except RuntimeError:
+                logging.exception(
+                    "Mobile barcode delivery could not reach the Qt GUI thread."
+                )
+                return False
+            return self._delivery_result
 
     @staticmethod
     def _is_usable_line_edit(widget):
         return (
             isinstance(widget, QLineEdit)
             and widget.isEnabled()
+            and not widget.isReadOnly()
             and widget.echoMode() == QLineEdit.Normal
         )
 
@@ -36,7 +59,14 @@ class MobileBarcodeBridge(QObject):
     def _barcode_score(widget):
         text = " ".join((widget.objectName(), widget.placeholderText())).lower()
         score = 0
-        for marker in ("barcode", "code-barres", "code barres", "scanner", "scannez", "smart_search"):
+        for marker in (
+            "barcode",
+            "code-barres",
+            "code barres",
+            "scanner",
+            "scannez",
+            "smart_search",
+        ):
             if marker in text:
                 score += 10
         if widget.hasFocus():
@@ -51,6 +81,7 @@ class MobileBarcodeBridge(QObject):
             return focused
         if self.window is None:
             return None
+
         candidates = [
             widget
             for widget in self.window.findChildren(QLineEdit)
@@ -69,14 +100,33 @@ class MobileBarcodeBridge(QObject):
                 "Mobile barcode %s received, but no visible StockLam input field is available.",
                 barcode,
             )
-            self._show_status("Code reçu du téléphone, mais aucun champ de saisie n'est actif.")
-            return
+            self._delivery_result = False
+            self._show_status(
+                "Code reçu du téléphone, mais aucun champ de saisie n'est actif."
+            )
+            return False
 
-        target.setFocus()
-        target.setText(barcode)
-        target.returnPressed.emit()
-        self._show_status(f"Code-barres reçu du téléphone : {barcode}")
-        logging.info("Mobile barcode delivered to desktop field %s", target.objectName() or target.__class__.__name__)
+        try:
+            target.setFocus(Qt.FocusReason.OtherFocusReason)
+            target.setText(barcode)
+            target.returnPressed.emit()
+        except Exception:
+            self._delivery_result = False
+            logging.exception("Could not insert the mobile barcode into the desktop field.")
+            self._show_status(
+                "Échec de l'insertion du code-barres reçu du téléphone."
+            )
+            return False
+
+        self._delivery_result = True
+        self._show_status(
+            f"Code-barres envoyé dans {target.objectName() or 'le champ actif'} : {barcode}"
+        )
+        logging.info(
+            "Mobile barcode delivered to desktop field %s",
+            target.objectName() or target.__class__.__name__,
+        )
+        return True
 
     def _show_status(self, message):
         if self.window is not None and hasattr(self.window, "statusBar"):
