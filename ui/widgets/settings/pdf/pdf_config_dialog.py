@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from .pdf_config_tab import PdfConfigWidget
-from .local_settings import LocalSettingsStore
+from ..local_settings import LocalSettingsStore
 
 
 class PdfConfigDialog(QDialog):
@@ -28,7 +28,7 @@ class PdfConfigDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Configuration PDF")
         self.setMinimumSize(1250, 780)
-        self.setWindowState(Qt.WindowFullScreen)
+        self.setWindowState(Qt.WindowMaximized)
         self.local_store = local_store or LocalSettingsStore(current_user)
         self.config_widget = PdfConfigWidget(
             data_manager,
@@ -57,23 +57,15 @@ class PdfConfigDialog(QDialog):
     def _build_top_bar(self):
         top_bar = QFrame()
         top_bar.setObjectName("pdfTopBar")
-        top_bar.setStyleSheet(
-            "#pdfTopBar { background: #17324d; border-bottom: 1px solid #2f587d; }"
-            "QTabBar::tab { color: #dce6ee; padding: 13px 16px; font-weight: bold; }"
-            "QTabBar::tab:selected { color: white; background: #2877ad; }"
-            "QTabBar::tab:hover { background: #225b82; }"
-        )
+        
         row = QHBoxLayout(top_bar)
         row.setContentsMargins(12, 6, 12, 6)
         row.setSpacing(10)
 
         self.btn_back = QPushButton("← Retour")
         self.btn_back.setMinimumHeight(38)
-        self.btn_back.setStyleSheet(
-            "background: #ecf0f1; color: #17324d; font-weight: bold; padding: 0 14px;"
-        )
+        
         title = QLabel("Configuration PDF")
-        title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
 
         self.top_tabs = QTabBar()
         self.top_tabs.setExpanding(True)

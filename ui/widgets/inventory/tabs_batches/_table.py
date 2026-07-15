@@ -220,12 +220,12 @@ def _fill_row(table, r, b, hide_fin):
     table.setItem(r, 16, _make_item(reclamation, bg_color=bg_color))
     
     # تعيين الهيدر العمودي (رقم الصف أو أيقونة شكوى)
-    v_header_item = QTableWidgetItem()
+    v_header_item = QTableWidgetItem(str(r+1))
     if reclamation:
         v_header_item.setIcon(get_reclamation_icon())
-        v_header_item.setText("")
-    else:
-        v_header_item.setText(str(r+1))
+        
+    # Ensure text is aligned to the left while icon goes to the right (RTL effect)
+    v_header_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     table.setVerticalHeaderItem(r, v_header_item)
 
 

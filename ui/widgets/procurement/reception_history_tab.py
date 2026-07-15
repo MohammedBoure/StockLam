@@ -23,7 +23,7 @@ except ImportError:
     HAS_REPORTLAB = False
 
 from .reception_dialog import ReceptionDialog
-from ui.widgets.settings.pdf_stamp import fit_stamp_size_cm, get_active_stamp
+from ui.widgets.settings.pdf.pdf_stamp import fit_stamp_size_cm, get_active_stamp, SignatureFooter
 from ui.widgets.settings.local_settings import get_local_settings_store
 
 class ReceptionHistoryTab(QWidget):
@@ -577,22 +577,26 @@ class ReceptionHistoryTab(QWidget):
             elements.append(Paragraph(f"<para align='right'><b>TOTAL TTC : {t_ttc:,.2f} DZD</b></para>", styles["Normal"]))
             elements.append(Spacer(1, 2 * cm))
             local_store = get_local_settings_store(self.manager)
+            settings = local_store.get_all()
             active_stamp = get_active_stamp(local_store)
-            footer_rows = [["Réceptionné par :", "Signature Autorisée :"]]
-            if active_stamp:
-                stamp_w_cm, stamp_h_cm = fit_stamp_size_cm(
-                    active_stamp,
-                    6.0,
-                    3.5,
-                )
-                import io
-                stamp_image = Image(
-                    io.BytesIO(active_stamp["Image_Data"]),
-                    width=stamp_w_cm * cm,
-                    height=stamp_h_cm * cm,
-                )
-                footer_rows.append([stamp_image, ""])
-            elements.append(Table(footer_rows, colWidths=[9*cm, 9*cm]))
+            
+            f_left = settings.get('footer_left_rt', 'Signature Magasin / Expéditeur')
+            f_right = settings.get('footer_right_rt', 'Accusé de Réception (Fournisseur)')
+            footer_height = float(settings.get('footer_height_cm', 2.5))
+            left_x = float(settings.get('footer_left_x_cm', 1.0))
+            right_x = float(settings.get('footer_right_x_cm', 12.0))
+            stamp_gap = float(settings.get('footer_stamp_gap_cm', 0.3))
+            stamp_area_w = float(settings.get('footer_stamp_area_w_cm', 6.0))
+            stamp_area_h = float(settings.get('footer_stamp_area_h_cm', 3.5))
+
+            footer = SignatureFooter(
+                f_left, f_right,
+                left_x, right_x,
+                footer_height,
+                active_stamp,
+                stamp_gap, stamp_area_w, stamp_area_h
+            )
+            elements.append(footer)
 
             doc.build(elements)
             os.startfile(path)

@@ -174,7 +174,7 @@ class InventoryCountScanDialog(QDialog):
         self.barcode_lookup_timer.setSingleShot(True)
         self.barcode_lookup_timer.timeout.connect(self.load_barcode_details)
 
-        qty_label = QLabel("Quantite")
+        qty_label = QLabel("Quantité")
         qty_label.setObjectName("fieldLabel")
         form.addWidget(qty_label, 0, 1)
         self.qty_input = QSpinBox()
@@ -202,7 +202,7 @@ class InventoryCountScanDialog(QDialog):
         product_summary_layout = QVBoxLayout(self.product_summary)
         product_summary_layout.setContentsMargins(12, 10, 12, 10)
         product_summary_layout.setSpacing(3)
-        self.product_title_label = QLabel("Pret a scanner")
+        self.product_title_label = QLabel("Prêt à scanner")
         self.product_title_label.setObjectName("productTitle")
         self.product_title_label.setWordWrap(True)
         self.product_meta_label = QLabel("-")
@@ -212,7 +212,7 @@ class InventoryCountScanDialog(QDialog):
         product_summary_layout.addWidget(self.product_meta_label)
         layout.addWidget(self.product_summary)
 
-        details_group = QGroupBox("Produit scanne")
+        details_group = QGroupBox("Produit scanné")
         details_layout = QGridLayout(details_group)
         details_layout.setContentsMargins(12, 14, 12, 10)
         details_layout.setHorizontalSpacing(14)
@@ -224,19 +224,19 @@ class InventoryCountScanDialog(QDialog):
             ("Automate", "Automate_Name"),
             ("Code interne", "Internal_Barcode"),
             ("Code produit", "Product_Barcode"),
-            ("Ref fabricant", "Manuf_Cat_No"),
+            ("Réf fabricant", "Manuf_Cat_No"),
             ("Lot", "Lot_Number"),
             ("Expiration", "Expiry_Date"),
             ("Emplacement", "Location_Name"),
             ("Statut lot", "Batch_Status"),
-            ("Unite stock", "Stock_Unit"),
-            ("Unite usage", "Usage_Unit"),
+            ("Unité stock", "Stock_Unit"),
+            ("Unité usage", "Usage_Unit"),
             ("Temp. stockage", "Storage_Temp_Req"),
-            ("Stock programme", "Program_Qty_Snapshot"),
+            ("Stock programmé", "Program_Qty_Snapshot"),
             ("Stock actuel", "Quantity_Current"),
             ("Stock initial", "Quantity_Initial"),
-            ("Stock compte", "Counted_Qty"),
-            ("Ecart", "Difference_Qty"),
+            ("Stock compté", "Counted_Qty"),
+            ("Écart", "Difference_Qty"),
             ("Statut", "Line_Status"),
             ("Note", "Reception_Note"),
         ]
@@ -399,9 +399,9 @@ class InventoryCountScanDialog(QDialog):
         meta_values = [
             f"Lot {values.get('Lot_Number', '-')}",
             f"Emplacement {values.get('Location_Name', '-')}",
-            f"Programme {values.get('Program_Qty_Snapshot', '0')}",
-            f"Compte {values.get('Counted_Qty', '0')}",
-            f"Ecart {values.get('Difference_Qty', '0')}",
+            f"Programmé {values.get('Program_Qty_Snapshot', '0')}",
+            f"Compté {values.get('Counted_Qty', '0')}",
+            f"Écart {values.get('Difference_Qty', '0')}",
             f"Statut {values.get('Line_Status', '-')}",
         ]
         self.product_meta_label.setText(" | ".join(meta_values))

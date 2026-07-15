@@ -75,3 +75,51 @@ def draw_active_stamp(canvas, stamp_provider, page_width, page_height):
     except Exception as exc:
         logging.warning("Unable to draw the active PDF stamp: %s", exc)
         return False
+
+try:
+    from reportlab.platypus import Flowable
+    from reportlab.lib.units import cm
+    
+    class SignatureFooter(Flowable):
+        def __init__(self, t_left, t_right, x_l, x_r, h, stamp, stamp_gap, stamp_area_w, stamp_area_h):
+            Flowable.__init__(self)
+            self.t_left = t_left
+            self.t_right = t_right
+            self.x_l = x_l * cm
+            self.x_r = x_r * cm
+            self.h = max(h, FOOTER_TITLE_HEIGHT_CM + stamp_gap + stamp_area_h) * cm
+            self.stamp = stamp
+            self.stamp_gap = float(stamp_gap) * cm
+            self.stamp_area_w = float(stamp_area_w) * cm
+            self.stamp_area_h = float(stamp_area_h) * cm
+        
+        def wrap(self, availW, availH):
+            return availW, self.h
+            
+        def draw(self):
+            self.canv.saveState()
+            self.canv.setFont("Helvetica-Bold", 10)
+            self.canv.drawString(self.x_l, self.h - 15, self.t_left)
+            self.canv.drawString(self.x_r, self.h - 15, self.t_right)
+            if self.stamp:
+                stamp_w_cm, stamp_h_cm = fit_stamp_size_cm(
+                    self.stamp,
+                    self.stamp_area_w / cm,
+                    self.stamp_area_h / cm,
+                )
+                stamp_w = stamp_w_cm * cm
+                stamp_h = stamp_h_cm * cm
+                stamp_x = self.x_l + max(0, (self.stamp_area_w - stamp_w) / 2)
+                stamp_top = self.h - 15 - FOOTER_TITLE_HEIGHT_CM * cm - self.stamp_gap
+                stamp_y = max(0, stamp_top - stamp_h)
+                draw_stamp_image(
+                    self.canv,
+                    self.stamp,
+                    stamp_x,
+                    stamp_y,
+                    stamp_w,
+                    stamp_h,
+                )
+            self.canv.restoreState()
+except ImportError:
+    pass

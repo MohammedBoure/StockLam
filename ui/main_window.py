@@ -282,8 +282,8 @@ class MainWindow(QMainWindow):
             (1, "Données de Base", "fa5s.layer-group"),
             (2, "Achats & Entrées", "fa5s.shopping-cart"), 
             (3, "Stock & Magasin",  "fa5s.boxes"),
-            (9, "Inventaire", "fa5s.clipboard-list"),
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
+            (9, "Inventaire", "fa5s.clipboard-list"),
             (7, "Traçabilité",      "fa5s.history"),
             (5, "Utilisateurs",    "fa5s.users"),
             (4, "Paramètres",      "fa5s.sliders-h")

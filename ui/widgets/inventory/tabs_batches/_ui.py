@@ -211,6 +211,7 @@ def _build_table(self):
     self.table = QTableWidget()
     self.table.verticalHeader().setDefaultSectionSize(30)
     self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+    self.table.verticalHeader().setLayoutDirection(Qt.RightToLeft)
 
     cols = [
         "Désignation Produit", "Famille", "Marque", "Automate",

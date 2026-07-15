@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QDate, QDateTime, Signal, QStringListModel, QTime
 from PySide6.QtGui import QColor, QFont
 import qtawesome as qta
 
-from ui.formatting import quantity_to_int
+from ui.formatting import quantity_to_int, format_quantity
 
 
 class BarcodeLineEdit(QLineEdit):
@@ -161,17 +161,18 @@ class InvoiceEditorWidget(QWidget):
         items_layout.addWidget(self.barcode_input)
 
         # الجدول
-        self.table = QTableWidget(0, 6)
-        headers = ["Article / Lot / Stock", "Quantité", "P.U", "Observation", "Total", ""]
+        self.table = QTableWidget(0, 7)
+        headers = ["Article", "Source (Stock)", "Quantité", "P.U", "Observation", "Total", ""]
         self.table.setHorizontalHeaderLabels(headers)
 
         h_header = self.table.horizontalHeader()
         h_header.setSectionResizeMode(0, QHeaderView.Stretch)
-        h_header.setSectionResizeMode(3, QHeaderView.Stretch)
-        self.table.setColumnWidth(1, 100)
-        self.table.setColumnWidth(2, 130)
-        self.table.setColumnWidth(4, 130)
-        self.table.setColumnWidth(5, 40)
+        h_header.setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.setColumnWidth(1, 250)
+        self.table.setColumnWidth(2, 90)
+        self.table.setColumnWidth(3, 110)
+        self.table.setColumnWidth(5, 110)
+        self.table.setColumnWidth(6, 40)
 
         self.table.verticalHeader().setDefaultSectionSize(45)
         self.table.setAlternatingRowColors(True)
@@ -269,8 +270,8 @@ class InvoiceEditorWidget(QWidget):
 
                     # تحديث السعر والملاحظة للسطر المضاف
                     last_row = self.table.rowCount() - 1
-                    self.table.cellWidget(last_row, 2).setValue(float(item['Unit_Price']))
-                    self.table.cellWidget(last_row, 3).setText(item.get('Line_Note', ''))
+                    self.table.cellWidget(last_row, 3).setValue(float(item['Unit_Price']))
+                    self.table.cellWidget(last_row, 4).setText(item.get('Line_Note', ''))
 
             self.is_loading_transfer = False
             self.calc_totals()
@@ -595,12 +596,16 @@ class InvoiceEditorWidget(QWidget):
                 continue
 
             meta = table_item.data(Qt.UserRole)
+            cb_source = self.table.cellWidget(r, 1)
+            selected_batch = cb_source.currentData() if cb_source else None
+            batch_id = selected_batch['Batch_ID'] if selected_batch else meta['batch_id']
+
             items.append({
                 'product_id': meta['id'],
-                'batch_id': meta['batch_id'],
-                'qty': self.table.cellWidget(r, 1).value(),
-                'price': self.table.cellWidget(r, 2).value(),
-                'note': self.table.cellWidget(r, 3).text()
+                'batch_id': batch_id,
+                'qty': self.table.cellWidget(r, 2).value(),
+                'price': self.table.cellWidget(r, 3).value(),
+                'note': self.table.cellWidget(r, 4).text()
             })
         return items
 
@@ -688,16 +693,14 @@ class InvoiceEditorWidget(QWidget):
         """إضافة المنتج للجدول مع تصحيح أخطاء sb_qty وربط الحسابات"""
         # منع التكرار وزيادة الكمية فقط
         for r in range(self.table.rowCount()):
-            table_item = self.table.item(r, 0)
-            if table_item:
-                data = table_item.data(Qt.UserRole)
-                if data and data.get('batch_id') == batch['Batch_ID']:
-                    sb = self.table.cellWidget(r, 1)
-                    if sb and sb.value() < sb.maximum():
-                        sb.setValue(sb.value() + 1)
-                        self.persist_current_transfer()
-                        return True
-                    return False
+            cb = self.table.cellWidget(r, 1)
+            if cb and cb.currentData() and cb.currentData().get('Batch_ID') == batch['Batch_ID']:
+                sb = self.table.cellWidget(r, 2)
+                if sb and sb.value() < sb.maximum():
+                    sb.setValue(sb.value() + 1)
+                    self.persist_current_transfer()
+                    return True
+                return False
 
         # استخراج حالة الفوترة والبيانات
         is_billable = batch.get('Is_Billable', False)
@@ -706,7 +709,7 @@ class InvoiceEditorWidget(QWidget):
         self.table.insertRow(row)
 
         barcode_display = batch.get('Barcode') or batch.get('Internal_Barcode', 'N/A')
-        p_name = f"{batch['Product_Name']} (Code: {barcode_display} | Lot: {batch['Lot_Number']}){status_tag}"
+        p_name = f"{batch['Product_Name']} (Code: {barcode_display}){status_tag}"
         q_item = QTableWidgetItem(p_name)
         q_item.setData(Qt.UserRole, {
             'id': batch['Product_ID'],
@@ -749,12 +752,50 @@ class InvoiceEditorWidget(QWidget):
         btn_del.setStyleSheet("color: #e74c3c; font-weight: bold; border: none;")
         btn_del.clicked.connect(lambda: self.remove_row_at_btn(btn_del))
 
+        # --- Source Combo ---
+        cb_source = QComboBox()
+        cb_source.setStyleSheet("font-weight: bold; color: #2c3e50;")
+        # Find all batches for this product
+        available_batches = [b for b in self.batches_cache if b['Product_ID'] == batch['Product_ID']]
+        if not available_batches:
+            available_batches = [batch] # Fallback
+            
+        current_index = 0
+        for i, b in enumerate(available_batches):
+            loc_name = b.get('Location_Name') or 'Inconnu'
+            lot_name = b.get('Lot_Number') or '-'
+            if getattr(self, 'transfer_type_mode', 'Outbound') == 'Return':
+                b_qty = quantity_to_int(b.get('Available_To_Return', 0))
+            else:
+                b_qty = quantity_to_int(b.get('Quantity_Current', 0))
+            item_text = f"📍 {loc_name} | Lot: {lot_name} (Dispo: {format_quantity(b_qty)})"
+            cb_source.addItem(item_text, b)
+            if b['Batch_ID'] == batch['Batch_ID']:
+                current_index = i
+        cb_source.setCurrentIndex(current_index)
+        
+        def update_max_qty():
+            selected_b = cb_source.currentData()
+            if not selected_b: return
+            if getattr(self, 'transfer_type_mode', 'Outbound') == 'Return':
+                curr_stock = quantity_to_int(selected_b.get('Available_To_Return', 0))
+                max_allow = curr_stock
+            else:
+                curr_stock = quantity_to_int(selected_b.get('Quantity_Current', 0))
+                prev_qty = quantity_to_int(self.current_transfer_qty_by_batch.get(selected_b['Batch_ID'], 0))
+                max_allow = curr_stock + prev_qty
+            sb_qty.setRange(1, max(1, max_allow))
+            self.persist_current_transfer()
+            
+        cb_source.currentIndexChanged.connect(update_max_qty)
+
         # وضع الـ Widgets في الجدول
-        self.table.setCellWidget(row, 1, sb_qty)
-        self.table.setCellWidget(row, 2, sb_price)
-        self.table.setCellWidget(row, 3, txt_obs)
-        self.table.setCellWidget(row, 4, lbl_line)
-        self.table.setCellWidget(row, 5, btn_del)
+        self.table.setCellWidget(row, 1, cb_source)
+        self.table.setCellWidget(row, 2, sb_qty)
+        self.table.setCellWidget(row, 3, sb_price)
+        self.table.setCellWidget(row, 4, txt_obs)
+        self.table.setCellWidget(row, 5, lbl_line)
+        self.table.setCellWidget(row, 6, btn_del)
 
         # ربط الإشارات بالحسابات بعد بناء الصف
         sb_qty.valueChanged.connect(self.on_line_changed)
@@ -771,7 +812,7 @@ class InvoiceEditorWidget(QWidget):
     def remove_row_at_btn(self, btn):
         removed = False
         for r in range(self.table.rowCount()):
-            if self.table.cellWidget(r, 5) == btn:
+            if self.table.cellWidget(r, 6) == btn:
                 self.table.removeRow(r)
                 removed = True
                 break
@@ -795,9 +836,9 @@ class InvoiceEditorWidget(QWidget):
         """حساب المجاميع مع حماية ضد NoneType"""
         grand = 0.0
         for r in range(self.table.rowCount()):
-            qty_widget = self.table.cellWidget(r, 1)
-            price_widget = self.table.cellWidget(r, 2)
-            total_label = self.table.cellWidget(r, 4)
+            qty_widget = self.table.cellWidget(r, 2)
+            price_widget = self.table.cellWidget(r, 3)
+            total_label = self.table.cellWidget(r, 5)
 
             if qty_widget and price_widget and total_label:
                 line = qty_widget.value() * price_widget.value()

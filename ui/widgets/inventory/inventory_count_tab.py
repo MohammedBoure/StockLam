@@ -2,6 +2,7 @@ import json
 import logging
 import random
 import string
+import datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QMenu,
 )
 
 from ui.formatting import format_money, format_quantity
@@ -364,17 +366,21 @@ class InventoryCountTab(QWidget):
         tables_splitter = QSplitter(Qt.Vertical)
         tables_splitter.setChildrenCollapsible(False)
 
-        self.sessions_table = QTableWidget(0, 5)
+        self.sessions_table = QTableWidget(0, 6)
         self.sessions_table.setHorizontalHeaderLabels([
             "ID Session",
             "Nom Session",
+            "Cible (Scope)",
             "Statut",
             "Débutée le",
             "Créée par",
         ])
         self.sessions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.sessions_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.sessions_table.customContextMenuRequested.connect(self.show_session_context_menu)
         self.sessions_table.itemSelectionChanged.connect(self.load_current_session)
+        self.sessions_table.itemDoubleClicked.connect(self.open_scan_dialog)
         self._configure_sessions_table()
         tables_splitter.addWidget(self.sessions_table)
 
@@ -398,6 +404,8 @@ class InventoryCountTab(QWidget):
         ])
         self.lines_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.lines_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.lines_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.lines_table.customContextMenuRequested.connect(self.show_line_context_menu)
         self._configure_lines_table()
         lines_layout.addWidget(self.lines_table)
         tables_splitter.addWidget(lines_panel)
@@ -415,27 +423,15 @@ class InventoryCountTab(QWidget):
 
         self.btn_new = QPushButton("Nouvelle session")
         self.btn_scan = QPushButton("Scanner")
-        self.btn_review = QPushButton("Revue")
-        self.btn_apply = QPushButton("Appliquer")
-        self.btn_cancel = QPushButton("Annuler")
-        self.btn_export = QPushButton("Exporter")
         self.btn_refresh = QPushButton("Actualiser")
 
         self.btn_new.clicked.connect(self.create_session)
         self.btn_scan.clicked.connect(self.open_scan_dialog)
-        self.btn_review.clicked.connect(self.mark_review)
-        self.btn_apply.clicked.connect(self.apply_session)
-        self.btn_cancel.clicked.connect(self.cancel_session)
-        self.btn_export.clicked.connect(self.export_session)
         self.btn_refresh.clicked.connect(self.load_sessions)
 
         action_buttons = (
             self.btn_new,
             self.btn_scan,
-            self.btn_review,
-            self.btn_apply,
-            self.btn_cancel,
-            self.btn_export,
             self.btn_refresh,
         )
         for button in action_buttons:
@@ -465,6 +461,17 @@ class InventoryCountTab(QWidget):
         filters_layout = QVBoxLayout(filters_frame)
         filters_layout.setContentsMargins(8, 8, 8, 8)
         filters_layout.setSpacing(6)
+        
+        self.year_filter = QComboBox()
+        current_year = datetime.datetime.now().year
+        self.year_filter.addItems([str(current_year), str(current_year - 1), str(current_year - 2), "Toutes les années"])
+        self.year_filter.currentTextChanged.connect(self.load_sessions)
+        filters_layout.addWidget(QLabel("Sessions (Année):"))
+        filters_layout.addWidget(self.year_filter)
+
+        filters_layout.addSpacing(4)
+        filters_layout.addWidget(QLabel("Recherche lignes:"))
+        
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Recherche")
         self.search_input.textChanged.connect(self.load_lines)
@@ -508,6 +515,7 @@ class InventoryCountTab(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
     def _configure_lines_table(self):
         self._configure_table(self.lines_table)
@@ -542,8 +550,6 @@ class InventoryCountTab(QWidget):
         permission_map = {
             self.btn_new: "act_inventory_create",
             self.btn_scan: "act_inventory_scan",
-            self.btn_apply: "act_inventory_apply",
-            self.btn_cancel: "act_inventory_cancel",
             self.btn_export: "act_inventory_export",
         }
         for button, permission in permission_map.items():
@@ -570,16 +576,31 @@ class InventoryCountTab(QWidget):
         has_session = self.current_session_id is not None
         status = (self.current_session or {}).get("Status")
         is_open = status in {"Counting", "Review"}
+        
+        status_tr = {
+            "Counting": "En cours",
+            "Review": "Terminée",
+            "Applied": "Appliquée",
+            "Cancelled": "Annulée"
+        }
+        display_status = status_tr.get(status, status) if status else "-"
+        
         if has_session:
             name = (self.current_session or {}).get("Session_Name") or f"Session #{self.current_session_id}"
-            self.session_context_label.setText(f"#{self.current_session_id} - {name} - {status or '-'}")
+            
+            scope_type = (self.current_session or {}).get("Scope_Type")
+            scope_detail = "Global"
+            if scope_type == "LOCATION":
+                scope_detail = f"Emplacement: {(self.current_session or {}).get('Location_Name') or '-'}"
+            elif scope_type == "FAMILY":
+                scope_detail = f"Famille: {(self.current_session or {}).get('Family_Name') or '-'}"
+            elif scope_type == "PRODUCT":
+                scope_detail = f"Produit: {(self.current_session or {}).get('Product_Name') or '-'}"
+                
+            self.session_context_label.setText(f"#{self.current_session_id} - {name} ({scope_detail}) - {display_status}")
         else:
             self.session_context_label.setText("Aucune session")
         self.btn_scan.setEnabled(has_session and is_open)
-        self.btn_review.setEnabled(has_session and status == "Counting")
-        self.btn_apply.setEnabled(has_session and is_open)
-        self.btn_cancel.setEnabled(has_session and status not in {"Applied", "Cancelled"})
-        self.btn_export.setEnabled(has_session)
 
     def load_sessions(self):
         manager = self._manager()
@@ -594,22 +615,41 @@ class InventoryCountTab(QWidget):
             return
 
         try:
-            self.sessions = manager.get_sessions(limit=100)
+            year = self.year_filter.currentText()
+            self.sessions = manager.get_sessions(limit=100, year=year)
         except Exception as exc:
             logging.error(f"Unable to load inventory count sessions: {exc}", exc_info=True)
             QMessageBox.warning(self, "Inventaire", f"Impossible de charger les sessions:\n{exc}")
             self.sessions = []
 
         for row_index, session in enumerate(self.sessions):
+            status_tr = {
+                "Counting": "En cours",
+                "Review": "Terminée",
+                "Applied": "Appliquée",
+                "Cancelled": "Annulée"
+            }
+            display_status = status_tr.get(session.get("Status"), session.get("Status"))
+            
+            scope_type = session.get("Scope_Type")
+            scope_detail = "Global"
+            if scope_type == "LOCATION":
+                scope_detail = f"Emplacement: {session.get('Location_Name') or '-'}"
+            elif scope_type == "FAMILY":
+                scope_detail = f"Famille: {session.get('Family_Name') or '-'}"
+            elif scope_type == "PRODUCT":
+                scope_detail = f"Produit: {session.get('Product_Name') or '-'}"
+            
             self._set_row(
                 self.sessions_table,
                 row_index,
                 [
                     session.get("Session_ID"),
                     session.get("Session_Name"),
-                    session.get("Status"),
+                    scope_detail,
+                    display_status,
                     session.get("Started_At"),
-                    session.get("Created_By") or session.get("Created_By_Name") or "",
+                    session.get("Created_By_Name") or "",
                 ],
             )
         self._set_buttons_for_session()
@@ -652,6 +692,15 @@ class InventoryCountTab(QWidget):
             return
 
         for row_index, line in enumerate(lines):
+            status_line_tr = {
+                "OK": "OK",
+                "SHORT": "Manquant",
+                "EXCESS": "Excédent",
+                "NOT_COUNTED": "Non compté",
+                "UNKNOWN": "Inconnu"
+            }
+            display_line_status = status_line_tr.get(line.get("Line_Status"), line.get("Line_Status"))
+            
             self._set_row(
                 self.lines_table,
                 row_index,
@@ -664,10 +713,14 @@ class InventoryCountTab(QWidget):
                     format_quantity(line.get("Program_Qty_Snapshot")),
                     format_quantity(line.get("Counted_Qty")),
                     format_quantity(line.get("Difference_Qty")),
-                    line.get("Line_Status"),
+                    display_line_status,
                     line.get("Comment"),
                 ],
             )
+            # Attach Line_ID to the first item for easy retrieval
+            first_item = self.lines_table.item(row_index, 0)
+            if first_item:
+                first_item.setData(Qt.UserRole, line.get("Line_ID"))
 
     def refresh_summary(self):
         for card in self.summary_cards.values():
@@ -772,6 +825,110 @@ class InventoryCountTab(QWidget):
             return False
         return True
 
+    def show_session_context_menu(self, position):
+        row = self.sessions_table.rowAt(position.y())
+        if row < 0:
+            return
+        
+        self.sessions_table.selectRow(row)
+        session_id = self._selected_session_id()
+        if not session_id:
+            return
+
+        status = (self.current_session or {}).get("Status")
+        
+        menu = QMenu(self)
+        
+        if status == "Counting":
+            action_review = menu.addAction("✅ Marquer comme terminée")
+            action_review.triggered.connect(self.mark_review)
+            
+        if status in {"Counting", "Review"}:
+            if self.has_action("act_inventory_apply"):
+                action_apply = menu.addAction("📦 Appliquer l'inventaire")
+                action_apply.triggered.connect(self.apply_session)
+            
+        menu.addSeparator()
+        
+        action_delete = menu.addAction("🗑️ Supprimer la session")
+        action_delete.triggered.connect(lambda: self.delete_session(session_id))
+        
+        menu.exec(self.sessions_table.viewport().mapToGlobal(position))
+
+    def show_line_context_menu(self, position):
+        row = self.lines_table.rowAt(position.y())
+        if row < 0:
+            return
+            
+        self.lines_table.selectRow(row)
+        
+        status = (self.current_session or {}).get("Status")
+        if status not in {"Counting", "Review"}:
+            return
+            
+        first_item = self.lines_table.item(row, 0)
+        if not first_item:
+            return
+            
+        line_id = first_item.data(Qt.UserRole)
+        if not line_id:
+            return
+            
+        menu = QMenu(self)
+        action_edit = menu.addAction("✏️ Corriger la quantité comptée")
+        action_edit.triggered.connect(lambda: self.edit_line_quantity(line_id, row))
+        
+        menu.exec(self.lines_table.viewport().mapToGlobal(position))
+
+    def edit_line_quantity(self, line_id, row):
+        manager = self._manager()
+        if not manager:
+            return
+            
+        current_qty_str = self.lines_table.item(row, 6).text()
+        try:
+            current_qty = float(current_qty_str.replace(" ", ""))
+        except ValueError:
+            current_qty = 0.0
+            
+        new_qty, ok = QInputDialog.getDouble(
+            self,
+            "Corriger la quantité",
+            "Entrez la nouvelle quantité comptée :",
+            current_qty,
+            0,
+            999999,
+            2
+        )
+        
+        if ok:
+            result = manager.set_counted_quantity(line_id, new_qty)
+            if result and isinstance(result, dict) and result.get("success"):
+                self.load_lines()
+                self.refresh_summary()
+            else:
+                QMessageBox.warning(self, "Erreur", "Impossible de mettre à jour la quantité.")
+
+    def delete_session(self, session_id):
+        manager = self._manager()
+        if not manager:
+            return
+            
+        reply = QMessageBox.question(
+            self, 
+            "Confirmer la suppression", 
+            f"Voulez-vous vraiment supprimer la session d'inventaire #{session_id} ?\n\nCette action nettoiera les données de la session de l'interface, mais n'affectera pas les mouvements de stock validés.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            if manager.delete_session(session_id):
+                QMessageBox.information(self, "Succès", "La session a été supprimée avec succès.")
+                self.load_sessions()
+            else:
+                QMessageBox.warning(self, "Erreur", "Impossible de supprimer la session.")
+
     def mark_review(self):
         manager = self._manager()
         if not manager or not self.current_session_id:
@@ -872,26 +1029,3 @@ class InventoryCountTab(QWidget):
         else:
             QMessageBox.warning(self, "Inventaire", result.get("message", "Impossible d'annuler."))
         self.load_sessions()
-
-    def export_session(self):
-        manager = self._manager()
-        if not manager or not self.current_session_id:
-            QMessageBox.warning(self, "Inventaire", "Selectionnez une session.")
-            return
-
-        output_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Exporter inventaire",
-            f"inventaire_{self.current_session_id}.xlsx",
-            "Excel (*.xlsx)",
-        )
-        if not output_path:
-            return
-        if not output_path.lower().endswith(".xlsx"):
-            output_path += ".xlsx"
-
-        result = manager.export_session_to_excel(self.current_session_id, output_path)
-        if result.get("success"):
-            QMessageBox.information(self, "Inventaire", result.get("message", "Export termine."))
-        else:
-            QMessageBox.warning(self, "Inventaire", result.get("message", "Export impossible."))

@@ -15,7 +15,7 @@ import mysql.connector
 import sys
 from dotenv import dotenv_values
 
-from .pdf_config_dialog import PdfConfigDialog
+from .pdf.pdf_config_dialog import PdfConfigDialog
 from .local_settings import LocalSettingsStore
 from .system_logs_tab import SystemLogsTab
 

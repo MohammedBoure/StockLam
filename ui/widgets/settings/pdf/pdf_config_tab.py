@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, QRectF, QRect, QByteArray, QBuffer, QIODe
 from PySide6.QtGui import QColor, QPixmap, QFont, QPainter, QPen, QBrush, QImage
 
 from .pdf_visual_editor import VisualPdfEditorDialog
-from .local_settings import LocalSettingsStore
+from ..local_settings import LocalSettingsStore
 from .pdf_stamp import FOOTER_TITLE_HEIGHT_CM, fit_stamp_size_cm
 
 class PdfConfigWidget(QWidget):

@@ -444,17 +444,23 @@ class InventoryCountManager:
             logging.error(f"Error updating counted quantity: {err}", exc_info=True)
             return False
 
-    def get_sessions(self, status=None, limit=100) -> List[Dict]:
+    def get_sessions(self, status=None, limit=100, year=None) -> List[Dict]:
         try:
             limit = max(1, min(int(limit or 100), 1000))
         except (TypeError, ValueError):
             limit = 100
 
         params = []
-        where = ""
+        where_clauses = []
         if status:
-            where = "WHERE s.Status = %s"
+            where_clauses.append("s.Status = %s")
             params.append(status)
+        
+        if year and str(year) != "Toutes les années":
+            where_clauses.append("YEAR(s.Started_At) = %s")
+            params.append(str(year))
+            
+        where = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         params.append(limit)
 
         try:
@@ -469,9 +475,15 @@ class InventoryCountManager:
                         SUM(CASE WHEN l.Line_Status = 'SHORT' THEN 1 ELSE 0 END) AS Short_Count,
                         SUM(CASE WHEN l.Line_Status = 'EXCESS' THEN 1 ELSE 0 END) AS Excess_Count,
                         SUM(CASE WHEN l.Line_Status = 'NOT_COUNTED' THEN 1 ELSE 0 END) AS Not_Counted_Count,
-                        SUM(CASE WHEN l.Line_Status = 'UNKNOWN' THEN 1 ELSE 0 END) AS Unknown_Count
+                        SUM(CASE WHEN l.Line_Status = 'UNKNOWN' THEN 1 ELSE 0 END) AS Unknown_Count,
+                        loc.Location_Name,
+                        fam.Family_Name,
+                        prod.Product_Name
                     FROM Inventory_Count_Sessions s
                     LEFT JOIN Inventory_Count_Lines l ON s.Session_ID = l.Session_ID
+                    LEFT JOIN Locations loc ON s.Scope_Type = 'LOCATION' AND s.Scope_ID = loc.Location_ID
+                    LEFT JOIN Product_Families fam ON s.Scope_Type = 'FAMILY' AND s.Scope_ID = fam.Family_ID
+                    LEFT JOIN Products_Master prod ON s.Scope_Type = 'PRODUCT' AND s.Scope_ID = prod.Product_ID
                     {where}
                     GROUP BY s.Session_ID
                     ORDER BY s.Started_At DESC
@@ -1022,3 +1034,22 @@ class InventoryCountManager:
         except Exception as err:
             logging.error(f"Error exporting inventory count session: {err}", exc_info=True)
             return {"success": False, "message": str(err)}
+
+    def delete_session(self, session_id: int) -> bool:
+        """
+        Supprime complètement une session d'inventaire et toutes ses données associées (lignes, scans).
+        Cette action n'affecte pas le stock réel.
+        """
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("DELETE FROM Inventory_Count_Scans WHERE Session_ID = %s", (session_id,))
+                cursor.execute("DELETE FROM Inventory_Count_Lines WHERE Session_ID = %s", (session_id,))
+                cursor.execute("DELETE FROM Inventory_Count_Sessions WHERE Session_ID = %s", (session_id,))
+                
+                conn.commit()
+                return True
+        except Exception as err:
+            logging.error(f"Error deleting inventory count session: {err}", exc_info=True)
+            return False
