@@ -92,9 +92,49 @@ class MobileBarcodeBridge(QObject):
             return candidates[0]
         return None
 
+    def _open_inventory_scan_target(self):
+        """Open the stock transfer screen when no barcode field is visible.
+
+        MainWindow loads pages on demand. A phone scan should therefore still
+        have a deterministic destination when the user is currently on the
+        dashboard, automates, or another page without a barcode input.
+        """
+        if self.window is None:
+            return None
+
+        switch_page = getattr(self.window, "switch_page", None)
+        if not callable(switch_page):
+            return None
+
+        try:
+            switch_page(3)  # Inventory page
+            loaded_pages = getattr(self.window, "loaded_pages", {})
+            inventory_page = loaded_pages.get(3)
+            if inventory_page is None:
+                return None
+
+            dispatch_tab = getattr(inventory_page, "dispatch_tab", None)
+            tabs = getattr(inventory_page, "tabs", None)
+            target = getattr(dispatch_tab, "barcode_input", None)
+            if tabs is not None and dispatch_tab is not None:
+                tabs.setCurrentWidget(dispatch_tab)
+                QApplication.processEvents()
+
+            if self._is_usable_line_edit(target):
+                logging.info(
+                    "Mobile barcode target opened automatically: %s",
+                    target.objectName() or target.__class__.__name__,
+                )
+                return target
+        except Exception:
+            logging.exception("Could not open the StockLam barcode target for mobile input.")
+        return None
+
     @Slot(str)
     def _deliver(self, barcode):
         target = self._find_target()
+        if target is None:
+            target = self._open_inventory_scan_target()
         if target is None:
             logging.warning(
                 "Mobile barcode %s received, but no visible StockLam input field is available.",
@@ -119,6 +159,13 @@ class MobileBarcodeBridge(QObject):
             return False
 
         self._delivery_result = True
+        logging.info(
+            "Mobile barcode delivery accepted: field=%s class=%s placeholder=%r value=%s",
+            target.objectName() or "<unnamed>",
+            target.__class__.__name__,
+            target.placeholderText(),
+            target.text(),
+        )
         self._show_status(
             f"Code-barres envoyé dans {target.objectName() or 'le champ actif'} : {barcode}"
         )

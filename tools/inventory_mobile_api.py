@@ -185,7 +185,10 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
                 if not callable(callback):
                     self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Desktop barcode input is not available.")
                     return
-                if callback(barcode) is False:
+                logging.info("Remote barcode received from mobile: %s", barcode)
+                accepted = callback(barcode)
+                logging.info("Remote barcode desktop callback result: accepted=%s barcode=%s", accepted, barcode)
+                if accepted is False:
                     self._send_error(HTTPStatus.CONFLICT, "Desktop rejected the barcode.")
                     return
                 self._send_json(HTTPStatus.OK, {
