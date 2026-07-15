@@ -14,6 +14,11 @@ from ui.formatting import format_money, format_quantity
 
 
 # ---------------------------------------------------------------------------
+# أيقونات مخصصة
+# ---------------------------------------------------------------------------
+from ui.icons import get_reclamation_icon
+
+# ---------------------------------------------------------------------------
 # مساعد بناء خلية والتحقق من الصلاحيات
 # ---------------------------------------------------------------------------
 
@@ -163,8 +168,10 @@ def _fill_row(table, r, b, hide_fin):
         
     bg_color = QColor("#ffe4cd") if reclamation else None
 
+    prod_name = b.get('Product_Name', '---')
+
     prod_item = _make_item(
-        b.get('Product_Name', '---'),
+        prod_name,
         Qt.AlignLeft | Qt.AlignVCenter,
         bg_color=bg_color
     )
@@ -211,6 +218,15 @@ def _fill_row(table, r, b, hide_fin):
     table.setItem(r, 14, _make_item(b.get('PO_ID'), bg_color=bg_color))
     table.setItem(r, 15, _make_item(b.get('Location_Name'), bg_color=bg_color))
     table.setItem(r, 16, _make_item(reclamation, bg_color=bg_color))
+    
+    # تعيين الهيدر العمودي (رقم الصف أو أيقونة شكوى)
+    v_header_item = QTableWidgetItem()
+    if reclamation:
+        v_header_item.setIcon(get_reclamation_icon())
+        v_header_item.setText("")
+    else:
+        v_header_item.setText(str(r+1))
+    table.setVerticalHeaderItem(r, v_header_item)
 
 
 # ---------------------------------------------------------------------------

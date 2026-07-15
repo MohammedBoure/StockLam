@@ -46,9 +46,9 @@ class ProcurementTab(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #dcdcdc; background: white; }
-            QTabBar::tab { padding: 10px 20px; font-weight: bold; color: #555; }
-            QTabBar::tab:selected { color: #1abc9c; border-bottom: 2px solid #1abc9c; background: #fff; }
+            QTabWidget::pane { border: none; background: transparent; }
+            QTabBar::tab { padding: 10px 20px; font-weight: bold; color: #555; border: none; }
+            QTabBar::tab:selected { color: #1abc9c; border-bottom: 2px solid #1abc9c; background: transparent; }
         """)
         
         # تهيئة الواجهات فقط دون إضافتها
@@ -126,7 +126,7 @@ class PurchaseOrdersTab(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         
         toolbar_frame = QFrame()
-        toolbar_frame.setStyleSheet("QFrame { background-color: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; }")
+        toolbar_frame.setStyleSheet("QFrame { background-color: #f8f9fa; border: none; border-radius: 6px; }")
         controls = QHBoxLayout(toolbar_frame)
         
         today = QDate.currentDate()
@@ -160,7 +160,7 @@ class PurchaseOrdersTab(QWidget):
         btn_mark_sent = QPushButton("🚚 Soumettez la demande")
         btn_mark_sent.setStyleSheet(self.sent_btn_style)
         btn_mark_sent.clicked.connect(self.confirm_order_sent)
-        
+
         btn_pdf = QPushButton("📄 Bon de Commande (PDF)")
         btn_pdf.clicked.connect(self.export_po_pdf)
         btn_pdf.setStyleSheet(self.btn_style)
@@ -228,20 +228,9 @@ class PurchaseOrdersTab(QWidget):
             suppliers = self.manager.suppliers.get_all_suppliers() 
             products = self.manager.products.get_all_products()
             dialog = PurchaseOrderDialog(suppliers, products, self)
-            if dialog.exec():
-                data = dialog.get_data()
-                if data:
-                    po_id = self.manager.po.create_purchase_order(
-                        supplier_id=data['Supplier_ID'],
-                        order_date=data['Order_Date'],
-                        expected_delivery_date=data['Expected_Delivery_Date'],
-                        notes=data['Notes']
-                    )
-                    if po_id:
-                        data['PO_ID'] = po_id
-                        self.manager.po.update_full_order(po_id, data)
-                        self.refresh_orders()
-                        self.data_changed.emit()
+            dialog.exec()
+            self.refresh_orders()
+            self.data_changed.emit()
         except Exception as e:
             logging.error(f"Error: {e}")
 

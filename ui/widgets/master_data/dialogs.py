@@ -169,11 +169,16 @@ class ProductDialog(BaseDialog):
         self.temp_req_combo.addItems(["Sec", "Frigo", "Congélateur"])
         
         self.auto_combo = QComboBox()
+        
+        # --- إضافة Checkbox لـ Show_In_Alerts ---
+        self.show_alerts_cb = QCheckBox("Afficher dans les alertes")
+        self.show_alerts_cb.setToolTip("Cochez pour afficher les alertes de péremption et de rupture pour ce produit.")
 
         storage_layout.addRow("Stock Minimum :", self.min_stock_spin)
         storage_layout.addRow("Alerte Expiration (Jours) :", self.alert_days_spin)
         storage_layout.addRow("Conditions Température :", self.temp_req_combo)
         storage_layout.addRow("Automate Préféré :", self.auto_combo)
+        storage_layout.addRow("Alertes :", self.show_alerts_cb)
 
         # إضافة المجموعات للشبكة الرئيسية
         main_grid.addWidget(basic_group, 0, 0)
@@ -288,6 +293,8 @@ class ProductDialog(BaseDialog):
         self.min_stock_spin.setValue(int(d.get('Minimum_Stock_Level', 5)))
         self.alert_days_spin.setValue(int(d.get('Alert_Before_Expiry_Days', 30)))
         
+        self.show_alerts_cb.setChecked(bool(d.get('Show_In_Alerts', False)))
+        
         # --- تعديل: اختيار النص المطابق لدرجة الحرارة ---
         temp_val = str(d.get('Storage_Temp_Req', 'Sec'))
         idx = self.temp_req_combo.findText(temp_val, Qt.MatchContains)
@@ -308,6 +315,7 @@ class ProductDialog(BaseDialog):
             "Family_ID": self.family_combo.currentData(),
             "Manuf_ID": self.manuf_combo.currentData(),
             "Is_Billable": self.is_billable_cb.isChecked(),  # الحقل الجديد
+            "Show_In_Alerts": self.show_alerts_cb.isChecked(),
             
             "Ordering_Unit": self.order_unit_combo.currentText().strip(),
             "Stock_Unit": self.stock_unit_combo.currentText().strip(),

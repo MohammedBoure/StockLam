@@ -130,23 +130,26 @@ class StatisticsManager:
                 cursor = conn.cursor(dictionary=True)
                 today = datetime.now().date()
                 
-                # 1. تنبيهات انتهاء الصلاحية (Péremption)
+                # 1. تنبيهات انتهاء الصلاحية (Péremption) - مجمعة حسب المنتوج
                 query_expiry = """
                     SELECT 
                         p.Product_Name, 
-                        b.Lot_Number, 
-                        b.Expiry_Date, 
-                        b.Quantity_Current, 
-                        p.Alert_Before_Expiry_Days,
-                        COALESCE(pf.Family_Name, 'Autre') as Family_Name, -- جلب العائلة
-                        COALESCE(m.Manuf_Name, 'Autre') as Manuf_Name     -- جلب الماركة
+                        GROUP_CONCAT(DISTINCT b.Lot_Number SEPARATOR ', ') as Lot_Number,
+                        MIN(b.Expiry_Date) as Expiry_Date, 
+                        SUM(b.Quantity_Current) as Total_Qty,
+                        MIN(p.Alert_Before_Expiry_Days) as Alert_Before_Expiry_Days,
+                        COALESCE(pf.Family_Name, 'Autre') as Family_Name,
+                        COALESCE(m.Manuf_Name, 'Autre') as Manuf_Name
                     FROM Inventory_Batches b
                     JOIN Products_Master p ON b.Product_ID = p.Product_ID
                     LEFT JOIN Product_Families pf ON p.Family_ID = pf.Family_ID
                     LEFT JOIN Manufacturers m ON p.Manuf_ID = m.Manuf_ID
-                    WHERE b.Quantity_Current > 0 AND b.Expiry_Date IS NOT NULL AND p.Deleted_At IS NULL
-                    -- المعادلة الديناميكية: الأيام المتبقية <= (الكمية * أيام الإنذار)
-                    AND DATEDIFF(b.Expiry_Date, CURDATE()) <= (b.Quantity_Current * COALESCE(p.Alert_Before_Expiry_Days, 2))
+                    WHERE b.Quantity_Current > 0 AND b.Expiry_Date IS NOT NULL AND p.Deleted_At IS NULL AND p.Show_In_Alerts = TRUE
+                    GROUP BY 
+                        p.Product_Name, 
+                        pf.Family_Name, 
+                        m.Manuf_Name
+                    HAVING DATEDIFF(MIN(b.Expiry_Date), CURDATE()) <= (SUM(b.Quantity_Current) * COALESCE(MIN(p.Alert_Before_Expiry_Days), 2))
                 """
                 cursor.execute(query_expiry)
                 for item in cursor.fetchall():
@@ -161,33 +164,38 @@ class StatisticsManager:
                         alert_type = "Péremption Anticipée"
                         crit = "Medium"
                     
-                    dynamic_threshold = item['Quantity_Current'] * fixed_threshold
+                    dynamic_threshold = item['Total_Qty'] * fixed_threshold
                     
                     alerts.append({
                         "Product": item['Product_Name'],
                         "Type": alert_type,
                         "RawValue": days_diff,
-                        "Details": f"Lot: {item['Lot_Number']} | Seuil: {dynamic_threshold}j (Stock: {item['Quantity_Current']})",
+                        "Details": f"Lots: {item['Lot_Number']} | Stock Total: {item['Total_Qty']} | Seuil: {dynamic_threshold}j",
                         "Family": item['Family_Name'],
                         "Brand": item['Manuf_Name'],
-                        "Criticality": crit
+                        "Criticality": crit,
+                        "TotalQty": item['Total_Qty'],
+                        "BatchQty": item['Total_Qty']
                     })
 
                 # 2. تنبيهات نفاد المخزون (Rupture)
                 query_stock = """
                     SELECT 
                         p.Product_Name, 
-                        p.Minimum_Stock_Level, 
-                        SUM(b.Quantity_Current) as Total,
+                        MIN(p.Minimum_Stock_Level) as Minimum_Stock_Level, 
+                        COALESCE(SUM(b.Quantity_Current), 0) as Total,
                         COALESCE(pf.Family_Name, 'Autre') as Family_Name,
                         COALESCE(m.Manuf_Name, 'Autre') as Manuf_Name
                     FROM Products_Master p
                     LEFT JOIN Inventory_Batches b ON p.Product_ID = b.Product_ID AND b.Status='Available'
                     LEFT JOIN Product_Families pf ON p.Family_ID = pf.Family_ID
                     LEFT JOIN Manufacturers m ON p.Manuf_ID = m.Manuf_ID
-                    WHERE p.Deleted_At IS NULL
-                    GROUP BY p.Product_ID, p.Product_Name, p.Minimum_Stock_Level, pf.Family_Name, m.Manuf_Name
-                    HAVING Total <= p.Minimum_Stock_Level
+                    WHERE p.Deleted_At IS NULL AND p.Show_In_Alerts = TRUE
+                    GROUP BY 
+                        p.Product_Name, 
+                        pf.Family_Name, 
+                        m.Manuf_Name
+                    HAVING COALESCE(SUM(b.Quantity_Current), 0) <= MIN(p.Minimum_Stock_Level)
                 """
                 cursor.execute(query_stock)
                 for item in cursor.fetchall():
@@ -195,11 +203,12 @@ class StatisticsManager:
                     alerts.append({
                         "Product": item['Product_Name'],
                         "Type": "Rupture de Stock",
-                        "RawValue": curr,
-                        "Details": f"Stock actuel: {curr} (Min: {item['Minimum_Stock_Level']})",
+                        "RawValue": float(item['Total']),
+                        "Details": f"Stock actuel: {item['Total']} (Min: {item['Minimum_Stock_Level']})",
                         "Family": item['Family_Name'],
                         "Brand": item['Manuf_Name'],
-                        "Criticality": "High" if curr == 0 else "Medium"
+                        "Criticality": "High" if float(item['Total']) == 0 else "Medium",
+                        "TotalQty": item['Total']
                     })
             
             return alerts

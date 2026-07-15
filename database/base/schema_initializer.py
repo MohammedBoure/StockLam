@@ -235,6 +235,7 @@ SCHEMA_QUERIES = [
         Preferred_Automate_ID INT UNSIGNED NULL,
         Storage_Temp_Req VARCHAR(50) NULL,
         Is_Billable BOOLEAN DEFAULT FALSE,
+        Show_In_Alerts BOOLEAN DEFAULT FALSE,
         Deleted_At DATETIME NULL,
         FOREIGN KEY (Family_ID) REFERENCES Product_Families(Family_ID) ON UPDATE CASCADE,
         FOREIGN KEY (Manuf_ID) REFERENCES Manufacturers(Manuf_ID) ON UPDATE CASCADE,

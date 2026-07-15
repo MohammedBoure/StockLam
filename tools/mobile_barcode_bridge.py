@@ -149,6 +149,7 @@ class MobileBarcodeBridge(QObject):
         try:
             target.setFocus(Qt.FocusReason.OtherFocusReason)
             target.setText(barcode)
+            print(f"🎯 BARCODE TYPED IN TARGET: {target.objectName() or target.__class__.__name__}")
             target.returnPressed.emit()
         except Exception:
             self._delivery_result = False

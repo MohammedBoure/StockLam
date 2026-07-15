@@ -520,13 +520,14 @@ class MainWindow(QMainWindow):
         elif page_id == 2:
             widget = ProcurementTab(self.data_manager)
             if self.has_permission("tab_proc_po"):
-                widget.tabs.addTab(widget.po_tab, "📦 Bons de Commandes")
+                widget.tabs.addTab(widget.po_tab, "🛒 Bons de Commandes")
             if self.has_permission("tab_proc_reception"):
                 widget.tabs.addTab(widget.history_tab, "📜 Bons de Réceptions")
             if self.has_permission("tab_proc_credit"):
                 widget.tabs.addTab(widget.credit_tab, "↩️ Avoirs / Retours")
             if self.has_permission("tab_proc_reclamation"):
-                widget.tabs.addTab(widget.reclamation_tab, "⚠️ Réclamations")
+                from ui.icons import get_reclamation_icon
+                widget.tabs.addTab(widget.reclamation_tab, get_reclamation_icon(), " Réclamations")
                 
         elif page_id == 3:
             widget = InventoryTab(self.data_manager)

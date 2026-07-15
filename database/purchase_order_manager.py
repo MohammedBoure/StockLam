@@ -114,7 +114,7 @@ class PurchaseOrderManager:
                     item_data.get('Item_Note', '')
                 ))
                 conn.commit()
-                self._recalculate_po_totals(None, po_id) # تحديث الإجماليات (ولو أنها 0 حالياً)
+                self._recalculate_po_totals(conn, po_id) # تحديث الإجماليات
                 return True
         except Exception as e:
             logging.error(f"Error adding PO line: {e}")
@@ -138,7 +138,11 @@ class PurchaseOrderManager:
                     detail_id
                 ))
                 conn.commit()
-                # نحتاج لمعرفة po_id لتحديث المجموع، يمكن جلبه أو تمريره
+                # نحتاج لمعرفة po_id لتحديث المجموع
+                cursor.execute("SELECT PO_ID FROM PO_Details WHERE ID=%s", (detail_id,))
+                res = cursor.fetchone()
+                if res:
+                    self._recalculate_po_totals(conn, res[0])
                 return True
         except Exception as e:
             logging.error(f"Error updating PO line: {e}")
@@ -149,8 +153,15 @@ class PurchaseOrderManager:
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor()
+                cursor.execute("SELECT PO_ID FROM PO_Details WHERE ID = %s", (detail_id,))
+                res = cursor.fetchone()
+                po_id = res[0] if res else None
+
                 cursor.execute("DELETE FROM PO_Details WHERE ID = %s", (detail_id,))
                 conn.commit()
+                
+                if po_id:
+                    self._recalculate_po_totals(conn, po_id)
                 return True
         except Exception as e:
             logging.error(f"Error deleting PO line: {e}")

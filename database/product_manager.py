@@ -34,8 +34,8 @@ class ProductManager:
                      Usage_Unit, Usage_Qty_Per_Stock_Unit, 
                      Minimum_Stock_Level, Alert_Before_Expiry_Days, 
                      Manuf_ID, Preferred_Automate_ID, Storage_Temp_Req,
-                     Open_Vial_Stability_Days, Is_Billable)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     Open_Vial_Stability_Days, Is_Billable, Show_In_Alerts)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 
                 if 'Product_Name' not in product_data or 'Family_ID' not in product_data or 'Manuf_ID' not in product_data:
@@ -59,7 +59,8 @@ class ProductManager:
                     product_data.get('Preferred_Automate_ID'),
                     product_data.get('Storage_Temp_Req'),
                     product_data.get('Open_Vial_Stability_Days', 0),
-                    product_data.get('Is_Billable', False) # التعامل مع العمود الجديد
+                    product_data.get('Is_Billable', False),
+                    product_data.get('Show_In_Alerts', False)
                 )
                 cursor.execute(query, params)
                 logging.info(f"Produit '{product_data['Product_Name']}' ajouté avec succès.")
@@ -129,7 +130,8 @@ class ProductManager:
                     'Preferred_Automate_ID': 'Preferred_Automate_ID',
                     'Storage_Temp_Req': 'Storage_Temp_Req',
                     'Open_Vial_Stability_Days': 'Open_Vial_Stability_Days',
-                    'Is_Billable': 'Is_Billable' # التعامل مع العمود الجديد
+                    'Is_Billable': 'Is_Billable',
+                    'Show_In_Alerts': 'Show_In_Alerts'
                 }
 
                 for key, col in mapping.items():

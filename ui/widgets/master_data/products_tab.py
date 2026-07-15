@@ -50,11 +50,12 @@ class ProductsTab(QWidget):
             "Nom du Produit",      # 1
             "Famille",             # 2
             "Marque",              # 3
-            "Unité Stock",         # 4  ← أصبحت الآن في العمود 4
-            "Unité Commande",      # 5  ← أصبحت الآن في العمود 5
+            "Unité Stock",         # 4
+            "Unité Commande",      # 5
             "Seuil Min",           # 6
             "Température",         # 7
-            "Automate Préféré"     # 8
+            "Automate Préféré",    # 8
+            "Alertes (🔔)"        # 9
         ]
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
@@ -153,6 +154,11 @@ class ProductsTab(QWidget):
                 preferred_id = product.get('Preferred_Automate_ID')
                 automate_name = all_automates.get(preferred_id, 'Aucun') if preferred_id else 'Aucun'
                 self.table.setItem(row_idx, 8, self._create_centered_item(automate_name))
+                
+                # 9. Alertes
+                show_alerts = product.get('Show_In_Alerts', False)
+                alert_text = "🔔 Oui" if show_alerts else "🔕 Non"
+                self.table.setItem(row_idx, 9, self._create_centered_item(alert_text))
 
             self.table.setSortingEnabled(True)
             logging.info(f"{len(products)} produits chargés dans le tableau.")

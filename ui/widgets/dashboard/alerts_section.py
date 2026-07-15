@@ -2,7 +2,7 @@ import logging
 from PySide6.QtWidgets import (QFrame, QVBoxLayout, QTableWidget, QTableWidgetItem, 
                                QHeaderView, QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                                QButtonGroup, QComboBox, QDialog, QTextEdit, QDialogButtonBox)
-from PySide6.QtGui import QColor, QFont, QBrush, QIcon
+from PySide6.QtGui import QColor, QFont, QBrush, QIcon, QCursor
 from PySide6.QtCore import Qt
 
 # =====================================================================
@@ -45,7 +45,12 @@ class AlertDetailDialog(QDialog):
         info_layout.addWidget(lbl_title)
         
         info_layout.addWidget(QLabel(f"<b>Famille :</b> {alert_data.get('Family')} | <b>Marque :</b> {alert_data.get('Brand')}"))
-        info_layout.addWidget(QLabel(f"<b>Type d'Alerte :</b> {alert_data.get('Type')}"))
+        
+        type_lbl = QLabel(f"<b>Type d'Alerte :</b> {alert_data.get('Type')}")
+        crit_color = "#c0392b" if alert_data.get('Criticality') == 'High' else "#d35400"
+        type_lbl.setStyleSheet(f"color: {crit_color}; font-size: 14px;")
+        info_layout.addWidget(type_lbl)
+        
         layout.addLayout(info_layout)
 
         # --- قسم الشرح الرياضي ---
@@ -59,9 +64,9 @@ class AlertDetailDialog(QDialog):
         # --- زر الإغلاق ---
         btn_box = QDialogButtonBox(QDialogButtonBox.Close)
         btn_box.rejected.connect(self.reject)
-        # تخصيص نص زر الإغلاق
         close_btn = btn_box.button(QDialogButtonBox.Close)
         close_btn.setText("Fermer")
+        close_btn.setCursor(QCursor(Qt.PointingHandCursor))
         layout.addWidget(btn_box)
 
 
@@ -140,8 +145,8 @@ class AlertsSection(QFrame):
 
         # --- الجدول ---
         self.table = QTableWidget()
-        self.table.setColumnCount(5) 
-        self.table.setHorizontalHeaderLabels(["PRODUIT", "FAMILLE", "TYPE", "VALEUR", "DÉTAILS & LOGIQUE"])
+        self.table.setColumnCount(4) 
+        self.table.setHorizontalHeaderLabels(["PRODUIT", "FAMILLE", "MARQUE", "QUANTITÉ"])
         self.table.setAlternatingRowColors(False) 
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.verticalHeader().setVisible(False)
@@ -155,7 +160,6 @@ class AlertsSection(QFrame):
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents) 
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents) 
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents) 
-        header.setSectionResizeMode(4, QHeaderView.Stretch)       
         
         layout.addWidget(self.table)
 
@@ -164,17 +168,19 @@ class AlertsSection(QFrame):
     # =====================================================================
     def generate_math_explanation(self, alert_data):
         type_str = alert_data.get('Type', '')
-        raw_val = alert_data.get('RawValue', 0)
         details = alert_data.get('Details', '')
+        total_qty = alert_data.get('TotalQty', 0)
+        days_left = alert_data.get('RawValue', 0)
 
         explanation = f"--- DONNÉES BRUTES ---\n{details}\n\n"
         explanation += "--- CALCUL MATHÉMATIQUE ---\n"
 
         if "Péremption" in type_str:
             explanation += (
-                f"Jours Restants (Valeur actuelle) = {raw_val} jours.\n\n"
+                f"Quantité Totale (Toutes marques/lots) = {total_qty} unités.\n"
+                f"Jours Restants du lot le plus proche = {days_left} jours.\n\n"
                 f"Équation Système :\n"
-                f"Alerte déclenchée si : [Jours Restants] <= ([Quantité en Stock] × [Jours d'alerte par produit])\n\n"
+                f"Alerte déclenchée si : [Jours Restants] <= ([Quantité Totale] × [Jours d'alerte par produit])\n\n"
             )
             if "Anticipée" in type_str:
                 explanation += "Conclusion Dynamique : \nLe système vous alerte tôt car vous avez une quantité importante en stock, nécessitant plus de temps pour être consommée avant la date d'expiration."
@@ -183,9 +189,9 @@ class AlertsSection(QFrame):
                 
         elif "Stock" in type_str:
             explanation += (
-                f"Stock Actuel (Valeur) = {raw_val} unités.\n\n"
+                f"Quantité Totale = {total_qty} unités.\n\n"
                 f"Équation Système :\n"
-                f"Alerte déclenchée si : [Stock Actuel] <= [Niveau de Stock Minimum Configuré]\n\n"
+                f"Alerte déclenchée si : [Quantité Totale] <= [Niveau de Stock Minimum Configuré]\n\n"
                 f"Conclusion : \nLa quantité disponible ne couvre plus le seuil de sécurité."
             )
         return explanation
@@ -202,38 +208,44 @@ class AlertsSection(QFrame):
         
         self.combo_fam.clear()
         self.combo_brand.clear()
+        
         self.combo_fam.addItem("Toutes Familles")
         self.combo_brand.addItem("Toutes Marques")
         
-        fams = sorted(list(set(a.get('Family', '') for a in self.all_data if a.get('Family'))))
-        brands = sorted(list(set(a.get('Brand', '') for a in self.all_data if a.get('Brand'))))
+        fams = sorted(list(set(a.get('Family') for a in self.all_data if a.get('Family'))))
+        brands = set()
+        for a in self.all_data:
+            b_list = a.get('Brand', '').split(',')
+            for b in b_list:
+                b = b.strip()
+                if b: brands.add(b)
+        brands = sorted(list(brands))
         
         self.combo_fam.addItems(fams)
         self.combo_brand.addItems(brands)
         
-        if self.combo_fam.findText(current_fam) >= 0:
-            self.combo_fam.setCurrentText(current_fam)
-        if self.combo_brand.findText(current_brand) >= 0:
-            self.combo_brand.setCurrentText(current_brand)
+        if current_fam in fams: self.combo_fam.setCurrentText(current_fam)
+        if current_brand in brands: self.combo_brand.setCurrentText(current_brand)
         
         self.combo_fam.blockSignals(False)
         self.combo_brand.blockSignals(False)
 
-    def on_filter_clicked(self, id):
-        filters = ["All", "Urgente", "Anticipée", "Stock"]
-        self.active_filter = filters[id]
+    def update_alerts(self, alerts_data):
+        """يتم استدعاؤها من المكون الأب عند جلب البيانات الجديدة"""
+        self.all_data = alerts_data
+        self.update_filters_lists()
         self.refresh_table_view()
 
-    def update_alerts(self, alerts):
-        self.all_data = alerts
-        self.update_filters_lists()
+    def on_filter_clicked(self, btn_id):
+        mapping = {0: "All", 1: "Urgente", 2: "Anticipée", 3: "Stock"}
+        self.active_filter = mapping.get(btn_id, "All")
         self.refresh_table_view()
 
     def refresh_table_view(self):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         
-        txt = self.search_box.text().lower()
+        txt = self.search_box.text().strip().lower()
         fam = self.combo_fam.currentText()
         brand = self.combo_brand.currentText()
         
@@ -242,7 +254,11 @@ class AlertsSection(QFrame):
             if self.active_filter != "All" and self.active_filter not in a['Type']: continue
             if txt and txt not in a['Product'].lower(): continue
             if fam != "Toutes Familles" and a.get('Family') != fam: continue
-            if brand != "Toutes Marques" and a.get('Brand') != brand: continue
+            
+            # Since brand can be a comma separated list now (grouped by product)
+            b_list = [x.strip() for x in a.get('Brand', '').split(',')]
+            if brand != "Toutes Marques" and brand not in b_list: continue
+            
             filtered.append(a)
         
         filtered.sort(key=lambda x: x.get('RawValue', 9999))
@@ -251,24 +267,21 @@ class AlertsSection(QFrame):
             self.table.insertRow(row)
             
             type_str = a['Type']
-            details_str = a['Details']
-            if "Anticipée" in type_str:
-                details_str += " ➔ (Calcul Dynamique)"
+            total_qty = a.get('TotalQty', 0)
             
             p_item = QTableWidgetItem(a['Product'])
             p_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            # حفظ كامل القاموس داخل الخلية الأولى لاستدعائه عند الضغط المزدوج
             p_item.setData(Qt.UserRole, a)
             
             fam_item = QTableWidgetItem(a.get('Family', '-'))
-            t_item = QTableWidgetItem(type_str)
-            t_item.setTextAlignment(Qt.AlignCenter)
+            marq_item = QTableWidgetItem(a.get('Brand', '-'))
+            
+            # Qty Column
             v_item = QTableWidgetItem()
-            v_item.setData(Qt.EditRole, a['RawValue'])
+            v_item.setData(Qt.EditRole, float(total_qty))
             v_item.setTextAlignment(Qt.AlignCenter)
-            d_item = QTableWidgetItem(details_str)
-
-            # توليد الشرح الرياضي ليُعرض عند مرور الماوس (ToolTip)
+            v_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            
             math_explanation = self.generate_math_explanation(a)
             
             text_color = QColor("#2c3e50")
@@ -284,17 +297,15 @@ class AlertsSection(QFrame):
                 text_color = QColor("#c2185b")
                 bg_color = QColor("#fce4ec")
 
-            # تطبيق الألوان والتلميحات
-            for item in [p_item, fam_item, t_item, v_item, d_item]:
+            for item in [p_item, fam_item, marq_item, v_item]:
                 item.setForeground(QBrush(text_color))
                 item.setBackground(QBrush(bg_color))
                 item.setToolTip(f"<b>{a['Product']}</b>\n\n{math_explanation}")
 
             self.table.setItem(row, 0, p_item)
             self.table.setItem(row, 1, fam_item)
-            self.table.setItem(row, 2, t_item)
+            self.table.setItem(row, 2, marq_item)
             self.table.setItem(row, 3, v_item)
-            self.table.setItem(row, 4, d_item)
 
         self.table.setSortingEnabled(True)
 
@@ -302,13 +313,10 @@ class AlertsSection(QFrame):
     # حدث الضغط المزدوج لفتح النافذة
     # =====================================================================
     def on_row_double_clicked(self, row, column):
-        """يتم استدعاؤها عند الضغط المزدوج على أي صف"""
-        # جلب البيانات المخزنة في الخلية الأولى من الصف المضغوط
         product_item = self.table.item(row, 0)
         if product_item:
             alert_data = product_item.data(Qt.UserRole)
             if alert_data:
-                # توليد الشرح وفتح النافذة
                 explanation = self.generate_math_explanation(alert_data)
                 dialog = AlertDetailDialog(alert_data, explanation, self)
                 dialog.exec()

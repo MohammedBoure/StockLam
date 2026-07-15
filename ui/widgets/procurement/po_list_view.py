@@ -305,13 +305,9 @@ class PurchaseOrderListView(QWidget):
             full_po = self.manager.po.get_full_order_details(po_id)
             
             dialog = PurchaseOrderDialog(suppliers, products, parent=self, data=full_po, read_only=is_read_only)
-            if not is_read_only and dialog.exec():
-                new_data = dialog.get_data()
-                if new_data:
-                    self.manager.po.update_full_order(po_id, new_data)
-                    self.refresh_data()
-            elif is_read_only:
-                dialog.exec()
+            dialog.exec()
+            if not is_read_only:
+                self.refresh_data()
         except Exception as e:
             logging.error(f"Error editing PO: {e}")
 

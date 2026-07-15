@@ -4,9 +4,86 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, Q
                                QSpinBox, QPushButton, QHeaderView, QTextEdit, QFrame, 
                                QMessageBox, QCompleter, QGridLayout) 
 from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QBrush, QColor
 
 from ui.widgets.master_data.dialogs import BaseDialog
+
+class StockAlertDialog(QDialog):
+    def __init__(self, parent=None, alerts_data=None):
+        super().__init__(parent)
+        self.setWindowTitle("Alertes de Stock")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
+        self.resize(500, 700)
+        self.alerts_data = alerts_data or []
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        lbl_info = QLabel("Double-cliquez pour ajouter au formulaire de commande")
+        lbl_info.setStyleSheet("color: #7f8c8d; font-style: italic; font-size: 12px;")
+        lbl_info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(lbl_info)
+        
+        self.alerts_table = QTableWidget()
+        acols = ["Produit", "Marque", "Qté", "Seuil"]
+        self.alerts_table.setColumnCount(len(acols))
+        self.alerts_table.setHorizontalHeaderLabels(acols)
+        
+        aheader = self.alerts_table.horizontalHeader()
+        aheader.setSectionResizeMode(0, QHeaderView.Stretch)      
+        aheader.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        aheader.setSectionResizeMode(2, QHeaderView.ResizeToContents)       
+        aheader.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        
+        self.alerts_table.setAlternatingRowColors(True)
+        self.alerts_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.alerts_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.alerts_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.alerts_table.verticalHeader().setVisible(False)
+        self.alerts_table.setWordWrap(True)
+        
+        self.alerts_table.cellDoubleClicked.connect(self.on_alert_double_clicked)
+        
+        layout.addWidget(self.alerts_table)
+        
+        self.load_stock_alerts()
+        
+        btn_close = QPushButton("Fermer")
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignRight)
+
+    def load_stock_alerts(self):
+        self.alerts_table.setRowCount(len(self.alerts_data))
+        for row_idx, a in enumerate(self.alerts_data):
+            p_item = QTableWidgetItem(a.get('Product', ''))
+            p_item.setData(Qt.UserRole, a) 
+            m_item = QTableWidgetItem(a.get('Brand', '-'))
+            q_item = QTableWidgetItem(str(a.get('RawValue', '0')))
+            q_item.setTextAlignment(Qt.AlignCenter)
+            q_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            q_item.setForeground(QBrush(QColor("#c0392b"))) 
+            
+            min_val = "-"
+            details = a.get('Details', '')
+            if "Min:" in details:
+                min_val = details.split("Min:")[1].replace(")", "").strip()
+            
+            s_item = QTableWidgetItem(min_val)
+            s_item.setTextAlignment(Qt.AlignCenter)
+            
+            self.alerts_table.setItem(row_idx, 0, p_item)
+            self.alerts_table.setItem(row_idx, 1, m_item)
+            self.alerts_table.setItem(row_idx, 2, q_item)
+            self.alerts_table.setItem(row_idx, 3, s_item)
+
+    def on_alert_double_clicked(self, row, column):
+        p_item = self.alerts_table.item(row, 0)
+        if p_item:
+            alert_data = p_item.data(Qt.UserRole)
+            if hasattr(self.parent(), 'handle_alert_selection'):
+                self.parent().handle_alert_selection(alert_data)
+                self.accept()
 
 class PurchaseOrderDialog(BaseDialog):
     def __init__(self, suppliers_list, products_list, parent=None, data=None, read_only=False):
@@ -15,17 +92,21 @@ class PurchaseOrderDialog(BaseDialog):
         self.products = products_list
         self.data = data
         
+        self.po_id = self.data.get('PO_ID') if self.data else None
         self.batches_data = [] 
 
         if self.read_only:
-            title = f"Détails de la Commande #{data.get('PO_ID', '---')} (Lecture seule)"
-        elif data:
-            title = "Modifier la Commande"
+            title = f"Détails de la Commande #{self.po_id or '---'} (Lecture seule)"
+        elif self.po_id:
+            title = f"Modifier la Commande #{self.po_id}"
         else:
             title = "Nouvelle Commande d'Achat"
 
         super().__init__(title, parent)
         
+        # التأكد من ظهور النافذة بحجم الشاشة بالكامل
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint)
+        self.setWindowState(Qt.WindowMaximized)
         self.showMaximized() 
         self.setMinimumSize(1200, 800)
         
@@ -34,7 +115,7 @@ class PurchaseOrderDialog(BaseDialog):
         if self.data:
             self.populate_form()
             # En mode modification, on suppose que l'en-tête est valide, donc on le verrouille
-            self.validate_header()
+            self.validate_header(initial_load=True)
         else:
             # En mode création, on verrouille la partie détails au début
             self.toggle_inputs_state(False)
@@ -46,9 +127,16 @@ class PurchaseOrderDialog(BaseDialog):
 
     def init_ui(self):
         # استخدام التخطيط الرئيسي للنموذج الموجود في BaseDialog
-        main_layout = QVBoxLayout(self.form_widget)
+        h_layout = QHBoxLayout(self.form_widget)
+        h_layout.setSpacing(15)
+        h_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # --- الجانب الأيسر (النموذج الأصلي) ---
+        left_widget = QWidget()
+        main_layout = QVBoxLayout(left_widget)
         main_layout.setSpacing(10)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.addWidget(left_widget) # 100% since no right group anymore
 
         # === 1. Informations Générales (En-tête) ===
         top_section = QGroupBox("Informations Générales")
@@ -147,6 +235,12 @@ class PurchaseOrderDialog(BaseDialog):
         row1.addWidget(self.item_note_input, stretch=2)
 
         # أزرار الإضافة والتحكم
+        self.btn_show_alerts = QPushButton("⚠️ Alertes")
+        self.btn_show_alerts.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold; border-radius: 4px;")
+        self.btn_show_alerts.setMinimumHeight(38)
+        self.btn_show_alerts.setFixedWidth(100)
+        row1.addWidget(self.btn_show_alerts)
+        
         self.add_or_save_btn = QPushButton("➕ Ajouter")
         self.btn_edit_line = QPushButton("✏️ Modifier")
         self.btn_delete_line = QPushButton("🗑️ Supprimer")
@@ -193,23 +287,159 @@ class PurchaseOrderDialog(BaseDialog):
         self.product_search.setCompleter(self.completer)
         self.update_search_data(self.products)
         self.completer.activated.connect(self.on_completer_activated)
+        
+        self.btn_show_alerts.clicked.connect(self.open_alerts_dialog)
         self.add_or_save_btn.clicked.connect(self.handle_add_or_save)
         self.btn_edit_line.clicked.connect(self.edit_selected_line)
         self.btn_delete_line.clicked.connect(self.delete_selected_line)
         self.lines_table.selectionModel().selectionChanged.connect(self.update_action_buttons_state)
         
         self.update_action_buttons_state()
+        
+        # Modifier les boutons du bas: enlever Enregistrer/Annuler, garder seulement Fermer
+        if hasattr(self, 'buttons'):
+            self.buttons.clear()
+            self.btn_close = QPushButton("Fermer")
+            self.btn_close.clicked.connect(self.accept)
+            self.buttons.addButton(self.btn_close, QDialogButtonBox.AcceptRole)
+
+    def open_alerts_dialog(self):
+        try:
+            if hasattr(self.parent(), 'manager') and hasattr(self.parent().manager, 'stats'):
+                all_alerts = self.parent().manager.stats.get_active_alerts()
+                stock_alerts = [a for a in all_alerts if a.get('Type') == "Rupture de Stock"]
+                dialog = StockAlertDialog(self, stock_alerts)
+                dialog.exec()
+        except Exception as e:
+            import logging
+            logging.error(f"Error opening alerts dialog: {e}")
+
+    def handle_alert_selection(self, alert_data):
+        """When an alert is double clicked in the dialog, pre-fill the product search box"""
+        # التأكد من أن الإدخال مسموح به حالياً
+        if not self.add_group.isEnabled():
+            QMessageBox.information(self, "Attention", "Veuillez d'abord valider l'en-tête de la commande.")
+            return
+            
+        product_name = alert_data.get('Product', '')
+        brand_name = alert_data.get('Brand', '---')
+        
+        # صيغة العرض في مربع البحث هي: "Nom du produit (Marque)"
+        display_name = f"{product_name} ({brand_name})"
+        
+        # تعبئة مربع البحث
+        self.product_search.setText(display_name)
+        self.on_completer_activated(display_name)
+        
+        # التركيز على حقل الكمية المطلوبة لتسريع العمل
+        self.qty_spin.setFocus()
+        self.qty_spin.selectAll()
+
+    def load_stock_alerts(self):
+        """Fetches and displays products with low stock"""
+        self.alerts_table.setRowCount(0)
+        try:
+            # الوصول لمدير الإحصائيات عبر الـ parent 
+            if hasattr(self.parent(), 'manager') and hasattr(self.parent().manager, 'stats'):
+                all_alerts = self.parent().manager.stats.get_active_alerts()
+                
+                # تصفية تنبيهات انخفاض المخزون فقط
+                stock_alerts = [a for a in all_alerts if a.get('Type') == "Rupture de Stock"]
+                
+                self.alerts_table.setRowCount(len(stock_alerts))
+                for row_idx, a in enumerate(stock_alerts):
+                    p_item = QTableWidgetItem(a.get('Product', ''))
+                    p_item.setData(Qt.UserRole, a) # حفظ بيانات التنبيه كاملة في العنصر
+                    
+                    m_item = QTableWidgetItem(a.get('Brand', '-'))
+                    q_item = QTableWidgetItem(str(a.get('RawValue', '0')))
+                    q_item.setTextAlignment(Qt.AlignCenter)
+                    q_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
+                    q_item.setForeground(QBrush(QColor("#c0392b"))) # Red color for low stock
+                    
+                    # استخراج الحد الأدنى من سلسلة Details: "Stock actuel: 0.0 (Min: 24)"
+                    min_val = "-"
+                    details = a.get('Details', '')
+                    if "Min:" in details:
+                        min_val = details.split("Min:")[1].replace(")", "").strip()
+                    
+                    s_item = QTableWidgetItem(min_val)
+                    s_item.setTextAlignment(Qt.AlignCenter)
+                    
+                    self.alerts_table.setItem(row_idx, 0, p_item)
+                    self.alerts_table.setItem(row_idx, 1, m_item)
+                    self.alerts_table.setItem(row_idx, 2, q_item)
+                    self.alerts_table.setItem(row_idx, 3, s_item)
+                    
+        except Exception as e:
+            import logging
+            logging.error(f"Error loading stock alerts in PO dialog: {e}")
+
+    def on_alert_double_clicked(self, row, column):
+        """When an alert is double clicked, pre-fill the product search box"""
+        # التأكد من أن الإدخال مسموح به حالياً
+        if not self.add_group.isEnabled():
+            QMessageBox.information(self, "Attention", "Veuillez d'abord valider l'en-tête de la commande.")
+            return
+            
+        p_item = self.alerts_table.item(row, 0)
+        if p_item:
+            alert_data = p_item.data(Qt.UserRole)
+            product_name = alert_data.get('Product', '')
+            brand_name = alert_data.get('Brand', '---')
+            
+            # صيغة العرض في مربع البحث هي: "Nom du produit (Marque)"
+            display_name = f"{product_name} ({brand_name})"
+            
+            # تعبئة مربع البحث
+            self.product_search.setText(display_name)
+            
+            # محاكاة الضغط لإظهار البيانات في الخانات الأخرى
+            self.on_completer_activated(display_name)
+            
+            # التركيز على حقل الكمية المطلوبة لتسريع العمل
+            self.order_qty_spin.setFocus()
+            self.order_qty_spin.selectAll()
 
     def toggle_inputs_state(self, enabled):
         """Active ou désactive la zone de saisie des produits"""
         self.add_group.setEnabled(enabled)
         self.table_group.setEnabled(enabled)
 
-    def validate_header(self):
+    def validate_header(self, initial_load=False):
         """Valide les informations de l'en-tête et déverrouille la saisie des produits"""
         if not self.supplier_combo.currentData():
-            QMessageBox.warning(self, "Attention", "Veuillez sélectionner un fournisseur.")
+            if not initial_load:
+                QMessageBox.warning(self, "Attention", "Veuillez sélectionner un fournisseur.")
             return
+
+        header_data = {
+            'Supplier_ID': self.supplier_combo.currentData(),
+            'Order_Date': self.order_date.date().toString("yyyy-MM-dd"),
+            'Expected_Delivery_Date': self.delivery_date.date().toString("yyyy-MM-dd"),
+            'Notes': self.notes_input.text(),
+        }
+        
+        if hasattr(self.parent(), 'manager') and not initial_load:
+            po_manager = self.parent().manager.po
+            if not self.po_id:
+                try:
+                    user_id = self.parent().manager.users.get_current_user()['User_ID']
+                except:
+                    user_id = 1
+                header_data['Created_By'] = user_id
+                
+                new_id = po_manager.create_po_header(header_data)
+                if not new_id:
+                    QMessageBox.critical(self, "Erreur", "Impossible de créer la commande.")
+                    return
+                self.po_id = new_id
+                self.setWindowTitle(f"Modifier la Commande #{self.po_id}")
+            else:
+                success = po_manager.update_po_header(self.po_id, header_data)
+                if not success:
+                    QMessageBox.critical(self, "Erreur", "Impossible de mettre à jour l'en-tête.")
+                    return
 
         # Verrouiller l'en-tête
         self.supplier_combo.setEnabled(False)
@@ -316,6 +546,16 @@ class PurchaseOrderDialog(BaseDialog):
         self.add_or_save_btn.setText("➕ Ajouter")
         self.editing_row = -1
 
+    def reload_details_from_db(self):
+        if not self.po_id or not hasattr(self.parent(), 'manager'):
+            return
+        
+        full_data = self.parent().manager.po.get_full_order_details(self.po_id)
+        if full_data:
+            self.data = full_data
+            self.lines_table.setRowCount(0)
+            self.populate_form(details_only=True)
+
     def add_line(self, product_data, qty=1, unit='', item_note=""):
         # التحقق من التكرار
         for r in range(self.lines_table.rowCount()):
@@ -323,26 +563,40 @@ class PurchaseOrderDialog(BaseDialog):
                 QMessageBox.information(self, "Information", "Cet article est déjà ajouté.")
                 return
 
+        final_unit_text = "U" 
+        if unit and str(unit).strip():
+            final_unit_text = str(unit).strip()
+        elif product_data:
+            final_unit_text = product_data.get('Ordering_Unit', 'U')
+
+        if hasattr(self.parent(), 'manager') and self.po_id:
+            po_manager = self.parent().manager.po
+            item_data = {
+                'Product_ID': product_data['Product_ID'],
+                'Qty_Ordered': qty,
+                'Ordering_Unit': final_unit_text,
+                'Item_Note': item_note
+            }
+            if not po_manager.add_po_line(self.po_id, item_data):
+                QMessageBox.critical(self, "Erreur", "Erreur lors de l'ajout de l'article.")
+                return
+            self.reload_details_from_db()
+        else:
+            self._add_line_to_ui(product_data, qty, final_unit_text, item_note)
+            
+    def _add_line_to_ui(self, product_data, qty, final_unit_text, item_note, detail_id=None):
         row = self.lines_table.rowCount()
         self.lines_table.insertRow(row)
 
         name_item = QTableWidgetItem(product_data['Product_Name'])
         name_item.setData(Qt.UserRole, product_data['Product_ID'])
+        if detail_id:
+            name_item.setData(Qt.UserRole + 1, detail_id) # Store Detail_ID
+            
         self.lines_table.setItem(row, 0, name_item)
 
         brand_text = product_data.get('Manuf_Name') or "---"
         self.lines_table.setItem(row, 1, QTableWidgetItem(brand_text))
-
-        # --- [FIX CORE] منطق صارم لاختيار الوحدة ---
-        final_unit_text = "U" # قيمة افتراضية للطوارئ
-        
-        # 1. إذا اختار المستخدم وحدة (تم تمريرها للدالة)، نستخدمها فوراً
-        if unit and str(unit).strip():
-            final_unit_text = str(unit).strip()
-        # 2. إذا لم يختار (فارغة)، نستخدم الافتراضي من قاعدة البيانات
-        elif product_data:
-            final_unit_text = product_data.get('Ordering_Unit', 'U')
-        # ---------------------------------------------------
         
         self.lines_table.setItem(row, 2, QTableWidgetItem(final_unit_text))
 
@@ -371,7 +625,17 @@ class PurchaseOrderDialog(BaseDialog):
 
         reply = QMessageBox.question(self, "Confirmation", "Supprimer cet article ?")
         if reply == QMessageBox.Yes:
-            self.lines_table.removeRow(row)
+            product_item = self.lines_table.item(row, 0)
+            detail_id = product_item.data(Qt.UserRole + 1) if product_item else None
+            
+            if hasattr(self.parent(), 'manager') and detail_id:
+                if not self.parent().manager.po.delete_po_line(detail_id):
+                    QMessageBox.critical(self, "Erreur", "Erreur lors de la suppression.")
+                    return
+                self.reload_details_from_db()
+            else:
+                self.lines_table.removeRow(row)
+                
             self.update_action_buttons_state()
             if self.editing_row == row:
                 self.reset_input_fields()
@@ -411,10 +675,24 @@ class PurchaseOrderDialog(BaseDialog):
         self.editing_row = row
 
     def update_line(self, row, qty, unit, note):
-        # التحديث المباشر للجدول يضمن ظهور ما اختاره المستخدم
-        self.lines_table.item(row, 2).setText(str(unit).strip())
-        self.lines_table.item(row, 3).setText(str(qty))
-        self.lines_table.item(row, 4).setText(note)
+        product_item = self.lines_table.item(row, 0)
+        detail_id = product_item.data(Qt.UserRole + 1) if product_item else None
+        
+        if hasattr(self.parent(), 'manager') and detail_id:
+            po_manager = self.parent().manager.po
+            item_data = {
+                'Qty_Ordered': qty,
+                'Ordering_Unit': unit,
+                'Item_Note': note
+            }
+            if not po_manager.update_po_line(detail_id, item_data):
+                QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour.")
+                return
+            self.reload_details_from_db()
+        else:
+            self.lines_table.item(row, 2).setText(str(unit).strip())
+            self.lines_table.item(row, 3).setText(str(qty))
+            self.lines_table.item(row, 4).setText(note)
 
     def update_action_buttons_state(self):
         has_selection = self.lines_table.currentRow() >= 0
@@ -445,88 +723,31 @@ class PurchaseOrderDialog(BaseDialog):
         cancel_btn = self.buttons.button(QDialogButtonBox.Cancel)
         if cancel_btn: cancel_btn.setText("Fermer")
 
-    def populate_form(self):
+    def populate_form(self, details_only=False):
         if not self.data: return
         
-        idx = self.supplier_combo.findData(self.data.get('Supplier_ID'))
-        if idx >= 0: self.supplier_combo.setCurrentIndex(idx)
-        
-        if self.data.get('Order_Date'):
-            self.order_date.setDate(QDate.fromString(str(self.data['Order_Date']), "yyyy-MM-dd"))
-        if self.data.get('Expected_Delivery_Date'):
-            self.delivery_date.setDate(QDate.fromString(str(self.data['Expected_Delivery_Date']), "yyyy-MM-dd"))
-        
-        self.notes_input.setText(self.data.get('Notes', ''))
+        if not details_only:
+            idx = self.supplier_combo.findData(self.data.get('Supplier_ID'))
+            if idx >= 0: self.supplier_combo.setCurrentIndex(idx)
+            
+            if self.data.get('Order_Date'):
+                self.order_date.setDate(QDate.fromString(str(self.data['Order_Date']), "yyyy-MM-dd"))
+            if self.data.get('Expected_Delivery_Date'):
+                self.delivery_date.setDate(QDate.fromString(str(self.data['Expected_Delivery_Date']), "yyyy-MM-dd"))
+            
+            self.notes_input.setText(self.data.get('Notes', ''))
         
         for item in self.data.get('Details', []):
             prod_id = item.get('Product_ID')
             full_prod = next((p for p in self.products if p['Product_ID'] == prod_id), None)
             if full_prod:
-                self.add_line(
+                self._add_line_to_ui(
                     full_prod,
                     item.get('Qty_Ordered', 1),
                     item.get('Ordering_Unit', full_prod.get('Ordering_Unit', 'U')),
-                    item.get('Item_Note', "")
+                    item.get('Item_Note', ""),
+                    item.get('ID')  # Pass detail_id
                 )
 
     def accept(self):
-        data = self.get_data()
-        if data is None:
-            return
         super().accept()
-
-    def get_data(self):
-        if self.read_only: 
-            return None
-
-        # Pas besoin de vérifier le fournisseur ici car c'est déjà fait dans validate_header
-        # Mais on vérifie si l'utilisateur a déverrouillé sans revalider ?
-        # Logiquement, s'il a déverrouillé, la partie "détails" est désactivée,
-        # donc il ne peut pas cliquer sur "Sauvegarder" si le bouton Sauvegarder est en dehors...
-        # Le BaseDialog a ses boutons en bas.
-        
-        # Vérifions si l'en-tête est verrouillé (donc validé)
-        if self.supplier_combo.isEnabled():
-             QMessageBox.warning(self, "Attention", "Veuillez valider les informations de l'en-tête avant de sauvegarder.")
-             return None
-
-        items = []
-        for row in range(self.lines_table.rowCount()):
-            product_item = self.lines_table.item(row, 0)
-            if not product_item: 
-                continue
-
-            qty_text = self.lines_table.item(row, 3).text()
-            try:
-                qty_val = int(qty_text)
-                if qty_val <= 0:
-                    raise ValueError
-            except:
-                QMessageBox.warning(self, "Attention", f"Quantité invalide à la ligne {row+1}.")
-                return None
-
-            unit_text = self.lines_table.item(row, 2).text() or "U"
-            note_text = self.lines_table.item(row, 4).text() or ""
-
-            items.append({
-                "Product_ID": product_item.data(Qt.UserRole),
-                "Qty_Ordered": qty_val,
-                "Ordering_Unit": unit_text,
-                "Item_Note": note_text,
-                "Unit_Price_HT": 0.0,
-                "Discount_Percent": 0.0,
-                "Tax_Rate_Percent": 0.0
-            })
-
-        if not items:
-            QMessageBox.warning(self, "Attention", "Veuillez ajouter au moins un article.")
-            return None
-
-        return {
-            "Supplier_ID": self.supplier_combo.currentData(),
-            "Order_Date": self.order_date.date().toString("yyyy-MM-dd"),
-            "Expected_Delivery_Date": self.delivery_date.date().toString("yyyy-MM-dd"),
-            "Notes": self.notes_input.text(),
-            "Items": items,
-            "PO_ID": self.data.get('PO_ID') if self.data else None
-        }

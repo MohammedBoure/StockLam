@@ -1,4 +1,4 @@
-﻿"""Small LAN API for mobile inventory count scanning.
+"""Small LAN API for mobile inventory count scanning.
 
 Run on the main PC while StockLam uses the same database:
     venv/Scripts/python.exe tools/inventory_mobile_api.py --host 0.0.0.0 --port 8787
@@ -185,6 +185,7 @@ class InventoryMobileApi(BaseHTTPRequestHandler):
                 if not callable(callback):
                     self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Desktop barcode input is not available.")
                     return
+                print(f"\n{'='*50}\n📱 BARCODE RECEIVED FROM MOBILE: {barcode}\n{'='*50}\n")
                 logging.info("Remote barcode received from mobile: %s", barcode)
                 accepted = callback(barcode)
                 logging.info("Remote barcode desktop callback result: accepted=%s barcode=%s", accepted, barcode)

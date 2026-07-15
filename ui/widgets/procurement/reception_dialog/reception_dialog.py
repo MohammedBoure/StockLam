@@ -10,7 +10,7 @@ reception_dialog.py
 import logging
 
 from PySide6.QtWidgets import QMessageBox
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QGuiApplication
 
 from ui.widgets.master_data.dialogs import BaseDialog
@@ -78,11 +78,10 @@ class ReceptionDialog(ReceptionDialogUIMixin, ReceptionDialogLogicMixin, BaseDia
     #  حجم النافذة                                                         #
     # ------------------------------------------------------------------ #
     def adjust_screen_size(self):
-        screen_geo   = QGuiApplication.primaryScreen().availableGeometry()
-        target_width = int(screen_geo.width()  * 0.90)
-        target_height= int(screen_geo.height() * 0.90)
-        self.resize(target_width, target_height)
-        self.move(screen_geo.center() - self.rect().center())
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
+        screen_geo = QGuiApplication.primaryScreen().availableGeometry()
+        self.resize(screen_geo.width(), screen_geo.height())
+        self.move(screen_geo.topLeft())
 
     # ------------------------------------------------------------------ #
     #  إغلاق النافذة                                                       #

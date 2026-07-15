@@ -446,7 +446,7 @@ class DispatchTab(QWidget):
 
     def process_scan_buffer(self):
         if self.completer.popup().isVisible():
-            return
+            self.completer.popup().hide()
 
         raw_text = self.barcode_input.text().strip().lower()
         if not raw_text: return
