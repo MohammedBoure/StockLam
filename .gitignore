@@ -14,6 +14,7 @@ downloads/
 venv/
 __pycache__/
 documents/
+local_settings/
 
 build/
 dist
@@ -21,7 +22,6 @@ dist-ssr
 *.spec
 *.local
 
-# Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -31,3 +31,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+*.zip
+*.png
