@@ -13,7 +13,7 @@ except ImportError:
     plt = None
 
 from .overview_tab import OverviewTab 
-from .alerts_section import AlertsSection
+from .alerts_section import AlertsSection, is_stock_alert
 from .consumption_reports import ConsumptionReportSection
 from .statistics_tabs import StockValuationTab, WasteAnalysisTab
 from .family_reception_tab import FamilyReceptionTab
@@ -139,6 +139,7 @@ class DashboardTab(QWidget):
             self.page_waste.refresh(self.data_manager.stats, d1_str, d2_str)
             
             alerts = self.data_manager.stats.get_active_alerts()
+            alerts = [alert for alert in alerts if is_stock_alert(alert)]
             self.page_alerts.update_alerts(alerts)
 
             idx_alerts = self.tabs.indexOf(self.page_alerts)
