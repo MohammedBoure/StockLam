@@ -547,13 +547,15 @@ class InventoryCountTab(QWidget):
         return False
 
     def apply_permissions(self):
-        permission_map = {
-            self.btn_new: "act_inventory_create",
-            self.btn_scan: "act_inventory_scan",
-            self.btn_export: "act_inventory_export",
-        }
-        for button, permission in permission_map.items():
-            button.setVisible(self.has_action(permission))
+        permission_map = (
+            ("btn_new", "act_inventory_create"),
+            ("btn_scan", "act_inventory_scan"),
+            ("btn_export", "act_inventory_export"),
+        )
+        for button_name, permission in permission_map:
+            button = getattr(self, button_name, None)
+            if button is not None:
+                button.setVisible(self.has_action(permission))
 
     def _set_row(self, table, row_index, values):
         table.insertRow(row_index)
