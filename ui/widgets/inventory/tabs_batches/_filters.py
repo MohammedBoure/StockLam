@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import datetime, date
 
-from ui.formatting import format_money
+from ui.formatting import format_money, format_quantity, quantity_to_int
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +188,16 @@ def _parse_date(val):
 
 def _update_total_label(self):
     """تحديث ملصق القيمة الإجمالية أو إخفاؤه حسب دور المستخدم"""
+    total_quantity = 0
+    for b in self.filtered_data:
+        try:
+            total_quantity += max(quantity_to_int(b.get('Quantity_Current', 0)), 0)
+        except Exception:
+            pass
+
+    self.lbl_total_quantity.setText(
+        f"Stock disponible affich\u00e9 : {format_quantity(total_quantity)}"
+    )
     try:
         role = self.window().current_user.get('Role', 'Technician')
     except Exception:

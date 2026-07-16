@@ -267,6 +267,16 @@ def _build_bottom_bar(self):
     """)
     bottom_bar.addWidget(self.lbl_total_value)
 
+    self.lbl_total_quantity = QLabel("Stock disponible affich\u00e9 : 0")
+    self.lbl_total_quantity.setFont(QFont("Arial", 11, QFont.Bold))
+    self.lbl_total_quantity.setStyleSheet("""
+        QLabel {
+            color: #1e8449; border: 1px solid #82e0aa; border-radius: 4px;
+            padding: 6px; background-color: #eafaf1;
+        }
+    """)
+    bottom_bar.addWidget(self.lbl_total_quantity)
+
     self.lbl_count_info = QLabel("0 éléments")
     self.lbl_count_info.setStyleSheet(
         "color: #7f8c8d; font-weight: bold; margin-left: 10px;"
