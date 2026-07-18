@@ -226,7 +226,7 @@ def start_inventory_mobile_api(data_manager, window):
         )
         _mobile_api_thread.start()
         logger.info("Inventory mobile API started on http://%s:%s", host, port)
-    except OSError as error:
+    except Exception as error:
         _mobile_api_server = None
         _mobile_api_thread = None
         logger.warning("Inventory mobile API could not start on %s:%s: %s", host, port, error)
@@ -247,7 +247,7 @@ def start_inventory_mobile_api(data_manager, window):
         )
         _mobile_discovery_thread.start()
         logger.info("Inventory mobile discovery started on UDP %s:%s", host, discovery_port)
-    except OSError as error:
+    except Exception as error:
         _mobile_discovery_server = None
         _mobile_discovery_thread = None
         logger.warning(

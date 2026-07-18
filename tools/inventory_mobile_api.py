@@ -75,6 +75,9 @@ def _clean_line(line: dict | None) -> dict | None:
 class InventoryMobileApi(BaseHTTPRequestHandler):
     server_version = "StockLamInventoryMobile/1.0"
 
+    def log_message(self, format, *args):
+        logging.info("HTTP %s - %s", self.client_address[0], format % args)
+
     def _manager(self):
         return self.server.data_manager.inventory_counts  # type: ignore[attr-defined]
 
