@@ -51,7 +51,12 @@ from tools.mobile_barcode_bridge import MobileBarcodeBridge
 os.environ["QT_LOGGING_RULES"] = "*.warning=false"
 
 # مسار ملف السجل
-log_file_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath("."), "app.log")
+if getattr(sys, "frozen", False):
+    _runtime_data_dir = os.path.join(os.getenv("LOCALAPPDATA") or os.path.expanduser("~"), "StockLam")
+    os.makedirs(_runtime_data_dir, exist_ok=True)
+else:
+    _runtime_data_dir = os.path.abspath(".")
+log_file_path = os.path.join(_runtime_data_dir, "app.log")
 
 # تدوير السجلات: 5 ميجابايت كحد أقصى، مع الاحتفاظ بـ 3 نسخ قديمة
 file_handler = RotatingFileHandler(
@@ -215,7 +220,7 @@ def start_inventory_mobile_api(data_manager, window):
             remote_scan_callback=_mobile_barcode_bridge.submit,
         )
         _mobile_api_thread = threading.Thread(
-            target=_mobile_api_server.serve_forever,
+            target=_serve_mobile_api,
             name="InventoryMobileAPI",
             daemon=True,
         )
@@ -251,6 +256,13 @@ def start_inventory_mobile_api(data_manager, window):
             discovery_port,
             error,
         )
+
+
+def _serve_mobile_api():
+    try:
+        _mobile_api_server.serve_forever()
+    except Exception:
+        logger.exception("Inventory mobile API worker stopped unexpectedly.")
 
 
 def stop_inventory_mobile_api():
