@@ -218,15 +218,23 @@ class StockMovementLogManager:
             logging.error(f"Error fetching waste summary: {e}")
             raise
 
-    def get_movements_log(self, limit=1000, product_id=None, movement_type=None) -> List[Dict]:
+    def get_movements_log(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        product_id: Optional[int] = None,
+        movement_type: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        search_text: Optional[str] = None
+    ) -> List[Dict]:
         """
-        جلب سجل الحركات مع حساب الرصيد التراكمي الخاص بكل (كود بار/لوت) بشكل مستقل.
+        جلب سجل الحركات مع حساب الرصيد التراكمي الخاص بكل (كود بار/لوت) بشكل مستقل ودعم الترقيم والفلترة السيرفرية.
         """
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
 
-                # التغيير الجوهري هنا في الاستعلام الفرعي (Historical_Stock)
                 query = """
                     SELECT
                         m.Movement_ID,
@@ -245,11 +253,10 @@ class StockMovementLogManager:
                         b.Lot_Number,
                         b.Internal_Barcode AS Batch_Barcode,
 
-                        -- (( الحساب الدقيق: التجميع حسب Batch_ID لضمان فصل الباركودات المختلفة ))
                         (
                             SELECT COALESCE(SUM(sub.Qty_Change), 0)
                             FROM Stock_Movement_Log sub
-                            WHERE sub.Batch_ID = m.Batch_ID  -- <--- التغيير هنا: الربط بالباتش وليس المنتج العام
+                            WHERE sub.Batch_ID = m.Batch_ID
                               AND (
                                   sub.Transaction_Date < m.Transaction_Date
                                   OR (sub.Transaction_Date = m.Transaction_Date AND sub.Movement_ID <= m.Movement_ID)
@@ -273,15 +280,80 @@ class StockMovementLogManager:
                     query += " AND m.Product_ID = %s"; params.append(product_id)
                 if movement_type:
                     query += " AND m.Movement_Type = %s"; params.append(movement_type)
+                if start_date:
+                    query += " AND DATE(m.Transaction_Date) >= %s"; params.append(start_date)
+                if end_date:
+                    query += " AND DATE(m.Transaction_Date) <= %s"; params.append(end_date)
+                if search_text:
+                    term = f"%{search_text.lower()}%"
+                    query += """ AND (
+                        LOWER(p.Product_Name) LIKE %s OR
+                        LOWER(b.Lot_Number) LIKE %s OR
+                        LOWER(b.Internal_Barcode) LIKE %s OR
+                        LOWER(p.Barcode) LIKE %s OR
+                        LOWER(COALESCE(u.Full_Name, '')) LIKE %s OR
+                        LOWER(COALESCE(m.Notes, '')) LIKE %s
+                    )"""
+                    params.extend([term, term, term, term, term, term])
 
-                query += " ORDER BY m.Transaction_Date DESC LIMIT %s"
-                params.append(limit)
+                query += " ORDER BY m.Transaction_Date DESC, m.Movement_ID DESC LIMIT %s OFFSET %s"
+                params.extend([limit, offset])
 
                 cursor.execute(query, tuple(params))
                 return cursor.fetchall()
         except Exception as e:
             logging.error(f"Error fetching movement log: {e}")
             return []
+
+    def get_movements_count(
+        self,
+        product_id: Optional[int] = None,
+        movement_type: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        search_text: Optional[str] = None
+    ) -> int:
+        """
+        حساب إجمالي الحركات المطابقة للفلاتر لدعم Pagination.
+        """
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    SELECT COUNT(*)
+                    FROM Stock_Movement_Log m
+                    JOIN Products_Master p ON m.Product_ID = p.Product_ID
+                    LEFT JOIN Inventory_Batches b ON m.Batch_ID = b.Batch_ID
+                    LEFT JOIN Users u ON m.User_ID = u.User_ID
+                    WHERE 1=1
+                """
+                params = []
+                if product_id:
+                    query += " AND m.Product_ID = %s"; params.append(product_id)
+                if movement_type:
+                    query += " AND m.Movement_Type = %s"; params.append(movement_type)
+                if start_date:
+                    query += " AND DATE(m.Transaction_Date) >= %s"; params.append(start_date)
+                if end_date:
+                    query += " AND DATE(m.Transaction_Date) <= %s"; params.append(end_date)
+                if search_text:
+                    term = f"%{search_text.lower()}%"
+                    query += """ AND (
+                        LOWER(p.Product_Name) LIKE %s OR
+                        LOWER(b.Lot_Number) LIKE %s OR
+                        LOWER(b.Internal_Barcode) LIKE %s OR
+                        LOWER(p.Barcode) LIKE %s OR
+                        LOWER(COALESCE(u.Full_Name, '')) LIKE %s OR
+                        LOWER(COALESCE(m.Notes, '')) LIKE %s
+                    )"""
+                    params.extend([term, term, term, term, term, term])
+
+                cursor.execute(query, tuple(params))
+                res = cursor.fetchone()
+                return res[0] if res else 0
+        except Exception as e:
+            logging.error(f"Error fetching movement count: {e}")
+            return 0
 
     def get_kpi_summary(self):
         """حساب KPIs المالية."""

@@ -15,10 +15,6 @@ from ..quick_actions import QuickTransferDialog, QuickConsumeDialog
 from ui.formatting import format_quantity, quantity_to_int
 
 
-# ---------------------------------------------------------------------------
-# معلومات المستخدم
-# ---------------------------------------------------------------------------
-
 def get_current_user_id(self):
     try:
         return self.window().current_user.get('User_ID')

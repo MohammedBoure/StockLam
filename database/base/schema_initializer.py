@@ -241,6 +241,8 @@ SCHEMA_QUERIES = [
         FOREIGN KEY (Manuf_ID) REFERENCES Manufacturers(Manuf_ID) ON UPDATE CASCADE,
         FOREIGN KEY (Preferred_Automate_ID) REFERENCES Automates(Automate_ID) ON DELETE SET NULL ON UPDATE CASCADE
     );""",
+    """ALTER TABLE Products_Master ADD COLUMN Is_Billable BOOLEAN DEFAULT FALSE;""",
+    """ALTER TABLE Products_Master ADD COLUMN Show_In_Alerts BOOLEAN DEFAULT FALSE;""",
 
     """CREATE TABLE IF NOT EXISTS Product_Documents (
         Doc_ID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -533,7 +535,6 @@ SCHEMA_QUERIES = [
         FOREIGN KEY (Created_By) REFERENCES Users(User_ID)
     );""",
 
-    # [Migration]: Supplier_Payments
     """ALTER TABLE Supplier_Payments ADD COLUMN BR_ID INT UNSIGNED NULL;""",
     """ALTER TABLE Supplier_Payments ADD CONSTRAINT fk_payment_br FOREIGN KEY (BR_ID) REFERENCES Reception_Log(BR_ID) ON DELETE SET NULL;""",
 

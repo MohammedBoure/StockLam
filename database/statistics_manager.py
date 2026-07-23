@@ -216,12 +216,31 @@ class StatisticsManager:
             logging.error(f"Alerts Error: {e}")
             return []
         
-    def get_detailed_consumption_report(self, start_date, end_date, report_type='consumed'):
+    def get_all_families(self):
+        """جلب جميع العائلات المفعلة لاستخدامها في الفلاتر."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT Family_ID, Family_Name FROM Product_Families WHERE Deleted_At IS NULL ORDER BY Family_Name")
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error fetching families in stats manager: {e}")
+            return []
+
+    def get_all_manufacturers(self):
+        """جلب جميع المصنعين/الماركات المفعلة لاستخدامها في الفلاتر."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT Manuf_ID, Manuf_Name FROM Manufacturers WHERE Deleted_At IS NULL ORDER BY Manuf_Name")
+                return cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error fetching manufacturers in stats manager: {e}")
+            return []
+
+    def get_detailed_consumption_report(self, start_date, end_date, report_type='consumed', family_id=None, manuf_id=None, search_text=None):
         """
-        تقرير التفاصيل.
-        [تصحيح جذري]: 
-        بما أن قاعدة البيانات تخزن الكميات بوحدة التخزين (Stock Unit)،
-        يجب ضرب الكمية في معامل التحويل لعرض وحدة الاستخدام (Usage Unit).
+        تقرير التفاصيل مع دعم الفلترة بالعائلة، الماركة (المصنع)، والبحث باسم المنتج.
         """
         try:
             with self.db.get_db_connection() as conn:
@@ -236,13 +255,14 @@ class StatisticsManager:
                     SELECT 
                         pm.Product_ID, 
                         pm.Product_Name, 
+                        COALESCE(pf.Family_Name, 'Autre') as Family_Name,
+                        COALESCE(m.Manuf_Name, 'Autre') as Manuf_Name,
                         
                         -- وحدات القياس
                         pm.Stock_Unit as Stock_Unit,
                         COALESCE(pm.Usage_Unit, 'Unité') as Usage_Unit,
                         
                         -- 1. الكمية بوحدة الاستخدام (Tests)
-                        -- المعادلة: الكمية المخزنة (علب) * معامل التحويل = عدد الفحوصات
                         COALESCE(
                             SUM(ABS(sml.Qty_Change) * COALESCE(NULLIF(pm.Usage_Qty_Per_Stock_Unit, 0), 1)), 
                             0
@@ -252,7 +272,6 @@ class StatisticsManager:
                         COALESCE(SUM(ABS(sml.Qty_Change)), 0) as total_qty_stock,
                         
                         -- 3. التكلفة الإجمالية
-                        -- المعادلة: الكمية المخزنة (علب) * سعر العلبة
                         COALESCE(
                             SUM(
                                 ABS(sml.Qty_Change) *
@@ -264,15 +283,29 @@ class StatisticsManager:
                         
                     FROM Stock_Movement_Log sml
                     LEFT JOIN Products_Master pm ON sml.Product_ID = pm.Product_ID
+                    LEFT JOIN Product_Families pf ON pm.Family_ID = pf.Family_ID
+                    LEFT JOIN Manufacturers m ON pm.Manuf_ID = m.Manuf_ID
                     LEFT JOIN Inventory_Batches ib ON sml.Batch_ID = ib.Batch_ID
                     
                     WHERE sml.Movement_Type IN {mvt_types}
                       AND DATE(sml.Transaction_Date) BETWEEN %s AND %s
-                      
-                    GROUP BY pm.Product_ID, pm.Product_Name, pm.Stock_Unit, pm.Usage_Unit, pm.Usage_Qty_Per_Stock_Unit
+                """
+                params = [start_date, end_date]
+
+                if family_id:
+                    query += " AND pm.Family_ID = %s"; params.append(family_id)
+                if manuf_id:
+                    query += " AND pm.Manuf_ID = %s"; params.append(manuf_id)
+                if search_text:
+                    term = f"%{search_text.lower()}%"
+                    query += " AND (LOWER(pm.Product_Name) LIKE %s OR LOWER(COALESCE(pm.Barcode, '')) LIKE %s)"
+                    params.extend([term, term])
+
+                query += """
+                    GROUP BY pm.Product_ID, pm.Product_Name, pf.Family_Name, m.Manuf_Name, pm.Stock_Unit, pm.Usage_Unit, pm.Usage_Qty_Per_Stock_Unit
                     ORDER BY total_cost_ttc DESC
                 """
-                cursor.execute(query, (start_date, end_date))
+                cursor.execute(query, tuple(params))
                 return cursor.fetchall()
         except Exception as e:
             logging.error(f"Erreur Consumption Report: {e}")

@@ -1,16 +1,16 @@
 import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QHeaderView, QPushButton,
-    QHBoxLayout, QLabel, QLineEdit, QTableWidgetItem, QComboBox,
-    QDateEdit, QStyle, QDialog, QFormLayout, QGroupBox, QFrame,
+    QHBoxLayout, QLabel, QTableWidgetItem, QComboBox,
+    QDateEdit, QStyle, QDialog, QFormLayout, QGroupBox, QCheckBox,
     QAbstractItemView
 )
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QColor, QBrush, QFont
 
-# استيراد حقل البحث المطور
 from .inventory.dialogs import BarcodeLineEdit
 from ui.formatting import format_quantity
+
 
 # ==============================================================================
 # نافذة التفاصيل الكاملة (تظهر عند النقر المزدوج)
@@ -25,7 +25,6 @@ class MovementDetailsDialog(QDialog):
 
     def init_ui(self):
         self._build_details_view()
-        return
 
     def _build_details_view(self):
         layout = QVBoxLayout(self)
@@ -98,173 +97,60 @@ class MovementDetailsDialog(QDialog):
         btn_row.addStretch()
         btn_row.addWidget(btn_close)
         layout.addLayout(btn_row)
-        return
-
-        """
-        بناء واجهة سجل حركات المخزون مع فلاتر شاملة وتنسيق عرض مرن.
-        تم حل مشكلة ضيق القائمة المنسدلة وزيادة خيارات الفلترة.
-        """
-        layout = QVBoxLayout(self)
-        layout.setSpacing(5)
-        layout.setContentsMargins(10, 10, 10, 10)
-
-        # --- 1. منطقة الفلاتر (Filter Bar) ---
-        filter_layout = QHBoxLayout()
-        filter_layout.setSpacing(10)
-
-        # إعدادات حقول التاريخ
-        self.date_from = QDateEdit(QDate.currentDate().addDays(-7))
-        self.date_from.setCalendarPopup(True)
-        self.date_from.setDisplayFormat("yyyy-MM-dd")
-        self.date_from.setFixedWidth(115)
-
-        self.date_to = QDateEdit(QDate.currentDate())
-        self.date_to.setCalendarPopup(True)
-        self.date_to.setDisplayFormat("yyyy-MM-dd")
-        self.date_to.setFixedWidth(115)
-
-        # --- القائمة المنسدلة لأنواع الحركات (المصححة) ---
-        self.combo_type = QComboBox()
-        self.combo_type.addItems([
-            "📋 Tous les mouvements",
-            "📥 Réceptions (Achats)",
-            "🧪 Consommations (Patients)",
-            "🛡️ Contrôles Qualité (QC)",
-            "⚙️ Calibrations",
-            "📦 Ouvertures Boîtes",
-            "✏️ Ajustements Manuels",
-            "🗑️ Rebuts / Pertes",
-            "🚚 Transferts Internes",
-            "💰 Ventes / Transf. Externes",
-            "↩️ Retours Sous-traitants (BR)",
-            "↩️ Retours Fournisseurs (Avoirs)"
-        ])
-
-        # ربط البيانات البرمجية للفلترة بناءً على الأنواع المعرفة في السجل
-        self.combo_type.setItemData(0, None)
-        self.combo_type.setItemData(1, "Purchase_Receive")
-        self.combo_type.setItemData(2, "Patient_Test")
-        self.combo_type.setItemData(3, "QC_Run")
-        self.combo_type.setItemData(4, "Calibration")
-        self.combo_type.setItemData(5, "Open_Pack")
-        self.combo_type.setItemData(6, "Adjustment")
-        self.combo_type.setItemData(7, "Waste")
-        self.combo_type.setItemData(8, "Transfer")
-        self.combo_type.setItemData(9, "External_Transfer")
-        self.combo_type.setItemData(10, "Transfer_Return")
-        self.combo_type.setItemData(11, "Return_To_Supplier")
-
-        # حل مشكلة العرض: استخدام MinimumWidth بدلاً من FixedWidth لضمان ظهور الكلمات بالكامل
-        self.combo_type.setMinimumWidth(220)
-        self.combo_type.setStyleSheet("""
-            QComboBox {
-                padding: 5px;
-                font-size: 13px;
-                border: 1px solid #bdc3c7;
-                border-radius: 4px;
-            }
-            QComboBox QAbstractItemView {
-                min-width: 250px; /* لضمان عرض القائمة المنسدلة نفسها بوضوح */
-            }
-        """)
-
-        # حقل البحث بالباركود أو النص
-        self.search_input = BarcodeLineEdit()
-        self.search_input.setPlaceholderText("🔍 Barcode, Produit, Lot...")
-        self.search_input.setMinimumWidth(200)
-
-        # زر التحديث اليدوي
-        btn_refresh = QPushButton()
-        btn_refresh.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
-        btn_refresh.setFixedSize(35, 35)
-        btn_refresh.setCursor(Qt.PointingHandCursor)
-        btn_refresh.clicked.connect(self.load_data)
-
-        # إضافة العناصر لشريط الفلترة
-        filter_layout.addWidget(QLabel("<b>Du:</b>"))
-        filter_layout.addWidget(self.date_from)
-        filter_layout.addWidget(QLabel("<b>Au:</b>"))
-        filter_layout.addWidget(self.date_to)
-        filter_layout.addWidget(QLabel("<b>Type:</b>"))
-        filter_layout.addWidget(self.combo_type)
-        filter_layout.addSpacing(10)
-        filter_layout.addWidget(self.search_input, stretch=1)
-        filter_layout.addWidget(btn_refresh)
-
-        layout.addLayout(filter_layout)
-
-        # --- 2. الجدول الرئيسي (Main Table) ---
-        self.table = QTableWidget()
-        cols = [
-            "Date", "Produit", "Code-Barres", "Lot", "Type",
-            "Mvt", "Stock", "Emplacement", "Utilisateur", "Notes"
-        ]
-        self.table.setColumnCount(len(cols))
-        self.table.setHorizontalHeaderLabels(cols)
-
-        # تنسيق الخط وحجم الجدول
-        f = self.table.font()
-        f.setPointSize(9)
-        self.table.setFont(f)
-
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch) # اسم المنتج يأخذ المساحة الأكبر
-        header.setSectionResizeMode(9, QHeaderView.Stretch) # الملاحظات تأخذ المساحة المتبقية
-
-        self.table.verticalHeader().setDefaultSectionSize(30)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-
-        # تفعيل النقر المزدوج لفتح نافذة التفاصيل
-        self.table.doubleClicked.connect(self.show_full_details)
-
-        layout.addWidget(self.table)
-
-        # --- 3. ربط الإشارات (Signals) ---
-        self.date_from.dateChanged.connect(self.apply_filter_local)
-        self.date_to.dateChanged.connect(self.apply_filter_local)
-        self.combo_type.currentIndexChanged.connect(self.load_data)
-        self.search_input.textChanged.connect(self.apply_filter_local)
-
-        # التحميل الأولي للبيانات
-        self.raw_data = []
-        self.load_data()
 
 
 # ==============================================================================
-# التبويب الرئيسي للسجل
+# التبويب الرئيسي للسجل مع التحميل التلقائي عند التمرير (Scroll-based Lazy Loading)
 # ==============================================================================
 class MovementHistoryTab(QWidget):
     def __init__(self, manager):
         super().__init__()
         self.manager = manager
+
+        # متغيرات التحميل التدريجي عبر التمرير (Infinite Scroll Lazy Loading)
+        self.current_offset = 0
+        self.batch_size = 50
+        self.total_records = 0
+        self.is_loading = False
+        self.has_more_data = True
+
+        # مؤقت للبحث لتفادي كثرة الاستعلامات أثناء الكتابة السريعة
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.setInterval(300)
+        self.search_timer.timeout.connect(self.reset_and_reload)
+
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(2)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(6)
+        layout.setContentsMargins(8, 8, 8, 8)
 
-        # --- 1. منطقة الفلاتر ---
+        # --- 1. منطقة الفلاتر (Filter Bar) ---
         filter_layout = QHBoxLayout()
-        filter_layout.setSpacing(5)
+        filter_layout.setSpacing(8)
 
-        # إعدادات حقول التاريخ
-        self.date_from = QDateEdit(QDate.currentDate().addDays(-7))
+        # خيار تفعيل فلترة التاريخ (إلغاء التفعيل يعرض كامل السجل التاريخي دون تقييد)
+        self.chk_date_filter = QCheckBox("Filtrer par date")
+        self.chk_date_filter.setChecked(False)
+        self.chk_date_filter.toggled.connect(self.on_date_filter_toggled)
+
+        self.date_from = QDateEdit(QDate.currentDate().addYears(-1))
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("yyyy-MM-dd")
-        self.date_from.setFixedWidth(120)
-        self.date_from.dateChanged.connect(self.apply_filter_local)
+        self.date_from.setFixedWidth(110)
+        self.date_from.setEnabled(False)
+        self.date_from.dateChanged.connect(self.reset_and_reload)
 
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
         self.date_to.setDisplayFormat("yyyy-MM-dd")
-        self.date_to.setFixedWidth(120)
-        self.date_to.dateChanged.connect(self.apply_filter_local)
+        self.date_to.setFixedWidth(110)
+        self.date_to.setEnabled(False)
+        self.date_to.dateChanged.connect(self.reset_and_reload)
 
+        # القائمة المنسدلة لأنواع الحركات
         self.combo_type = QComboBox()
         self.combo_type.addItems([
             "📋 Tous les mouvements",
@@ -294,33 +180,33 @@ class MovementHistoryTab(QWidget):
         self.combo_type.setItemData(10, "Transfer_Return")
         self.combo_type.setItemData(11, "Return_To_Supplier")
 
-        # حل مشكلة العرض: زيادة العرض الثابت واستخدام الحد الأدنى المناسب
-        self.combo_type.setMinimumWidth(220)
-        self.combo_type.setStyleSheet("QComboBox { padding: 5px; font-size: 13px; }")
-        self.combo_type.currentIndexChanged.connect(self.load_data)
+        self.combo_type.setMinimumWidth(210)
+        self.combo_type.setStyleSheet("QComboBox { padding: 4px; font-size: 13px; }")
+        self.combo_type.currentIndexChanged.connect(self.reset_and_reload)
 
-        self.combo_type.setFixedWidth(130)
-        self.combo_type.currentIndexChanged.connect(self.load_data)
-
+        # حقل البحث السيرفري
         self.search_input = BarcodeLineEdit()
-        self.search_input.setPlaceholderText("🔍 Barcode, Produit, Lot...")
-        self.search_input.textChanged.connect(self.apply_filter_local)
+        self.search_input.setPlaceholderText("🔍 Barcode, Produit, Lot, Utilisateur...")
+        self.search_input.textChanged.connect(self.on_search_text_changed)
 
         btn_refresh = QPushButton()
         btn_refresh.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
-        btn_refresh.setFixedSize(30, 30)
-        btn_refresh.clicked.connect(self.load_data)
+        btn_refresh.setFixedSize(32, 32)
+        btn_refresh.setToolTip("Recharger")
+        btn_refresh.clicked.connect(self.reset_and_reload)
 
+        filter_layout.addWidget(self.chk_date_filter)
         filter_layout.addWidget(QLabel("Du:"))
         filter_layout.addWidget(self.date_from)
         filter_layout.addWidget(QLabel("Au:"))
         filter_layout.addWidget(self.date_to)
         filter_layout.addWidget(self.combo_type)
-        filter_layout.addWidget(self.search_input)
+        filter_layout.addWidget(self.search_input, stretch=1)
         filter_layout.addWidget(btn_refresh)
 
         layout.addLayout(filter_layout)
 
+        # --- 2. الجدول الرئيسي ---
         self.table = QTableWidget()
         cols = [
             "Date", "Produit", "Code-Barres", "Lot", "Type",
@@ -330,7 +216,7 @@ class MovementHistoryTab(QWidget):
         self.table.setHorizontalHeaderLabels(cols)
 
         f = self.table.font()
-        f.setPointSize(8)
+        f.setPointSize(9)
         self.table.setFont(f)
 
         header = self.table.horizontalHeader()
@@ -339,54 +225,154 @@ class MovementHistoryTab(QWidget):
         header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(9, QHeaderView.Stretch)
 
-        self.table.verticalHeader().setDefaultSectionSize(25)
+        self.table.verticalHeader().setDefaultSectionSize(28)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setAlternatingRowColors(True)
 
         self.table.doubleClicked.connect(self.show_full_details)
-
         layout.addWidget(self.table)
 
-        self.raw_data = []
-        self.load_data()
+        # ربط حدث التمرير (Scroll) لجلب المزيد تلقائياً عند الوصول لأسفل الجدول
+        self.table.verticalScrollBar().valueChanged.connect(self._on_scroll)
+
+        # --- 3. شريط حالة التمرير والتحميل التدريجي (Scroll-based Status Bar) ---
+        status_layout = QHBoxLayout()
+        status_layout.setSpacing(8)
+
+        self.lbl_status = QLabel("Chargement des données...")
+        self.lbl_status.setStyleSheet("font-weight: bold; font-size: 12px; color: #2c3e50;")
+
+        self.btn_load_more = QPushButton("⬇ Charger la suite")
+        self.btn_load_more.setCursor(Qt.PointingHandCursor)
+        self.btn_load_more.setStyleSheet("padding: 4px 12px; font-weight: bold;")
+        self.btn_load_more.clicked.connect(self.load_next_batch)
+
+        self.combo_batch_size = QComboBox()
+        self.combo_batch_size.addItems(["50 / lot", "100 / lot", "200 / lot", "500 / lot"])
+        self.combo_batch_size.setCurrentIndex(0) # 50 par lot par défaut
+        self.combo_batch_size.currentIndexChanged.connect(self.on_batch_size_changed)
+
+        status_layout.addWidget(self.lbl_status, stretch=1)
+        status_layout.addWidget(self.btn_load_more)
+        status_layout.addWidget(QLabel("Taille du lot:"))
+        status_layout.addWidget(self.combo_batch_size)
+
+        layout.addLayout(status_layout)
+
+        # التحميل الأولي
+        self.reset_and_reload()
+
+    def on_date_filter_toggled(self, checked: bool):
+        self.date_from.setEnabled(checked)
+        self.date_to.setEnabled(checked)
+        self.reset_and_reload()
+
+    def on_search_text_changed(self):
+        self.search_timer.start()
+
+    def on_batch_size_changed(self):
+        sizes = [50, 100, 200, 500]
+        idx = self.combo_batch_size.currentIndex()
+        if 0 <= idx < len(sizes):
+            self.batch_size = sizes[idx]
+        self.reset_and_reload()
+
+    def _on_scroll(self, value):
+        scroll_bar = self.table.verticalScrollBar()
+        # عند وصول شريط التمرير إلى القرب من النهاية السفلى (أقل من 20 بكسل من القاع)
+        if scroll_bar.maximum() > 0 and value >= scroll_bar.maximum() - 20:
+            self.load_next_batch()
+
+    def reset_and_reload(self):
+        self.current_offset = 0
+        self.has_more_data = True
+        self.table.setRowCount(0)
+        self.total_records = 0
+        self.load_next_batch()
+
+    def load_data(self):
+        """توافقية الدالة للنداءات الخارجية."""
+        self.reset_and_reload()
 
     def filter_by_product(self, product_name):
         if product_name:
             self.search_input.setText(product_name)
-            self.load_data()
+            self.reset_and_reload()
 
-    def load_data(self):
+    def get_active_filters(self):
+        m_type = self.combo_type.currentData()
+        txt = self.search_input.text().strip()
+        search_text = txt if txt else None
+
+        start_date = None
+        end_date = None
+        if self.chk_date_filter.isChecked():
+            start_date = self.date_from.date().toString("yyyy-MM-dd")
+            end_date = self.date_to.date().toString("yyyy-MM-dd")
+
+        return {
+            'movement_type': m_type,
+            'search_text': search_text,
+            'start_date': start_date,
+            'end_date': end_date
+        }
+
+    def load_next_batch(self):
+        if self.is_loading or not self.has_more_data:
+            return
+
+        self.is_loading = True
+        self.lbl_status.setText("⏳ Chargement du lot suivant...")
+
         try:
-            m_type = self.combo_type.currentData()
-            self.raw_data = self.manager.movement.get_movements_log(limit=500, movement_type=m_type)
-            self.apply_filter_local()
+            filters = self.get_active_filters()
+
+            # جلب العدد الإجمالي فقط في الدفعة الأولى
+            if self.current_offset == 0:
+                self.total_records = self.manager.movement.get_movements_count(**filters)
+
+            # جلب الدفعة التالية بناءً على offset و batch_size
+            movements = self.manager.movement.get_movements_log(
+                limit=self.batch_size,
+                offset=self.current_offset,
+                **filters
+            )
+
+            if not movements:
+                self.has_more_data = False
+            else:
+                self._append_rows_to_table(movements)
+                self.current_offset += len(movements)
+                if len(movements) < self.batch_size:
+                    self.has_more_data = False
+
+            self.update_status_ui()
         except Exception as e:
-            logging.error(f"Error loading history data: {e}")
+            logging.error(f"Error fetching lazy movement batch: {e}")
+            self.lbl_status.setText("⚠️ Erreur lors du chargement des données")
+        finally:
+            self.is_loading = False
 
-    def apply_filter_local(self):
-        d_from = self.date_from.date().toString("yyyy-MM-dd")
-        d_to = self.date_to.date().toString("yyyy-MM-dd")
-        txt = self.search_input.text().lower().strip()
+    def update_status_ui(self):
+        loaded_count = self.table.rowCount()
+        if self.total_records == 0:
+            self.lbl_status.setText("Aucun mouvement trouvé")
+            self.btn_load_more.setEnabled(False)
+        elif self.has_more_data:
+            self.lbl_status.setText(
+                f"Affichage de {loaded_count} sur {self.total_records} mouvements (Défilez vers le bas pour charger la suite...)"
+            )
+            self.btn_load_more.setEnabled(True)
+        else:
+            self.lbl_status.setText(
+                f"✅ Tous les {self.total_records} mouvements ont été chargés ({loaded_count} affichés)"
+            )
+            self.btn_load_more.setEnabled(False)
 
-        filtered = []
-        for m in self.raw_data:
-            m_date = str(m['Transaction_Date'])[:10]
-            if not (d_from <= m_date <= d_to): continue
-
-            full_text = f"{m.get('Product_Name','')} {m.get('Lot_Number','')} {m.get('Batch_Barcode','')} {m.get('Product_Barcode','')} {m.get('Operator_Name','')}".lower()
-            if txt and txt not in full_text: continue
-            filtered.append(m)
-
-        self._populate_table(filtered)
-
-    def _populate_table(self, data):
-        """
-        تعبئة الجدول وعرض رصيد (الكود بار) المحدد.
-        نسخة مصححة 100% (تم إصلاح خطأ stock_display).
-        """
+    def _append_rows_to_table(self, data):
         self.table.setSortingEnabled(False)
-        self.table.setRowCount(0)
+        start_row = self.table.rowCount()
 
         type_map = {
             'Purchase_Receive': 'Réception (Achat)',
@@ -402,19 +388,22 @@ class MovementHistoryTab(QWidget):
             'Return_To_Supplier': 'Retour Fourn.'
         }
 
-        for r, mov in enumerate(data):
+        for i, mov in enumerate(data):
+            r = start_row + i
             self.table.insertRow(r)
 
             def item(text, align=Qt.AlignCenter, color=None, font=None):
                 val = str(text) if text is not None else "-"
                 it = QTableWidgetItem(val)
                 it.setTextAlignment(align)
-                if color: it.setForeground(QBrush(QColor(color)))
-                if font: it.setFont(font)
+                if color:
+                    it.setForeground(QBrush(QColor(color)))
+                if font:
+                    it.setFont(font)
                 return it
 
             # 1. التاريخ
-            self.table.setItem(r, 0, item(str(mov['Transaction_Date'])[:16]))
+            self.table.setItem(r, 0, item(str(mov.get('Transaction_Date', ''))[:16]))
             self.table.item(r, 0).setData(Qt.UserRole, mov)
 
             # 2. المنتج
@@ -425,11 +414,14 @@ class MovementHistoryTab(QWidget):
             self.table.setItem(r, 3, item(mov.get('Lot_Number') or '-'))
 
             # 4. نوع الحركة
-            raw_type = mov['Movement_Type']
+            raw_type = mov.get('Movement_Type', '')
             t_item = item(type_map.get(raw_type, raw_type))
-            if raw_type == 'Purchase_Receive': t_item.setBackground(QBrush(QColor("#e8f5e9")))
-            elif raw_type == 'Waste': t_item.setBackground(QBrush(QColor("#ffebee")))
-            elif raw_type in ['Patient_Test', 'QC_Run']: t_item.setForeground(QBrush(QColor("#1976d2")))
+            if raw_type == 'Purchase_Receive':
+                t_item.setBackground(QBrush(QColor("#e8f5e9")))
+            elif raw_type == 'Waste':
+                t_item.setBackground(QBrush(QColor("#ffebee")))
+            elif raw_type in ['Patient_Test', 'QC_Run']:
+                t_item.setForeground(QBrush(QColor("#1976d2")))
             self.table.setItem(r, 4, t_item)
 
             # 5. الكمية
@@ -438,14 +430,10 @@ class MovementHistoryTab(QWidget):
 
             # 6. رصيد الباركود (Batch Stock)
             batch_stock = mov.get('Batch_Historical_Stock')
-
             if batch_stock is None:
                 batch_stock = mov.get('Historical_Stock')
 
-            # --- التصحيح هنا ---
             stock_txt = format_quantity(batch_stock) if batch_stock is not None else "?"
-
-            # تم استخدام المتغير الصحيح stock_txt
             s_item = item(stock_txt, font=QFont("Arial", 9, QFont.Bold))
 
             if batch_stock is not None and float(batch_stock) <= 0:
@@ -463,9 +451,11 @@ class MovementHistoryTab(QWidget):
             self.table.setItem(r, 9, item(full_note, Qt.AlignLeft | Qt.AlignVCenter))
 
         self.table.setSortingEnabled(True)
+
     def show_full_details(self):
         row = self.table.currentRow()
-        if row < 0: return
+        if row < 0:
+            return
         data = self.table.item(row, 0).data(Qt.UserRole)
         if data:
             dlg = MovementDetailsDialog(data, self)
