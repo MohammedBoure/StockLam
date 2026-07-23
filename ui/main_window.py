@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
                 0: "nav_dashboard",
                 1: "nav_data",
                 2: "nav_procurement",
+                8: "tab_proc_reclamation",
                 3: "nav_inventory",
                 9: "nav_inventaire",
                 6: "nav_services",
@@ -281,6 +282,7 @@ class MainWindow(QMainWindow):
             (0, "Tableau de Bord", "fa5s.chart-pie"),
             (1, "Données de Base", "fa5s.layer-group"),
             (2, "Achats & Entrées", "fa5s.shopping-cart"), 
+            (8, "Réclamations",    "fa5s.exclamation-triangle"),
             (3, "Stock & Magasin",  "fa5s.boxes"),
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
             (9, "Inventaire", "fa5s.clipboard-list"),
@@ -412,6 +414,7 @@ class MainWindow(QMainWindow):
             0: "nav_dashboard",
             1: "nav_data",
             2: "nav_procurement",
+            8: "tab_proc_reclamation",
             3: "nav_inventory",
             9: "nav_inventaire",
             6: "nav_services",
@@ -459,6 +462,12 @@ class MainWindow(QMainWindow):
                 perms = json.loads(perms)
             except json.JSONDecodeError:
                 perms = []
+
+        if perm_key == "tab_proc_reclamation":
+            if isinstance(perms, list):
+                return "tab_proc_reclamation" in perms or "nav_procurement" in perms
+            elif isinstance(perms, dict):
+                return perms.get("tab_proc_reclamation", False) or perms.get("nav_procurement", False)
 
         # إذا كانت الصلاحيات محفوظة على شكل مصفوفة (كما في users_view.py)
         if isinstance(perms, list):
@@ -525,9 +534,13 @@ class MainWindow(QMainWindow):
                 widget.tabs.addTab(widget.history_tab, "📜 Bons de Réceptions")
             if self.has_permission("tab_proc_credit"):
                 widget.tabs.addTab(widget.credit_tab, "↩️ Avoirs / Retours")
-            if self.has_permission("tab_proc_reclamation"):
-                from ui.icons import get_reclamation_icon
-                widget.tabs.addTab(widget.reclamation_tab, get_reclamation_icon(), " Réclamations")
+                
+        # --- 8. Réclamations ---
+        elif page_id == 8:
+            from .widgets.procurement.reclamation_tab import ReclamationTab
+            widget = ReclamationTab(self.data_manager)
+            if hasattr(widget, 'load_data'):
+                widget.load_data()
                 
         elif page_id == 3:
             widget = InventoryTab(self.data_manager)
@@ -632,6 +645,7 @@ class MainWindow(QMainWindow):
             0: "nav_dashboard",
             1: "nav_data",
             2: "nav_procurement",
+            8: "tab_proc_reclamation",
             3: "nav_inventory",
             9: "nav_inventaire",
             6: "nav_services",

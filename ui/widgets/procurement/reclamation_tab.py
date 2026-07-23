@@ -21,7 +21,7 @@ class ReclamationTab(QWidget):
         
         # Header
         top_layout = QHBoxLayout()
-        lbl_title = QLabel("⚠️ Suivi des Réclamations & Anomalies")
+        lbl_title = QLabel("Suivi des Réclamations & Anomalies")
         lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #c0392b;")
         
         # --- [جديد] إضافة حقول النطاق التاريخي ---
@@ -68,6 +68,10 @@ class ReclamationTab(QWidget):
         self.table.doubleClicked.connect(self.open_details)
         
         layout.addWidget(self.table)
+        self.load_data()
+
+    def showEvent(self, event):
+        super().showEvent(event)
         self.load_data()
 
     def load_data(self):
