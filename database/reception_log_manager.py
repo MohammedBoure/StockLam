@@ -1193,14 +1193,22 @@ class ReceptionLogManager:
                         rl.*, 
                         s.Supplier_Name,
                         (SELECT COUNT(*) FROM Inventory_Batches ib 
-                         WHERE ib.BR_ID = rl.BR_ID AND ib.Reception_Note IS NOT NULL AND ib.Reception_Note != '') as Product_Issues_Count
+                         WHERE ib.BR_ID = rl.BR_ID 
+                           AND ib.Reception_Note IS NOT NULL 
+                           AND ib.Reception_Note != ''
+                           AND LOWER(TRIM(ib.Reception_Note)) NOT IN ('none', 'null')) as Product_Issues_Count
                     FROM Reception_Log rl
                     JOIN Suppliers s ON rl.Supplier_ID = s.Supplier_ID
                     WHERE 
-                        (rl.Variance_Notes IS NOT NULL AND rl.Variance_Notes != '')
+                        (rl.Variance_Notes IS NOT NULL 
+                         AND rl.Variance_Notes != '' 
+                         AND LOWER(TRIM(rl.Variance_Notes)) NOT IN ('none', 'null'))
                         OR 
                         EXISTS (SELECT 1 FROM Inventory_Batches ib 
-                                WHERE ib.BR_ID = rl.BR_ID AND ib.Reception_Note IS NOT NULL AND ib.Reception_Note != '')
+                                WHERE ib.BR_ID = rl.BR_ID 
+                                  AND ib.Reception_Note IS NOT NULL 
+                                  AND ib.Reception_Note != ''
+                                  AND LOWER(TRIM(ib.Reception_Note)) NOT IN ('none', 'null'))
                     ORDER BY rl.Reception_Date DESC
                 """
                 cursor.execute(query)

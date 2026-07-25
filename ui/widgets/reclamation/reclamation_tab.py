@@ -98,11 +98,10 @@ class ReclamationTab(QWidget):
                 if not (start_date_str <= display_date <= end_date_str):
                     continue
 
-                # إضافة سطر جديد (نستخدم rowCount لأننا قد نتخطى بعض السجلات في الفلترة)
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-                
-                header_note = item.get('Variance_Notes', '')
+                header_note = str(item.get('Variance_Notes') or '').strip()
+                if header_note.lower() in ('none', 'null'):
+                    header_note = ''
+
                 prod_issues = item.get('Product_Issues_Count', 0)
                 
                 # تصنيف المشكلة
@@ -110,6 +109,14 @@ class ReclamationTab(QWidget):
                 if header_note: issue_desc.append("Facture/BL")
                 if prod_issues > 0: issue_desc.append(f"{prod_issues} Produit(s)")
                 
+                # إذا لم تكن هناك أي مشكلة حقيقية، نتخطى هذا السجل
+                if not issue_desc:
+                    continue
+
+                # إضافة سطر جديد (نستخدم rowCount لأننا قد نتخطى بعض السجلات في الفلترة)
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+
                 final_issue = " + ".join(issue_desc)
 
                 self.table.setItem(row, 0, QTableWidgetItem(str(item['BR_ID'])))

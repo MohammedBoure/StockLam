@@ -58,7 +58,11 @@ class ReclamationDialog(QDialog):
         
         self.txt_note = QTextEdit()
         self.txt_note.setPlaceholderText("Note générale sur la réception...")
-        self.txt_note.setPlainText(self.header.get('Variance_Notes', ''))
+        
+        gen_note = str(self.header.get('Variance_Notes') or '').strip()
+        if gen_note.lower() in ('none', 'null'):
+            gen_note = ''
+        self.txt_note.setPlainText(gen_note)
         self.txt_note.setMaximumHeight(60)
         
         btn_save_note = QPushButton("Enregistrer Note Générale")
@@ -122,20 +126,41 @@ class ReclamationDialog(QDialog):
     def populate_table(self):
         self.table.setRowCount(0)
         
-        # الفلترة: عرض المنتجات التي تحتوي على ملاحظة فقط
+        # الفلترة: عرض المنتجات التي تحتوي على ملاحظة حقيقية وليست None
         problematic_items = [
             b for b in self.batches 
-            if b.get('Reception_Note') and str(b.get('Reception_Note')).strip() != ''
+            if b.get('Reception_Note') 
+            and str(b.get('Reception_Note')).strip() != ''
+            and str(b.get('Reception_Note')).strip().lower() not in ('none', 'null')
         ]
 
         for row, item in enumerate(problematic_items):
             self.table.insertRow(row)
             
             batch_id = item.get('Batch_ID')
-            prod_name = f"{item.get('Product_Name')} (Code: {item.get('Internal_Barcode')})"
-            lot = str(item.get('Lot_Number', ''))
+
+            prod_name_val = item.get('Product_Name') or 'Produit Inconnu'
+            if str(prod_name_val).strip().lower() in ('none', 'null'):
+                prod_name_val = 'Produit Inconnu'
+            
+            barcode_val = item.get('Internal_Barcode') or ''
+            if str(barcode_val).strip().lower() in ('none', 'null'):
+                barcode_val = ''
+
+            if barcode_val:
+                prod_name = f"{prod_name_val} (Code: {barcode_val})"
+            else:
+                prod_name = f"{prod_name_val}"
+
+            lot = str(item.get('Lot_Number') or '').strip()
+            if lot.lower() in ('none', 'null'):
+                lot = ''
+
             qty = format_quantity(item.get('Quantity_Initial', 0), item.get('Stock_Unit', 'U'))
-            note = str(item.get('Reception_Note', ''))
+            
+            note = str(item.get('Reception_Note') or '').strip()
+            if note.lower() in ('none', 'null'):
+                note = ''
             
             self.table.setItem(row, 0, QTableWidgetItem(str(batch_id)))
             self.table.setItem(row, 1, QTableWidgetItem(prod_name))
