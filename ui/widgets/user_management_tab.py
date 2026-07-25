@@ -49,8 +49,7 @@ SYSTEM_PERMISSIONS = {
             "nav_procurement": "Accès aux Achats",
             "tab_proc_po": "Bons de Commandes",
             "tab_proc_reception": "Bons de Réceptions",
-            "tab_proc_credit": "Avoirs / Retours",
-            "tab_proc_reclamation": "Réclamations"
+            "tab_proc_credit": "Avoirs / Retours"
         }
     },
     "4. STOCK": {
@@ -81,6 +80,13 @@ SYSTEM_PERMISSIONS = {
         "perms": {
             "nav_services": "Accès Facturation / Sous-traitants",
             "nav_market": "Accès Marché (Devises / Devis)"
+        }
+    },
+    "6a. RECLAMATIONS": {
+        "label": "⚠️ Réclamations",
+        "icon": "fa5s.exclamation-circle",
+        "perms": {
+            "tab_proc_reclamation": "Accès aux Réclamations"
         }
     },
     "7. TRACABILITE": {
