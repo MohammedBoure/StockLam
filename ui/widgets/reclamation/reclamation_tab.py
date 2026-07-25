@@ -1,9 +1,9 @@
-# ui/widgets/procurement/reclamation_tab.py
+# ui/widgets/reclamation/reclamation_tab.py
 
 import logging
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QHeaderView, 
                                QTableWidgetItem, QMessageBox, QLabel, QHBoxLayout, QPushButton,
-                               QAbstractItemView, QDateEdit) # تمت إضافة QDateEdit
+                               QAbstractItemView, QDateEdit)
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QBrush, QFont
 import qtawesome as qta

@@ -282,7 +282,7 @@ class MainWindow(QMainWindow):
             (0, "Tableau de Bord", "fa5s.chart-pie"),
             (1, "Données de Base", "fa5s.layer-group"),
             (2, "Achats & Entrées", "fa5s.shopping-cart"), 
-            (8, "Réclamations",    "fa5s.exclamation-triangle"),
+            (8, "Réclamations",    "fa5s.exclamation-circle"),
             (3, "Stock & Magasin",  "fa5s.boxes"),
             (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
             (9, "Inventaire", "fa5s.clipboard-list"),
@@ -537,7 +537,7 @@ class MainWindow(QMainWindow):
                 
         # --- 8. Réclamations ---
         elif page_id == 8:
-            from .widgets.procurement.reclamation_tab import ReclamationTab
+            from .widgets.reclamation.reclamation_tab import ReclamationTab
             widget = ReclamationTab(self.data_manager)
             if hasattr(widget, 'load_data'):
                 widget.load_data()

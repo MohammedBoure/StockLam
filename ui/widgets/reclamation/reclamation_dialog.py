@@ -1,3 +1,5 @@
+# ui/widgets/reclamation/reclamation_dialog.py
+
 import logging
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QHeaderView, 

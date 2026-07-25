@@ -21,7 +21,7 @@ from .dialogs import PurchaseOrderDialog
 from .reception_tab import ReceptionTab
 from .reception_history_tab import ReceptionHistoryTab
 from .avoir import CreditNoteTab
-from .reclamation_tab import ReclamationTab 
+from ui.widgets.reclamation import ReclamationTab
 from ui.widgets.procurement.po_list_view import PurchaseOrderListView
 from ui.formatting import format_quantity
 from ui.widgets.settings.pdf.pdf_stamp import fit_stamp_size_cm, get_active_stamp, SignatureFooter
