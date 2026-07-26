@@ -586,7 +586,7 @@ class EnvironmentSetupTests(unittest.TestCase):
     def test_inventory_widget_resizes_under_offscreen_qt(self):
         from PySide6.QtWidgets import QApplication, QFrame
 
-        from ui.widgets.inventory.inventory_count_tab import InventoryCountTab
+        from ui.widgets.inventaire import InventoryCountTab
 
         app = QApplication.instance() or QApplication([])
         widget = InventoryCountTab(
@@ -628,7 +628,7 @@ class EnvironmentSetupTests(unittest.TestCase):
     def test_inventory_action_buttons_keep_usable_size_hints_offscreen(self):
         from PySide6.QtWidgets import QApplication
 
-        from ui.widgets.inventory.inventory_count_tab import InventoryCountTab
+        from ui.widgets.inventaire import InventoryCountTab
 
         app = QApplication.instance() or QApplication([])
         widget = InventoryCountTab(

@@ -15,7 +15,7 @@ from .widgets.master_data.products_tab import ProductsTab
 from .widgets.dashboard.dashboard_view import DashboardTab
 from .widgets.procurement.procurement_tabs import ProcurementTab
 from .widgets.inventory.inventory_tabs import InventoryTab
-from .widgets.inventory.inventory_count_tab import InventoryCountTab
+from .widgets.inventaire import InventoryCountTab
 from .widgets.master_data.manufacturers_tab import ManufacturersTab
 from .widgets.master_data.locations_tab import LocationsTab
 from .widgets.master_data.automates_tab import AutomatesTab

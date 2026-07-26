@@ -7,9 +7,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from ui.widgets.inventory import inventory_count_tab as tab_module
-from ui.widgets.inventory.inventory_count_scan_dialog import InventoryCountScanDialog
-from ui.widgets.inventory.inventory_count_tab import InventoryCountTab, NewInventorySessionDialog
+from ui.widgets.inventaire import inventory_count_tab as tab_module
+from ui.widgets.inventaire import InventoryCountScanDialog, InventoryCountTab, NewInventorySessionDialog
 
 
 class FakeInventoryCounts:
