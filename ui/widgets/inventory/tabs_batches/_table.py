@@ -217,15 +217,14 @@ def _fill_row(table, r, b, hide_fin):
 
     table.setItem(r, 14, _make_item(b.get('PO_ID'), bg_color=bg_color))
     table.setItem(r, 15, _make_item(b.get('Location_Name'), bg_color=bg_color))
-    table.setItem(r, 16, _make_item(reclamation, bg_color=bg_color))
-    
-    # تعيين الهيدر العمودي (رقم الصف أو أيقونة شكوى)
-    v_header_item = QTableWidgetItem(str(r+1))
+    rec_item = _make_item(reclamation, bg_color=bg_color)
     if reclamation:
-        v_header_item.setIcon(get_reclamation_icon())
-        
-    # Ensure text is aligned to the left while icon goes to the right (RTL effect)
-    v_header_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        rec_item.setIcon(get_reclamation_icon())
+    table.setItem(r, 16, rec_item)
+    
+    # تعيين الهيدر العمودي (رقم الصف فقط دون استجابة للنقر)
+    v_header_item = QTableWidgetItem(str(r+1))
+    v_header_item.setTextAlignment(Qt.AlignCenter)
     table.setVerticalHeaderItem(r, v_header_item)
 
 

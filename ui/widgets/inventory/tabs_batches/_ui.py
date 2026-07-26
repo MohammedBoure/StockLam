@@ -244,7 +244,7 @@ def _build_table(self):
     header.sectionClicked.connect(self.on_header_clicked)
 
     self.table.verticalScrollBar().valueChanged.connect(self.on_scroll_value_changed)
-    self.table.verticalHeader().sectionClicked.connect(self.on_vertical_header_clicked)
+    self.table.cellClicked.connect(self.on_cell_clicked)
 
     return self.table
 

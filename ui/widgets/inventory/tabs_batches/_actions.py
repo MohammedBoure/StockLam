@@ -91,16 +91,18 @@ def _to_date(val):
 # إجراءات الجدول الرئيسية
 # ---------------------------------------------------------------------------
 
-def on_vertical_header_clicked(self, logicalIndex):
-    """معالجة النقر على الهيدر العمودي (رقم الصف) لفتح تعديل الشكوى"""
-    try:
-        item = self.table.item(logicalIndex, 0)
+def on_cell_clicked(self, row, col):
+    """فتح حوار تعديل الشكوى فقط عند النقر على خلية/أيقونة الشكوى (العمود 16)"""
+    if col == 16:
+        item = self.table.item(row, 0)
         if item:
             batch_data = item.data(Qt.UserRole)
             if batch_data:
                 self.edit_reclamation(batch_data)
-    except Exception as e:
-        logging.error(f"Error handling vertical header click: {e}")
+
+def on_vertical_header_clicked(self, logicalIndex):
+    """إلغاء فتح الشكوى عند النقر على الهيدر العمودي (رقم الصف)"""
+    pass
 
 def edit_reclamation(self, batch_data):
     """تعديل ملاحظة/شكوى الاستلام (Réclamation) للوط"""
