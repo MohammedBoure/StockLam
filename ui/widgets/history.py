@@ -131,23 +131,18 @@ class MovementHistoryTab(QWidget):
         filter_layout = QHBoxLayout()
         filter_layout.setSpacing(8)
 
-        # خيار تفعيل فلترة التاريخ (إلغاء التفعيل يعرض كامل السجل التاريخي دون تقييد)
-        self.chk_date_filter = QCheckBox("Filtrer par date")
-        self.chk_date_filter.setChecked(False)
-        self.chk_date_filter.toggled.connect(self.on_date_filter_toggled)
-
         self.date_from = QDateEdit(QDate.currentDate().addYears(-1))
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("yyyy-MM-dd")
         self.date_from.setFixedWidth(110)
-        self.date_from.setEnabled(False)
+        self.date_from.setEnabled(True)
         self.date_from.dateChanged.connect(self.reset_and_reload)
 
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
         self.date_to.setDisplayFormat("yyyy-MM-dd")
         self.date_to.setFixedWidth(110)
-        self.date_to.setEnabled(False)
+        self.date_to.setEnabled(True)
         self.date_to.dateChanged.connect(self.reset_and_reload)
 
         # القائمة المنسدلة لأنواع الحركات
@@ -195,7 +190,6 @@ class MovementHistoryTab(QWidget):
         btn_refresh.setToolTip("Recharger")
         btn_refresh.clicked.connect(self.reset_and_reload)
 
-        filter_layout.addWidget(self.chk_date_filter)
         filter_layout.addWidget(QLabel("Du:"))
         filter_layout.addWidget(self.date_from)
         filter_layout.addWidget(QLabel("Au:"))
@@ -249,11 +243,6 @@ class MovementHistoryTab(QWidget):
         # التحميل الأولي
         self.reset_and_reload()
 
-    def on_date_filter_toggled(self, checked: bool):
-        self.date_from.setEnabled(checked)
-        self.date_to.setEnabled(checked)
-        self.reset_and_reload()
-
     def on_search_text_changed(self):
         self.search_timer.start()
 
@@ -285,11 +274,8 @@ class MovementHistoryTab(QWidget):
         txt = self.search_input.text().strip()
         search_text = txt if txt else None
 
-        start_date = None
-        end_date = None
-        if self.chk_date_filter.isChecked():
-            start_date = self.date_from.date().toString("yyyy-MM-dd")
-            end_date = self.date_to.date().toString("yyyy-MM-dd")
+        start_date = self.date_from.date().toString("yyyy-MM-dd")
+        end_date = self.date_to.date().toString("yyyy-MM-dd")
 
         return {
             'movement_type': m_type,
