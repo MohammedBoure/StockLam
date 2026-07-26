@@ -92,7 +92,7 @@ def _to_date(val):
 # ---------------------------------------------------------------------------
 
 def on_cell_clicked(self, row, col):
-    """فتح حوار تعديل الشكوى فقط عند النقر على خلية/أيقونة الشكوى (العمود 16)"""
+    """فتح حوار تعديل الشكوى فقط عند النقر على خلية الشكوى (العمود 16)"""
     if col == 16:
         item = self.table.item(row, 0)
         if item:
@@ -101,8 +101,18 @@ def on_cell_clicked(self, row, col):
                 self.edit_reclamation(batch_data)
 
 def on_vertical_header_clicked(self, logicalIndex):
-    """إلغاء فتح الشكوى عند النقر على الهيدر العمودي (رقم الصف)"""
-    pass
+    """فتح حوار الشكوى عند النقر على الأيقونة الدائرية في الشريط الجانبي فقط إذا كان الصف يحتوي على شكوى"""
+    try:
+        item = self.table.item(logicalIndex, 0)
+        if item:
+            batch_data = item.data(Qt.UserRole)
+            if batch_data:
+                raw_note = batch_data.get('Reception_Note')
+                note = str(raw_note).strip() if raw_note is not None else ""
+                if note and note.lower() not in ("none", "null"):
+                    self.edit_reclamation(batch_data)
+    except Exception as e:
+        logging.error(f"Error handling vertical header click: {e}")
 
 def edit_reclamation(self, batch_data):
     """تعديل ملاحظة/شكوى الاستلام (Réclamation) للوط"""

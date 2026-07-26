@@ -222,9 +222,14 @@ def _fill_row(table, r, b, hide_fin):
         rec_item.setIcon(get_reclamation_icon())
     table.setItem(r, 16, rec_item)
     
-    # تعيين الهيدر العمودي (رقم الصف فقط دون استجابة للنقر)
+    # تعيين الهيدر العمودي (رقم الصف وأيقونة الشكوى الدائرية إذا وجدت)
     v_header_item = QTableWidgetItem(str(r+1))
-    v_header_item.setTextAlignment(Qt.AlignCenter)
+    if reclamation:
+        v_header_item.setIcon(get_reclamation_icon())
+        v_header_item.setToolTip(f"Réclamation: {reclamation}")
+        v_header_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+    else:
+        v_header_item.setTextAlignment(Qt.AlignCenter)
     table.setVerticalHeaderItem(r, v_header_item)
 
 
