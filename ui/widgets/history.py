@@ -240,24 +240,10 @@ class MovementHistoryTab(QWidget):
         status_layout = QHBoxLayout()
         status_layout.setSpacing(8)
 
-        self.lbl_status = QLabel("Chargement des données...")
+        self.lbl_status = QLabel("0/0")
         self.lbl_status.setStyleSheet("font-weight: bold; font-size: 12px; color: #2c3e50;")
 
-        self.btn_load_more = QPushButton("⬇ Charger la suite")
-        self.btn_load_more.setCursor(Qt.PointingHandCursor)
-        self.btn_load_more.setStyleSheet("padding: 4px 12px; font-weight: bold;")
-        self.btn_load_more.clicked.connect(self.load_next_batch)
-
-        self.combo_batch_size = QComboBox()
-        self.combo_batch_size.addItems(["50 / lot", "100 / lot", "200 / lot", "500 / lot"])
-        self.combo_batch_size.setCurrentIndex(0) # 50 par lot par défaut
-        self.combo_batch_size.currentIndexChanged.connect(self.on_batch_size_changed)
-
         status_layout.addWidget(self.lbl_status, stretch=1)
-        status_layout.addWidget(self.btn_load_more)
-        status_layout.addWidget(QLabel("Taille du lot:"))
-        status_layout.addWidget(self.combo_batch_size)
-
         layout.addLayout(status_layout)
 
         # التحميل الأولي
@@ -271,12 +257,6 @@ class MovementHistoryTab(QWidget):
     def on_search_text_changed(self):
         self.search_timer.start()
 
-    def on_batch_size_changed(self):
-        sizes = [50, 100, 200, 500]
-        idx = self.combo_batch_size.currentIndex()
-        if 0 <= idx < len(sizes):
-            self.batch_size = sizes[idx]
-        self.reset_and_reload()
 
     def _on_scroll(self, value):
         scroll_bar = self.table.verticalScrollBar()
@@ -356,19 +336,7 @@ class MovementHistoryTab(QWidget):
 
     def update_status_ui(self):
         loaded_count = self.table.rowCount()
-        if self.total_records == 0:
-            self.lbl_status.setText("Aucun mouvement trouvé")
-            self.btn_load_more.setEnabled(False)
-        elif self.has_more_data:
-            self.lbl_status.setText(
-                f"Affichage de {loaded_count} sur {self.total_records} mouvements (Défilez vers le bas pour charger la suite...)"
-            )
-            self.btn_load_more.setEnabled(True)
-        else:
-            self.lbl_status.setText(
-                f"✅ Tous les {self.total_records} mouvements ont été chargés ({loaded_count} affichés)"
-            )
-            self.btn_load_more.setEnabled(False)
+        self.lbl_status.setText(f"{loaded_count}/{self.total_records}")
 
     def _append_rows_to_table(self, data):
         self.table.setSortingEnabled(False)
