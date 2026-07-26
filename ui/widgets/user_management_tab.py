@@ -407,9 +407,16 @@ class UserManagementTab(QWidget):
         dlg = UserDialog(self, data=user_data)
         if dlg.exec():
             updated_data = dlg.get_data()
-            # update_user سيستقبل 'Permissions' كجزء من updated_data (Kwargs) وسيتم معالجتها داخلياً في user_manager
             success = self.data_manager.users.update_user(user_data['User_ID'], **updated_data)
             if success:
+                # تحديث صلاحيات المستخدم الحالي فوراً في الذاكرة وإعادة تطبيق القائمة الجانبية
+                if hasattr(self.data_manager, 'current_user') and self.data_manager.current_user:
+                    curr_id = self.data_manager.current_user.get('User_ID') or self.data_manager.current_user.get('id')
+                    if curr_id and curr_id == user_data['User_ID']:
+                        self.data_manager.current_user['Permissions'] = updated_data.get('Permissions', {})
+                        main_win = self.window()
+                        if hasattr(main_win, 'apply_permissions'):
+                            main_win.apply_permissions()
                 self.load_users()
             else:
                 QMessageBox.critical(self, "Erreur", "Échec de la modification.")

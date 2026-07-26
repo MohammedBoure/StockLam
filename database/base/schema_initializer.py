@@ -594,9 +594,28 @@ class SchemaInitializerMixin:
             """
             cursor.execute(query, ('admin', plain_pw, 'Admin', 'Administrateur Système', perms_json))
         else:
-            logging.info("Updating Admin permissions to include new modules...")
-            query = "UPDATE Users SET Permissions = %s WHERE Username = 'admin'"
-            cursor.execute(query, (perms_json,))
+            cursor.execute("SELECT Permissions FROM Users WHERE Username = 'admin'")
+            res = cursor.fetchone()
+            current_perms = {}
+            if res and res[0]:
+                try:
+                    if isinstance(res[0], str):
+                        current_perms = json.loads(res[0])
+                    elif isinstance(res[0], dict):
+                        current_perms = res[0]
+                except Exception:
+                    current_perms = {}
+
+            updated = False
+            for perm in _ALL_PERMISSIONS:
+                if perm not in current_perms:
+                    current_perms[perm] = True
+                    updated = True
+
+            if updated:
+                logging.info("Updating Admin permissions to include missing modules...")
+                query = "UPDATE Users SET Permissions = %s WHERE Username = 'admin'"
+                cursor.execute(query, (json.dumps(current_perms),))
 
     def _initialize_schema(self):
         try:

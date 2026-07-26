@@ -463,12 +463,6 @@ class MainWindow(QMainWindow):
             except json.JSONDecodeError:
                 perms = []
 
-        if perm_key == "tab_proc_reclamation":
-            if isinstance(perms, list):
-                return "tab_proc_reclamation" in perms or "nav_procurement" in perms
-            elif isinstance(perms, dict):
-                return perms.get("tab_proc_reclamation", False) or perms.get("nav_procurement", False)
-
         # إذا كانت الصلاحيات محفوظة على شكل مصفوفة (كما في users_view.py)
         if isinstance(perms, list):
             return perm_key in perms
