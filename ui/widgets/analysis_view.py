@@ -195,6 +195,61 @@ class FullConsumptionTab(QWidget):
                 self.table.setItem(row, 0, QTableWidgetItem(str(item['Product_Name'])))
                 self.table.setItem(row, 1, QTableWidgetItem(str(item['Usage_Unit'])))
                 
+                val_item.setForeground(QColor("#c0392b")) # أحمر
+                self.table.setItem(row, 2, val_item)
+                
+                # إضافة للرسم البياني
+                if loss > 0:
+                    slice_obj = series.append(reason, loss)
+                    slice_obj.setLabel(f"{reason} ({loss:,.0f})")
+            
+            # إظهار أكبر قطعة في الكعكة (Explode)
+            if series.count() > 0:
+                slices = series.slices()
+                # البحث عن أكبر شريحة
+                max_slice = max(slices, key=lambda s: s.value())
+                max_slice.setExploded(True)
+                max_slice.setLabelVisible(True)
+            
+            self.chart.removeAllSeries()
+            self.chart.addSeries(series)
+            
+        except Exception as e:
+            logging.error(f"Waste Tab Error: {e}")
+
+# =============================================================================
+# 3. TAB: RAPPORT CONSOMMATION DÉTAILLÉ
+# النسخة الكاملة لتقرير الاستهلاك
+# =============================================================================
+class FullConsumptionTab(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        
+        self.table = QTableWidget()
+        cols = ["Produit", "Unité Usage", "Qté Consommée", "Coût Total TTC (DA)"]
+        self.table.setColumnCount(len(cols))
+        self.table.setHorizontalHeaderLabels(cols)
+        self.table.setSortingEnabled(True)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.setAlternatingRowColors(True)
+        
+        layout.addWidget(self.table)
+
+    def refresh(self, stats_manager, d_from, d_to):
+        """جلب البيانات من get_detailed_consumption_report"""
+        try:
+            self.table.setSortingEnabled(False)
+            data = stats_manager.get_detailed_consumption_report(d_from, d_to)
+            self.table.setRowCount(0)
+            
+            for row, item in enumerate(data):
+                self.table.insertRow(row)
+                
+                self.table.setItem(row, 0, QTableWidgetItem(str(item['Product_Name'])))
+                self.table.setItem(row, 1, QTableWidgetItem(str(item['Usage_Unit'])))
+                
                 qty = item['total_qty_consumed']
                 self.table.setItem(row, 2, QTableWidgetItem(format_quantity(qty)))
                 
@@ -213,7 +268,7 @@ class FullConsumptionTab(QWidget):
 # =============================================================================
 class AnalysisView(QWidget):
     """
-    الواجهة الرئيسية التي تجمع كل التبويبات الإحصائية.
+    الواجهة الرئيسية التي تجمع كل التبويبات الإحصائية والذكاء الاصطناعي.
     تحتوي على شريط تحكم بالتاريخ (مشترك) وزر تحديث.
     """
     def __init__(self, manager):
@@ -280,13 +335,16 @@ class AnalysisView(QWidget):
         """)
         
         # إنشاء التبويبات
+        from ui.widgets.ai_analytics_tab import AiAnalyticsTab
         self.tab_valuation = StockValuationTab()
         self.tab_waste = WasteAnalysisTab()
         self.tab_consumption = FullConsumptionTab()
+        self.tab_ai = AiAnalyticsTab(db_instance=self.stats.db)
         
         self.tabs.addTab(self.tab_valuation, "💰 Valorisation du Stock")
         self.tabs.addTab(self.tab_waste, "🗑️ Analyse des Pertes (Déchets)")
         self.tabs.addTab(self.tab_consumption, "📉 Rapport Consommation")
+        self.tabs.addTab(self.tab_ai, "🧠 Intelligence Artificielle & Prédictions")
         
         main_layout.addWidget(self.tabs)
         
@@ -306,3 +364,8 @@ class AnalysisView(QWidget):
         
         # 3. تحديث تقرير الاستهلاك (يعتمد على التاريخ)
         self.tab_consumption.refresh(self.stats, d_from_str, d_to_str)
+
+        # 4. تحديث تحليلات الذكاء الاصطناعي
+        if hasattr(self, 'tab_ai'):
+            self.tab_ai.set_db(self.stats.db)
+            self.tab_ai.refresh_ai_data()
