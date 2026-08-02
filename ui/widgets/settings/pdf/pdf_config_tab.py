@@ -152,6 +152,13 @@ class PdfConfigWidget(QWidget):
             return None
         return manager
 
+    @staticmethod
+    def _stamp_is_active(stamp):
+        value = stamp.get("Is_Active") if isinstance(stamp, dict) else False
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
     def load_stamps(self):
         manager = self._shared_stamp_manager()
         if manager is None:
@@ -188,7 +195,7 @@ class PdfConfigWidget(QWidget):
         self.list_stamps.clear()
 
         active_id = next(
-            (str(stamp["Stamp_ID"]) for stamp in self.stamps if stamp.get("Is_Active")),
+            (str(stamp["Stamp_ID"]) for stamp in self.stamps if self._stamp_is_active(stamp)),
             None,
         )
         row_to_select = None
@@ -203,7 +210,7 @@ class PdfConfigWidget(QWidget):
 
         if row_to_select is None and self.stamps:
             row_to_select = next(
-                (row for row, stamp in enumerate(self.stamps) if stamp.get("Is_Active")),
+                (row for row, stamp in enumerate(self.stamps) if self._stamp_is_active(stamp)),
                 0,
             )
         self.list_stamps.blockSignals(False)
@@ -252,8 +259,11 @@ class PdfConfigWidget(QWidget):
             image.scaled(180, 130, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             if not image.isNull() else QPixmap()
         )
-        self.preview_canvas.active_stamp = stamp
-        self.preview_canvas.active_stamp_pixmap = image
+        # The PDF preview must reflect the shared active stamp, not merely
+        # the stamp currently selected for editing.
+        active_stamp = stamp if self._stamp_is_active(stamp) else None
+        self.preview_canvas.active_stamp = active_stamp
+        self.preview_canvas.active_stamp_pixmap = image if active_stamp else QPixmap()
         self.preview_canvas.update()
 
     def update_stamp_preview(self):
@@ -272,7 +282,10 @@ class PdfConfigWidget(QWidget):
             "Width_CM": self.sp_stamp_w.value(),
             "Height_CM": self.sp_stamp_h.value(),
         })
-        self.preview_canvas.active_stamp = stamp
+        active_stamp = stamp if self._stamp_is_active(stamp) else None
+        self.preview_canvas.active_stamp = active_stamp
+        if active_stamp is None:
+            self.preview_canvas.active_stamp_pixmap = QPixmap()
         self.preview_canvas.update()
 
     def add_stamp(self):
@@ -553,7 +566,7 @@ class PdfConfigWidget(QWidget):
 
             self.stamps = self.load_stamps()
             active_id = next(
-                (stamp["Stamp_ID"] for stamp in self.stamps if stamp.get("Is_Active")),
+                (stamp["Stamp_ID"] for stamp in self.stamps if self._stamp_is_active(stamp)),
                 None,
             )
             self.current_stamp_id = None
