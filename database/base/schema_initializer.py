@@ -74,7 +74,6 @@ _ALL_PERMISSIONS = [
     "act_inventory_apply",
     "act_inventory_cancel",
     "act_inventory_export",
-    "act_manage_stamps"
 ]
 # =============================================================================
 # 2. SCHEMA QUERIES (With Inline Alters)

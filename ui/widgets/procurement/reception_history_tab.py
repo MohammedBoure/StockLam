@@ -577,8 +577,9 @@ class ReceptionHistoryTab(QWidget):
             elements.append(Paragraph(f"<para align='right'><b>TOTAL TTC : {t_ttc:,.2f} DZD</b></para>", styles["Normal"]))
             elements.append(Spacer(1, 2 * cm))
             local_store = get_local_settings_store(self.manager)
-            settings = local_store.get_all()
-            active_stamp = get_active_stamp(local_store)
+            settings = local_store.load_merged_pdf_settings()
+            stamp_provider = getattr(self.manager, "company_settings", None) or local_store
+            active_stamp = get_active_stamp(stamp_provider)
             
             f_left = settings.get('footer_left_rt', 'Signature Magasin / Expéditeur')
             f_right = settings.get('footer_right_rt', 'Accusé de Réception (Fournisseur)')

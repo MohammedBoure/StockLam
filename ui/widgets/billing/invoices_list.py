@@ -680,7 +680,8 @@ class InvoicesListWidget(QWidget):
                 float(footer_height),
                 FOOTER_TITLE_HEIGHT_CM + stamp_gap + stamp_area_h,
             )
-            active_stamp = get_active_stamp(local_store)
+            stamp_provider = getattr(self.manager, "company_settings", None) or local_store
+            active_stamp = get_active_stamp(stamp_provider)
             
             footer = SignatureFooter(
                 f_left,

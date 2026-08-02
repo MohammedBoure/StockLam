@@ -115,7 +115,6 @@ SYSTEM_PERMISSIONS = {
             "tab_set_system": "Système",
             "tab_system_logs": "Logs Système",
             "tab_set_pdf": "Configuration PDF",
-            "act_manage_stamps": "Ajouter et supprimer les cachets locaux"
         }
     }
 }

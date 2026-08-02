@@ -391,7 +391,8 @@ class PurchaseOrdersTab(QWidget):
             left_x = float(settings.get('footer_left_x_cm', 1.0))
             right_x = float(settings.get('footer_right_x_cm', 12.0))
             
-            active_stamp = get_active_stamp(local_store)
+            stamp_provider = getattr(self.manager, "company_settings", None) or local_store
+            active_stamp = get_active_stamp(stamp_provider)
             stamp_gap = float(settings.get('footer_stamp_gap_cm', 0.3))
             stamp_area_w = float(settings.get('footer_stamp_area_w_cm', 6.0))
             stamp_area_h = float(settings.get('footer_stamp_area_h_cm', 3.5))

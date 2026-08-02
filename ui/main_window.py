@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
         if self.data_manager is not None:
             self.data_manager.current_user = current_user
             self.data_manager.local_settings = self.local_settings
-            self.data_manager.can_manage_stamps = self.has_permission("act_manage_stamps")
+            self.data_manager.can_manage_stamps = self.has_permission("tab_set_pdf")
             if hasattr(self.data_manager, "printer") and hasattr(self.data_manager.printer, "set_local_settings"):
                 self.data_manager.printer.set_local_settings(self.local_settings)
 

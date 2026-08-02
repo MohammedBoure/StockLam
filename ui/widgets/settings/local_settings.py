@@ -1,4 +1,4 @@
-"""Per-application-user local settings and stamp storage.
+"""Per-application-user PDF settings with legacy stamp migration support.
 
 The database remains an optional source for importing PDF templates. Normal
 editing and PDF rendering use this local store so one user cannot overwrite
@@ -33,7 +33,7 @@ def _safe_user_key(user):
 
 
 class LocalSettingsStore:
-    """Persist general settings, PDF settings, and stamps under one user key."""
+    """Persist general settings and PDF layout under one user key."""
 
     def __init__(self, user=None, root_path=None):
         root = root_path or get_external_path("local_settings")
@@ -200,11 +200,11 @@ class LocalSettingsStore:
         return False
 
     def set_active_stamp(self, stamp_id):
-        target = str(stamp_id)
+        target = None if stamp_id is None else str(stamp_id)
         stamps = self.load_stamps()
-        found = False
+        found = stamp_id is None
         for stamp in stamps:
-            active = str(stamp.get("Stamp_ID")) == target
+            active = target is not None and str(stamp.get("Stamp_ID")) == target
             stamp["Is_Active"] = active
             found = found or active
         if found:
@@ -217,8 +217,6 @@ class LocalSettingsStore:
         remaining = [stamp for stamp in stamps if str(stamp.get("Stamp_ID")) != target]
         if len(remaining) == len(stamps):
             return False
-        if remaining and not any(stamp.get("Is_Active") for stamp in remaining):
-            remaining[0]["Is_Active"] = True
         self.save_stamps(remaining)
         return True
 

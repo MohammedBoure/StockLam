@@ -344,10 +344,12 @@ class SettingsTab(QWidget):
         layout = QVBoxLayout(self.tab_pdf_config)
         layout.setContentsMargins(30, 30, 30, 30)
 
-        title = QLabel("<h2>Configuration PDF locale</h2>")
+        title = QLabel("<h2>Configuration PDF</h2>")
         description = QLabel(
-            "Les réglages PDF, les cachets et leur position sont propres à l'utilisateur "
-            "sur cet appareil. Ouvrez la fenêtre dédiée pour disposer de tout l'espace nécessaire."
+            "Les reglages de mise en page restent propres a chaque utilisateur, "
+            "mais la bibliotheque des cachets est partagee dans la base de donnees. "
+            "Tout utilisateur qui a acces a cette interface peut ajouter, choisir, "
+            "activer ou desactiver le cachet utilise dans les PDF."
         )
         description.setWordWrap(True)
 
@@ -360,8 +362,8 @@ class SettingsTab(QWidget):
         open_button.clicked.connect(self.open_pdf_config_dialog)
 
         load_hint = QLabel(
-            "La fenêtre propose aussi un chargement volontaire depuis la base de données. "
-            "Aucun chargement distant n'est effectué automatiquement."
+            "Les cachets disponibles sont charges depuis la bibliotheque partagee. "
+            "Le bouton de sauvegarde dans la base conserve les reglages communs du modele PDF."
         )
         load_hint.setWordWrap(True)
         load_hint.setStyleSheet("color: #566573;")

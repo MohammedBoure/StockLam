@@ -153,16 +153,14 @@ class CompanySettingsManager:
         height_cm=4.0,
         is_active=False,
     ):
-        """Add one PNG stamp without modifying the other stored stamps."""
+        """Add one shared PNG stamp without activating it implicitly."""
         if not stamp_name or not image_bytes:
             return None
 
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM Company_Stamps")
-                is_first_stamp = cursor.fetchone()[0] == 0
-                should_activate = bool(is_active or is_first_stamp)
+                should_activate = bool(is_active)
                 if should_activate:
                     cursor.execute("UPDATE Company_Stamps SET Is_Active = FALSE")
 
@@ -248,7 +246,7 @@ class CompanySettingsManager:
             return False
 
     def delete_stamp(self, stamp_id):
-        """Delete a stamp and keep another stamp active when possible."""
+        """Delete a shared stamp without activating another one implicitly."""
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -261,16 +259,6 @@ class CompanySettingsManager:
                     return False
 
                 cursor.execute("DELETE FROM Company_Stamps WHERE Stamp_ID = %s", (int(stamp_id),))
-                if stamp.get("Is_Active"):
-                    cursor.execute(
-                        "SELECT Stamp_ID FROM Company_Stamps ORDER BY Stamp_ID LIMIT 1"
-                    )
-                    replacement = cursor.fetchone()
-                    if replacement:
-                        cursor.execute(
-                            "UPDATE Company_Stamps SET Is_Active = TRUE WHERE Stamp_ID = %s",
-                            (replacement["Stamp_ID"],),
-                        )
                 conn.commit()
                 return True
         except Exception as e:

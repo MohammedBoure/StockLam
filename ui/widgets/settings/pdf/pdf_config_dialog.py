@@ -15,7 +15,7 @@ from ..local_settings import LocalSettingsStore
 
 
 class PdfConfigDialog(QDialog):
-    """Full-screen PDF settings workspace with explicit local/DB operations."""
+    """Full-screen PDF settings workspace with shared stamp administration."""
 
     def __init__(
         self,
@@ -89,17 +89,17 @@ class PdfConfigDialog(QDialog):
         actions.setContentsMargins(18, 10, 18, 10)
         actions.setSpacing(10)
 
-        self.btn_load_db = QPushButton("Charger depuis la base de données")
-        self.btn_save_local = QPushButton("Enregistrer localement")
-        self.btn_save_db = QPushButton("Enregistrer dans la base de données")
+        self.btn_load_db = QPushButton("Charger depuis la base de donnees")
+        self.btn_save_local = QPushButton("Enregistrer la mise en page locale")
+        self.btn_save_db = QPushButton("Enregistrer le modele PDF partage")
         self.btn_load_db.setToolTip(
-            "Charge les réglages PDF depuis la base sans modifier les fichiers locaux."
+            "Charge les reglages PDF et la bibliotheque de cachets partagee depuis la base."
         )
         self.btn_save_local.setToolTip(
-            "Enregistre les réglages PDF et les cachets pour cet utilisateur sur cet appareil."
+            "Enregistre votre mise en page PDF locale. Les actions sur les cachets sont partagees."
         )
         self.btn_save_db.setToolTip(
-            "Enregistre le modèle PDF et le bandeau partagé dans la base de données."
+            "Enregistre le modele PDF commun et le bandeau dans la base de donnees."
         )
         self.btn_save_local.setStyleSheet(
             "background-color: #27ae60; color: white; font-weight: bold; padding: 9px 14px;"
