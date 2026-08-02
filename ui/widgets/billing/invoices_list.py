@@ -325,6 +325,75 @@ class InvoicesListWidget(QWidget):
             match = any(text.lower() in (self.table.item(r, col).text().lower() if self.table.item(r, col) else "") for col in [0, 2, 3])
             self.table.setRowHidden(r, not match)
 
+    @staticmethod
+    def _pdf_setting_enabled(settings, key, default=True):
+        value = settings.get(key, default)
+        if isinstance(value, str):
+            return value.strip().lower() not in {"0", "false", "no", "non", "off", ""}
+        return bool(value)
+
+    @staticmethod
+    def _partner_value(partner_info, *field_names):
+        # Read Master Data fields while tolerating DB-driver key casing.
+        if not isinstance(partner_info, dict):
+            return ""
+        values_by_lower_name = {str(key).lower(): value for key, value in partner_info.items()}
+        for field_name in field_names:
+            value = values_by_lower_name.get(str(field_name).lower())
+            if value not in (None, ""):
+                return value
+        return ""
+
+    @classmethod
+    def _partner_pdf_lines(cls, partner_info, settings):
+        value = cls._partner_value
+        lines = []
+
+        def text(raw):
+            if raw is None:
+                return ""
+            result = str(raw).replace("\n", " ").replace("\r", " ").strip()
+            return "" if result.lower() in {"none", "null", "n/a", "-", "."} else result
+
+        def add(label, raw):
+            cleaned = text(raw)
+            if cleaned:
+                lines.append((label, cleaned))
+
+        if cls._pdf_setting_enabled(settings, "partner_show_contact", True):
+            add("Contact :", value(partner_info, "Contact_Person", "Contact", "Correspondant"))
+            add("Tél. :", value(partner_info, "Phone", "Telephone", "Mobile"))
+            add("Email :", value(partner_info, "Email", "E_mail"))
+            add("Site web :", value(partner_info, "Website", "WebSite"))
+
+        if cls._pdf_setting_enabled(settings, "partner_show_address", True):
+            address = " - ".join(
+                part for part in (
+                    text(value(partner_info, "Address_Line1", "Address")),
+                    text(value(partner_info, "Address_Line2")),
+                ) if part
+            )
+            locality = " ".join(
+                part for part in (
+                    text(value(partner_info, "Postal_Code", "Zip_Code")),
+                    text(value(partner_info, "City")),
+                ) if part
+            )
+            add("Adresse :", address)
+            add("Ville :", locality)
+
+        if cls._pdf_setting_enabled(settings, "partner_show_identity", True):
+            add("Type :", value(partner_info, "Partner_Type"))
+            add("Agrément :", value(partner_info, "Agrement_Number", "Agreement_Number"))
+            add("NIF :", value(partner_info, "Tax_ID_Number", "Tax_ID", "NIF"))
+            add("Reg. Commerce :", value(partner_info, "Commercial_Reg_No", "RC"))
+
+        if cls._pdf_setting_enabled(settings, "partner_show_bank", True):
+            add("Banque :", value(partner_info, "Bank_Name"))
+            add("RIB :", value(partner_info, "Bank_Account_IBAN", "IBAN"))
+
+        return lines
+
     # =========================================================================
     # PDF Export Logic - PROFESSIONNAL & DYNAMIC (BL / BON DE RETOUR)
     # =========================================================================
@@ -360,7 +429,7 @@ class InvoicesListWidget(QWidget):
                 return
 
             details_data = mgr.get_transfer_details(transfer_id)
-            partner_info = self.manager.partners.get_partner_by_id(header_data['Partner_ID'])
+            partner_info = self.manager.partners.get_partner_by_id(header_data['Partner_ID']) or {}
         except Exception as e:
             QMessageBox.critical(self, "Erreur BD", str(e))
             return
@@ -448,45 +517,21 @@ class InvoicesListWidget(QWidget):
 
             left_text_top = "<br/>".join(lab_info_lines)
 
-            p_name = partner_info.get('Partner_Name', 'Inconnu')
-            p_contact = partner_info.get('Contact_Person', '')
-            p_phone = partner_info.get('Phone', '')
-            p_email = partner_info.get('Email', '')
-            p_website = partner_info.get('Website', '')
-            p_addr1 = partner_info.get('Address_Line1', '')
-            p_addr2 = partner_info.get('Address_Line2', '')
-            p_city = partner_info.get('City', '')
-            p_postal = partner_info.get('Postal_Code', '')
-            p_nif = partner_info.get('Tax_ID_Number', '')
-            p_rc = partner_info.get('Commercial_Reg_No', '')
-            p_bank = partner_info.get('Bank_Name', '')
-            p_iban = partner_info.get('Bank_Account_IBAN', '')
+            p_name = self._partner_value(partner_info, 'Partner_Name', 'Name') or 'Inconnu'
+            label_key = 'dest_label_rt' if is_return else 'dest_label_bl'
+            dest_label = clean_str(settings.get(label_key, ''))
+            if dest_label.lower() in {'destinataire :', 'destinataire:', 'retourné à (sous-traitant) :'}:
+                dest_label = 'Correspondant :'
+            if not dest_label:
+                dest_label = 'Correspondant :'
 
-            dest_label = (
-                settings.get('dest_label_rt', 'Retourné à (Sous-traitant) :')
-                if is_return else settings.get('dest_label_bl', 'Destinataire :')
-            )
             right_text_lines = [
                 f"<b>{safe_markup(dest_label)}</b>",
                 "",
                 f"<font size=11><b>{safe_markup(p_name)}</b></font>",
             ]
-
-            partner_contact_lines = (
-                ('Contact :', p_contact),
-                ('Tel. :', p_phone),
-                ('Email :', p_email),
-                ('Site web :', p_website),
-                ('Adresse :', ' - '.join(filter(None, [clean_str(p_addr1), clean_str(p_addr2)]))),
-                ('Ville :', ' '.join(filter(None, [clean_str(p_postal), clean_str(p_city)]))),
-                ('NIF :', p_nif),
-                ('Reg. Commerce :', p_rc),
-                ('Banque :', p_bank),
-                ('RIB :', p_iban),
-            )
-            for label, value in partner_contact_lines:
-                if clean_str(value):
-                    right_text_lines.append(f"{label} {safe_markup(value)}")
+            for label, value in self._partner_pdf_lines(partner_info, settings):
+                right_text_lines.append(f"{safe_markup(label)} {safe_markup(value)}")
 
             right_text = "<br/>".join(right_text_lines)
 
@@ -503,7 +548,8 @@ class InvoicesListWidget(QWidget):
             right_p = Paragraph(right_text, styles["Normal"])
             dest_w_cm = float(settings.get('dest_box_w_cm', 8.0))
             right_w, right_h = right_p.wrap(max(1.0, dest_w_cm - 0.5) * cm, 10.0 * cm)
-            dest_box_h = max(right_h + 1.0 * cm, 2.5 * cm)
+            configured_dest_h_cm = float(settings.get('dest_box_h_cm', 6.5))
+            dest_box_h = max(right_h + 1.0 * cm, configured_dest_h_cm * cm, 2.5 * cm)
 
             requested_table_y_cm = float(settings.get('table_start_y_cm', 10.5))
             safe_table_y_cm = max(

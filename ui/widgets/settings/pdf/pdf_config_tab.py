@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QPushButton, QGroupBox, QFormLayout, QDoubleSpinBox, 
     QFileDialog, QColorDialog, QTabWidget, QScrollArea, 
     QFrame, QMessageBox, QSizePolicy, QRadioButton, QButtonGroup,
-    QListWidget, QListWidgetItem
+    QCheckBox, QListWidget, QListWidgetItem
 )
 from PySide6.QtCore import Qt, Signal, QRectF, QRect, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QColor, QPixmap, QFont, QPainter, QPen, QBrush, QImage
@@ -56,7 +56,7 @@ class PdfConfigWidget(QWidget):
             
             # Textes BL
             "doc_title_bl": "BON DE LIVRAISON",
-            "dest_label_bl": "Destinataire :",
+            "dest_label_bl": "Correspondant :",
             "qty_header_bl": "Qté",
             "total_label_bl": "MONTANT TOTAL À PAYER",
             "footer_left_bl": "Responsable Stock",
@@ -64,7 +64,7 @@ class PdfConfigWidget(QWidget):
             
             # Textes Retour
             "doc_title_rt": "BON DE RETOUR",
-            "dest_label_rt": "Retourné à (Sous-traitant) :",
+            "dest_label_rt": "Correspondant :",
             "qty_header_rt": "Qté Rtr.",
             "total_label_rt": "VALEUR TOTALE DU RETOUR",
             "footer_left_rt": "Signature Magasin / Expéditeur",
@@ -82,6 +82,11 @@ class PdfConfigWidget(QWidget):
             "dest_box_x_cm": 11.5,
             "dest_box_y_cm": 5.4,
             "dest_box_w_cm": 8.0,
+            "dest_box_h_cm": 6.5,
+            "partner_show_contact": True,
+            "partner_show_address": True,
+            "partner_show_identity": True,
+            "partner_show_bank": True,
             "header_info_x_cm": 1.0,
             "header_info_y_cm": 5.4,
             "header_info_w_cm": 9.5,
@@ -99,9 +104,23 @@ class PdfConfigWidget(QWidget):
             "footer_stamp_area_h_cm": 3.5
         }
 
+    @staticmethod
+    def _normalize_correspondant_labels(settings):
+        legacy_labels = {
+            "destinataire :",
+            "destinataire:",
+            "retourné à (sous-traitant) :",
+            "retourne a (sous-traitant) :",
+        }
+        for key in ("dest_label_bl", "dest_label_rt"):
+            value = str(settings.get(key) or "").strip()
+            if not value or value.lower() in legacy_labels:
+                settings[key] = "Correspondant :"
+        return settings
+
     def load_settings(self):
         defaults = self.get_default_settings()
-        return self.local_store.load_pdf(defaults)
+        return self._normalize_correspondant_labels(self.local_store.load_pdf(defaults))
 
     def load_stamps(self):
         return self.local_store.load_stamps()
@@ -348,6 +367,7 @@ class PdfConfigWidget(QWidget):
             "sp_dest_x": "dest_box_x_cm",
             "sp_dest_y": "dest_box_y_cm",
             "sp_dest_w": "dest_box_w_cm",
+            "sp_dest_h": "dest_box_h_cm",
             "sp_table_y": "table_start_y_cm",
             "sp_footer_y": "footer_y_offset_cm",
             "sp_footer_h": "footer_height_cm",
@@ -358,8 +378,15 @@ class PdfConfigWidget(QWidget):
             "sp_footer_stamp_h": "footer_stamp_area_h_cm",
         }
 
+        checkbox_fields = {
+            "chk_partner_contact": "partner_show_contact",
+            "chk_partner_address": "partner_show_address",
+            "chk_partner_identity": "partner_show_identity",
+            "chk_partner_bank": "partner_show_bank",
+        }
         controls = [getattr(self, name) for name in text_fields]
         controls += [getattr(self, name) for name in spin_fields]
+        controls += [getattr(self, name) for name in checkbox_fields]
         for control in controls:
             control.blockSignals(True)
         try:
@@ -367,6 +394,8 @@ class PdfConfigWidget(QWidget):
                 getattr(self, widget_name).setText(str(self.settings.get(setting_name, "")))
             for widget_name, setting_name in spin_fields.items():
                 getattr(self, widget_name).setValue(float(self.settings.get(setting_name, 0.0)))
+            for widget_name, setting_name in checkbox_fields.items():
+                getattr(self, widget_name).setChecked(bool(self.settings.get(setting_name, True)))
         finally:
             for control in controls:
                 control.blockSignals(False)
@@ -388,7 +417,7 @@ class PdfConfigWidget(QWidget):
 
         try:
             db_settings = manager.get_settings() or {}
-            self.settings = {**self.get_default_settings(), **db_settings}
+            self.settings = self._normalize_correspondant_labels({**self.get_default_settings(), **db_settings})
 
             banner_bytes = manager.get_banner_image()
             self.new_image_bytes = bytes(banner_bytes) if banner_bytes else None
@@ -510,7 +539,7 @@ class PdfConfigWidget(QWidget):
         self.edit_tot_bl = QLineEdit(self.settings.get('total_label_bl', ''))
         
         bl_form.addRow("Titre Document:", self.edit_title_bl)
-        bl_form.addRow("Label Destinataire:", self.edit_dest_bl)
+        bl_form.addRow("Label Correspondant:", self.edit_dest_bl)
         bl_form.addRow("En-tête Quantité:", self.edit_qty_bl)
         bl_form.addRow("Label Total:", self.edit_tot_bl)
         
@@ -529,7 +558,7 @@ class PdfConfigWidget(QWidget):
         self.edit_tot_rt = QLineEdit(self.settings.get('total_label_rt', ''))
         
         rt_form.addRow("Titre Document:", self.edit_title_rt)
-        rt_form.addRow("Label Retourné à:", self.edit_dest_rt)
+        rt_form.addRow("Label Correspondant:", self.edit_dest_rt)
         rt_form.addRow("En-tête Quantité:", self.edit_qty_rt)
         rt_form.addRow("Label Total:", self.edit_tot_rt)
         
@@ -555,6 +584,13 @@ class PdfConfigWidget(QWidget):
         self.sp_dest_x = self._create_spin(0, 21, self.settings.get('dest_box_x_cm', 11.5))
         self.sp_dest_y = self._create_spin(0, 29, self.settings.get('dest_box_y_cm', 5.4))
         self.sp_dest_w = self._create_spin(1, 15, self.settings.get('dest_box_w_cm', 8.0))
+        self.sp_dest_h = self._create_spin(2.5, 12, self.settings.get('dest_box_h_cm', 6.5))
+        self.chk_partner_contact = QCheckBox("Contact, téléphone, email et site web")
+        self.chk_partner_address = QCheckBox("Adresse, code postal et ville")
+        self.chk_partner_identity = QCheckBox("Type, agrément, NIF et RC")
+        self.chk_partner_bank = QCheckBox("Banque et RIB/IBAN")
+        for checkbox in (self.chk_partner_contact, self.chk_partner_address, self.chk_partner_identity, self.chk_partner_bank):
+            checkbox.setChecked(True)
         self.sp_table_y = self._create_spin(5, 20, self.settings.get('table_start_y_cm', 10.5))
         self.sp_footer_y = self._create_spin(0, 10, self.settings.get('footer_y_offset_cm', 1.5))
         self.sp_footer_h = self._create_spin(1, 15, self.settings.get('footer_height_cm', 2.5))
@@ -577,9 +613,15 @@ class PdfConfigWidget(QWidget):
         pos_form.addRow("Début Tableau X (cm):", self.sp_table_x)
         pos_form.addRow("Début Tableau Y (cm):", self.sp_table_y)
         pos_form.addRow(QLabel("--- Correspondant ---"))
-        pos_form.addRow("Boîte Destinataire X (cm):", self.sp_dest_x)
-        pos_form.addRow("Boîte Destinataire Y (cm):", self.sp_dest_y)
+        pos_form.addRow("Boîte Correspondant X (cm):", self.sp_dest_x)
+        pos_form.addRow("Boîte Correspondant Y (cm):", self.sp_dest_y)
         pos_form.addRow("Largeur Boîte (cm):", self.sp_dest_w)
+        pos_form.addRow("Hauteur minimale Boîte (cm):", self.sp_dest_h)
+        pos_form.addRow(QLabel("--- Informations Correspondant ---"))
+        pos_form.addRow("Afficher les coordonnées:", self.chk_partner_contact)
+        pos_form.addRow("Afficher l'adresse:", self.chk_partner_address)
+        pos_form.addRow("Afficher l'identité administrative:", self.chk_partner_identity)
+        pos_form.addRow("Afficher les données bancaires:", self.chk_partner_bank)
         
         tab_pos.setWidget(pos_content)
         tab_pos.setWidgetResizable(True)
@@ -764,11 +806,13 @@ class PdfConfigWidget(QWidget):
             self.sp_banner_total_h, self.sp_img_x, self.sp_img_y, self.sp_img_w, self.sp_img_h,
             self.sp_bank_y, self.sp_header_x, self.sp_header_y, self.sp_header_w,
             self.sp_date_x, self.sp_date_y, self.sp_table_x,
-            self.sp_dest_x, self.sp_dest_y, self.sp_dest_w, self.sp_table_y,
+            self.sp_dest_x, self.sp_dest_y, self.sp_dest_w, self.sp_dest_h, self.sp_table_y,
             self.sp_footer_y, self.sp_footer_h, self.sp_footer_left_x, self.sp_footer_right_x,
             self.sp_footer_stamp_gap, self.sp_footer_stamp_w, self.sp_footer_stamp_h
         ]
         for s in spin_widgets: s.valueChanged.connect(self.sync_settings)
+        for checkbox in (self.chk_partner_contact, self.chk_partner_address, self.chk_partner_identity, self.chk_partner_bank):
+            checkbox.stateChanged.connect(self.sync_settings)
 
     def open_visual_editor_dialog(self):
         dialog = VisualPdfEditorDialog(self.settings, self)
@@ -788,6 +832,7 @@ class PdfConfigWidget(QWidget):
         self.sp_table_x.blockSignals(True)
         self.sp_dest_x.blockSignals(True)
         self.sp_dest_y.blockSignals(True)
+        self.sp_dest_h.blockSignals(True)
         self.sp_footer_left_x.blockSignals(True)
         self.sp_footer_right_x.blockSignals(True)
         
@@ -799,6 +844,7 @@ class PdfConfigWidget(QWidget):
         self.sp_table_x.setValue(self.settings.get('table_start_x_cm', 1.0))
         self.sp_dest_x.setValue(self.settings.get('dest_box_x_cm', 11.5))
         self.sp_dest_y.setValue(self.settings.get('dest_box_y_cm', 5.4))
+        self.sp_dest_h.setValue(self.settings.get('dest_box_h_cm', 6.5))
         self.sp_footer_left_x.setValue(self.settings.get('footer_left_x_cm', 1.0))
         self.sp_footer_right_x.setValue(self.settings.get('footer_right_x_cm', 12.0))
         
@@ -810,6 +856,7 @@ class PdfConfigWidget(QWidget):
         self.sp_table_x.blockSignals(False)
         self.sp_dest_x.blockSignals(False)
         self.sp_dest_y.blockSignals(False)
+        self.sp_dest_h.blockSignals(False)
         self.sp_footer_left_x.blockSignals(False)
         self.sp_footer_right_x.blockSignals(False)
         
@@ -885,6 +932,11 @@ class PdfConfigWidget(QWidget):
             "dest_box_x_cm": self.sp_dest_x.value(),
             "dest_box_y_cm": self.sp_dest_y.value(),
             "dest_box_w_cm": self.sp_dest_w.value(),
+            "dest_box_h_cm": self.sp_dest_h.value(),
+            "partner_show_contact": self.chk_partner_contact.isChecked(),
+            "partner_show_address": self.chk_partner_address.isChecked(),
+            "partner_show_identity": self.chk_partner_identity.isChecked(),
+            "partner_show_bank": self.chk_partner_bank.isChecked(),
             "table_start_y_cm": self.sp_table_y.value(),
             "footer_y_offset_cm": self.sp_footer_y.value(),
             "footer_height_cm": self.sp_footer_h.value(),
@@ -942,7 +994,9 @@ class LivePreviewCanvas(QWidget):
 
         # Get dynamic texts
         title = s.get('doc_title_rt', 'BON DE RETOUR') if self.is_retour else s.get('doc_title_bl', 'BON DE LIVRAISON')
-        dest_label = s.get('dest_label_rt', 'Retourné à (Sous-traitant) :') if self.is_retour else s.get('dest_label_bl', 'Destinataire :')
+        dest_label = s.get('dest_label_rt', 'Correspondant :') if self.is_retour else s.get('dest_label_bl', 'Correspondant :')
+        if str(dest_label).strip().lower() in {'destinataire :', 'destinataire:', 'retourné à (sous-traitant) :'}:
+            dest_label = 'Correspondant :'
         f_left = s.get('footer_left_rt', 'Signature Magasin / Expéditeur') if self.is_retour else s.get('footer_left_bl', 'Responsable Stock')
         f_right = s.get('footer_right_rt', 'Accusé de Réception (Fournisseur)') if self.is_retour else s.get('footer_right_bl', 'Accusé de réception (Client)')
         
@@ -963,7 +1017,8 @@ class LivePreviewCanvas(QWidget):
         dx, dy, dw = int(s.get('dest_box_x_cm', 11.5) * 10), int(s.get('dest_box_y_cm', 5.4) * 10), int(s.get('dest_box_w_cm', 8.0) * 10)
         p.setBrush(QColor(245, 245, 245))
         p.setPen(QPen(Qt.lightGray, 0.2))
-        p.drawRect(dx, dy, dw, 40)
+        dest_h = int(s.get('dest_box_h_cm', 6.5) * 10)
+        p.drawRect(dx, dy, dw, dest_h)
         p.setPen(Qt.black)
         p.drawText(dx + 2, dy + 5, dest_label)
         p.drawText(dx + 2, dy + 10, "Nom du Partenaire")

@@ -140,7 +140,8 @@ class VisualPdfEditorDialog(QDialog):
         # Correspondant box (Can move X and Y)
         self.el_dest = DraggableElement(
             'dest_box_x_cm', 'dest_box_y_cm',
-            width_cm=self.settings.get('dest_box_w_cm', 8.0), height_cm=4.5,
+            width_cm=self.settings.get('dest_box_w_cm', 8.0),
+            height_cm=self.settings.get('dest_box_h_cm', 6.5),
             label="Boîte Correspondant", color="#9b59b6"
         )
         self.scene.addItem(self.el_dest)
@@ -279,7 +280,12 @@ class VisualPdfEditorDialog(QDialog):
         self.el_header.setRect(0, 0, float(self.settings.get('header_info_w_cm', 9.5)) * CM_TO_PX, 2.8 * CM_TO_PX)
         self.el_date.setRect(0, 0, 9.5 * CM_TO_PX, 0.8 * CM_TO_PX)
         self.el_table.setRect(0, 0, 19.0 * CM_TO_PX, 5.0 * CM_TO_PX)
-        self.el_dest.setRect(0, 0, float(self.settings.get('dest_box_w_cm', 8.0)) * CM_TO_PX, 4.5 * CM_TO_PX)
+        self.el_dest.setRect(
+            0,
+            0,
+            float(self.settings.get('dest_box_w_cm', 8.0)) * CM_TO_PX,
+            float(self.settings.get('dest_box_h_cm', 6.5)) * CM_TO_PX,
+        )
         fh = float(self.settings.get('footer_height_cm', 2.5)) * CM_TO_PX
         self.el_sig_l.setRect(0, 0, 4.0 * CM_TO_PX, fh)
         self.el_sig_r.setRect(0, 0, 4.0 * CM_TO_PX, fh)
