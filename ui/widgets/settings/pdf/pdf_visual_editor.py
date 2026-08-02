@@ -115,21 +115,33 @@ class VisualPdfEditorDialog(QDialog):
         self.view.setRenderHint(QPainter.Antialiasing)
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
         
-        # Static table visualization (Mock)
-        self.table_mock = QGraphicsRectItem(1.0 * CM_TO_PX, 9.5 * CM_TO_PX, 19.0 * CM_TO_PX, 5.0 * CM_TO_PX)
-        self.table_mock.setBrush(QBrush(QColor("#f1c40f").lighter(150)))
-        self.table_mock.setPen(QPen(Qt.NoPen))
-        self.scene.addItem(self.table_mock)
-        txt = QGraphicsTextItem("Zone du Tableau", self.table_mock)
-        txt.setPos(1.0 * CM_TO_PX + 5, 9.5 * CM_TO_PX + 5)
-        
         # --- Create Draggable Elements ---
-        
-        # Destinataire Box (Can move X and Y)
+        self.el_header = DraggableElement(
+            'header_info_x_cm', 'header_info_y_cm',
+            width_cm=self.settings.get('header_info_w_cm', 9.5), height_cm=2.8,
+            label="Informations / Adresse", color="#16a085"
+        )
+        self.scene.addItem(self.el_header)
+
+        self.el_date = DraggableElement(
+            'creation_date_x_cm', 'creation_date_y_cm',
+            width_cm=9.5, height_cm=0.8,
+            label="Date de création", color="#34495e"
+        )
+        self.scene.addItem(self.el_date)
+
+        self.el_table = DraggableElement(
+            'table_start_x_cm', 'table_start_y_cm',
+            width_cm=19.0, height_cm=5.0,
+            label="Zone du Tableau", color="#f1c40f"
+        )
+        self.scene.addItem(self.el_table)
+
+        # Correspondant box (Can move X and Y)
         self.el_dest = DraggableElement(
-            'dest_box_x_cm', 'dest_box_y_cm', 
-            width_cm=self.settings.get('dest_box_w_cm', 8.0), height_cm=2.5, 
-            label="Boîte Destinataire", color="#9b59b6"
+            'dest_box_x_cm', 'dest_box_y_cm',
+            width_cm=self.settings.get('dest_box_w_cm', 8.0), height_cm=4.5,
+            label="Boîte Correspondant", color="#9b59b6"
         )
         self.scene.addItem(self.el_dest)
         
@@ -154,12 +166,30 @@ class VisualPdfEditorDialog(QDialog):
         self.panel.setMaximumWidth(300)
         form = QFormLayout(self.panel)
         
+        self.lbl_header_x = QLabel("0.0 cm")
+        self.lbl_header_y = QLabel("0.0 cm")
+        self.lbl_date_x = QLabel("0.0 cm")
+        self.lbl_date_y = QLabel("0.0 cm")
+        self.lbl_table_x = QLabel("0.0 cm")
+        self.lbl_table_y = QLabel("0.0 cm")
         self.lbl_dest_x = QLabel("0.0 cm")
         self.lbl_dest_y = QLabel("0.0 cm")
         self.lbl_sig_l_x = QLabel("0.0 cm")
         self.lbl_sig_r_x = QLabel("0.0 cm")
-        
-        form.addRow(QLabel("<b>Boîte Destinataire</b>"))
+
+        form.addRow(QLabel("<b>Informations / Adresse</b>"))
+        form.addRow("Position X:", self.lbl_header_x)
+        form.addRow("Position Y (depuis le haut):", self.lbl_header_y)
+        form.addRow(QLabel("<hr>"))
+        form.addRow(QLabel("<b>Date de création</b>"))
+        form.addRow("Position X:", self.lbl_date_x)
+        form.addRow("Position Y (depuis le haut):", self.lbl_date_y)
+        form.addRow(QLabel("<hr>"))
+        form.addRow(QLabel("<b>Tableau</b>"))
+        form.addRow("Position X:", self.lbl_table_x)
+        form.addRow("Position Y (depuis le haut):", self.lbl_table_y)
+        form.addRow(QLabel("<hr>"))
+        form.addRow(QLabel("<b>Boîte Correspondant</b>"))
         form.addRow("Position X:", self.lbl_dest_x)
         form.addRow("Position Y (depuis le haut):", self.lbl_dest_y)
         form.addRow(QLabel("<hr>"))
@@ -181,17 +211,34 @@ class VisualPdfEditorDialog(QDialog):
     def load_from_settings(self):
         s = self.settings
         
-        # Destinataire
+        # Header information
+        header_x = float(s.get('header_info_x_cm', 1.0))
+        header_y = float(s.get('header_info_y_cm', 5.4))
+        self.el_header.setPos(header_x * CM_TO_PX, header_y * CM_TO_PX)
+        self.lbl_header_x.setText(f"{header_x:.2f} cm")
+        self.lbl_header_y.setText(f"{header_y:.2f} cm")
+
+        # Creation date
+        date_x = float(s.get('creation_date_x_cm', 1.0))
+        date_y = float(s.get('creation_date_y_cm', 9.3))
+        self.el_date.setPos(date_x * CM_TO_PX, date_y * CM_TO_PX)
+        self.lbl_date_x.setText(f"{date_x:.2f} cm")
+        self.lbl_date_y.setText(f"{date_y:.2f} cm")
+
+        # Table
+        table_x = float(s.get('table_start_x_cm', 1.0))
+        table_y = float(s.get('table_start_y_cm', 10.5))
+        self.el_table.setPos(table_x * CM_TO_PX, table_y * CM_TO_PX)
+        self.lbl_table_x.setText(f"{table_x:.2f} cm")
+        self.lbl_table_y.setText(f"{table_y:.2f} cm")
+
+        # Correspondant
         dx = float(s.get('dest_box_x_cm', 11.5))
-        dy = float(s.get('dest_box_y_cm', 6.0))
+        dy = float(s.get('dest_box_y_cm', 5.4))
         self.el_dest.setPos(dx * CM_TO_PX, dy * CM_TO_PX)
         self.lbl_dest_x.setText(f"{dx:.2f} cm")
         self.lbl_dest_y.setText(f"{dy:.2f} cm")
-        
-        # Table Y (Mock)
-        table_y = float(s.get('table_start_y_cm', 9.5))
-        self.table_mock.setRect(1.0 * CM_TO_PX, table_y * CM_TO_PX, 19.0 * CM_TO_PX, 5.0 * CM_TO_PX)
-        
+
         # Footer Y base (Table Y + Table Height + offset)
         base_y = table_y + 5.0 + float(s.get('footer_y_offset_cm', 1.5))
         
@@ -208,12 +255,18 @@ class VisualPdfEditorDialog(QDialog):
     def on_element_moved(self, key_x, key_y, val_x, val_y):
         if key_x:
             self.settings[key_x] = round(val_x, 2)
+            if key_x == 'header_info_x_cm': self.lbl_header_x.setText(f"{val_x:.2f} cm")
+            if key_x == 'creation_date_x_cm': self.lbl_date_x.setText(f"{val_x:.2f} cm")
+            if key_x == 'table_start_x_cm': self.lbl_table_x.setText(f"{val_x:.2f} cm")
             if key_x == 'dest_box_x_cm': self.lbl_dest_x.setText(f"{val_x:.2f} cm")
             if key_x == 'footer_left_x_cm': self.lbl_sig_l_x.setText(f"{val_x:.2f} cm")
             if key_x == 'footer_right_x_cm': self.lbl_sig_r_x.setText(f"{val_x:.2f} cm")
-            
+
         if key_y:
             self.settings[key_y] = round(val_y, 2)
+            if key_y == 'header_info_y_cm': self.lbl_header_y.setText(f"{val_y:.2f} cm")
+            if key_y == 'creation_date_y_cm': self.lbl_date_y.setText(f"{val_y:.2f} cm")
+            if key_y == 'table_start_y_cm': self.lbl_table_y.setText(f"{val_y:.2f} cm")
             if key_y == 'dest_box_y_cm': self.lbl_dest_y.setText(f"{val_y:.2f} cm")
             
         self.settings_changed.emit(self.settings)
@@ -222,8 +275,11 @@ class VisualPdfEditorDialog(QDialog):
         # Called when spinboxes change
         self.settings.update(new_settings)
         
-        # Update width of elements dynamically
-        self.el_dest.setRect(0, 0, float(self.settings.get('dest_box_w_cm', 8.0)) * CM_TO_PX, 2.5 * CM_TO_PX)
+        # Update element dimensions dynamically
+        self.el_header.setRect(0, 0, float(self.settings.get('header_info_w_cm', 9.5)) * CM_TO_PX, 2.8 * CM_TO_PX)
+        self.el_date.setRect(0, 0, 9.5 * CM_TO_PX, 0.8 * CM_TO_PX)
+        self.el_table.setRect(0, 0, 19.0 * CM_TO_PX, 5.0 * CM_TO_PX)
+        self.el_dest.setRect(0, 0, float(self.settings.get('dest_box_w_cm', 8.0)) * CM_TO_PX, 4.5 * CM_TO_PX)
         fh = float(self.settings.get('footer_height_cm', 2.5)) * CM_TO_PX
         self.el_sig_l.setRect(0, 0, 4.0 * CM_TO_PX, fh)
         self.el_sig_r.setRect(0, 0, 4.0 * CM_TO_PX, fh)

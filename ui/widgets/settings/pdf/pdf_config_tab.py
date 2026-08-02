@@ -80,9 +80,15 @@ class PdfConfigWidget(QWidget):
             "bank_acc": "00475017000761081",
             "bank_y_offset_cm": 6.6,
             "dest_box_x_cm": 11.5,
-            "dest_box_y_cm": 6.0,
+            "dest_box_y_cm": 5.4,
             "dest_box_w_cm": 8.0,
-            "table_start_y_cm": 9.5,
+            "header_info_x_cm": 1.0,
+            "header_info_y_cm": 5.4,
+            "header_info_w_cm": 9.5,
+            "creation_date_x_cm": 1.0,
+            "creation_date_y_cm": 9.3,
+            "table_start_x_cm": 1.0,
+            "table_start_y_cm": 10.5,
             
             "footer_y_offset_cm": 1.5,
             "footer_height_cm": 2.5,
@@ -333,6 +339,12 @@ class PdfConfigWidget(QWidget):
             "sp_img_w": "banner_img_w_cm",
             "sp_img_h": "banner_img_h_cm",
             "sp_bank_y": "bank_y_offset_cm",
+            "sp_header_x": "header_info_x_cm",
+            "sp_header_y": "header_info_y_cm",
+            "sp_header_w": "header_info_w_cm",
+            "sp_date_x": "creation_date_x_cm",
+            "sp_date_y": "creation_date_y_cm",
+            "sp_table_x": "table_start_x_cm",
             "sp_dest_x": "dest_box_x_cm",
             "sp_dest_y": "dest_box_y_cm",
             "sp_dest_w": "dest_box_w_cm",
@@ -533,11 +545,17 @@ class PdfConfigWidget(QWidget):
         self.edit_bank = QLineEdit(self.settings.get('bank_name', ''))
         self.edit_rib = QLineEdit(self.settings.get('bank_acc', ''))
         self.sp_bank_y = self._create_spin(0, 25, self.settings.get('bank_y_offset_cm', 6.6))
-        
+        self.sp_header_x = self._create_spin(0, 21, self.settings.get('header_info_x_cm', 1.0))
+        self.sp_header_y = self._create_spin(0, 29, self.settings.get('header_info_y_cm', 5.4))
+        self.sp_header_w = self._create_spin(3, 15, self.settings.get('header_info_w_cm', 9.5))
+        self.sp_date_x = self._create_spin(0, 21, self.settings.get('creation_date_x_cm', 1.0))
+        self.sp_date_y = self._create_spin(0, 29, self.settings.get('creation_date_y_cm', 9.3))
+
+        self.sp_table_x = self._create_spin(0, 3, self.settings.get('table_start_x_cm', 1.0))
         self.sp_dest_x = self._create_spin(0, 21, self.settings.get('dest_box_x_cm', 11.5))
-        self.sp_dest_y = self._create_spin(0, 29, self.settings.get('dest_box_y_cm', 6.0))
+        self.sp_dest_y = self._create_spin(0, 29, self.settings.get('dest_box_y_cm', 5.4))
         self.sp_dest_w = self._create_spin(1, 15, self.settings.get('dest_box_w_cm', 8.0))
-        self.sp_table_y = self._create_spin(5, 25, self.settings.get('table_start_y_cm', 9.5))
+        self.sp_table_y = self._create_spin(5, 20, self.settings.get('table_start_y_cm', 10.5))
         self.sp_footer_y = self._create_spin(0, 10, self.settings.get('footer_y_offset_cm', 1.5))
         self.sp_footer_h = self._create_spin(1, 15, self.settings.get('footer_height_cm', 2.5))
         self.sp_footer_left_x = self._create_spin(0, 21, self.settings.get('footer_left_x_cm', 1.0))
@@ -549,12 +567,19 @@ class PdfConfigWidget(QWidget):
         pos_form.addRow("Nom Banque:", self.edit_bank)
         pos_form.addRow("N° Compte (RIB):", self.edit_rib)
         pos_form.addRow("Position Banque Y (cm):", self.sp_bank_y)
-        pos_form.addRow(QLabel(""))
+        pos_form.addRow(QLabel("--- Informations d'en-tête ---"))
+        pos_form.addRow("Informations X (cm):", self.sp_header_x)
+        pos_form.addRow("Informations Y (cm):", self.sp_header_y)
+        pos_form.addRow("Largeur Informations (cm):", self.sp_header_w)
+        pos_form.addRow("Date de création X (cm):", self.sp_date_x)
+        pos_form.addRow("Date de création Y (cm):", self.sp_date_y)
+        pos_form.addRow(QLabel("--- Tableau ---"))
+        pos_form.addRow("Début Tableau X (cm):", self.sp_table_x)
+        pos_form.addRow("Début Tableau Y (cm):", self.sp_table_y)
+        pos_form.addRow(QLabel("--- Correspondant ---"))
         pos_form.addRow("Boîte Destinataire X (cm):", self.sp_dest_x)
         pos_form.addRow("Boîte Destinataire Y (cm):", self.sp_dest_y)
         pos_form.addRow("Largeur Boîte (cm):", self.sp_dest_w)
-        pos_form.addRow(QLabel(""))
-        pos_form.addRow("Début Tableau Y (cm):", self.sp_table_y)
         
         tab_pos.setWidget(pos_content)
         tab_pos.setWidgetResizable(True)
@@ -737,7 +762,9 @@ class PdfConfigWidget(QWidget):
 
         spin_widgets = [
             self.sp_banner_total_h, self.sp_img_x, self.sp_img_y, self.sp_img_w, self.sp_img_h,
-            self.sp_bank_y, self.sp_dest_x, self.sp_dest_y, self.sp_dest_w, self.sp_table_y,
+            self.sp_bank_y, self.sp_header_x, self.sp_header_y, self.sp_header_w,
+            self.sp_date_x, self.sp_date_y, self.sp_table_x,
+            self.sp_dest_x, self.sp_dest_y, self.sp_dest_w, self.sp_table_y,
             self.sp_footer_y, self.sp_footer_h, self.sp_footer_left_x, self.sp_footer_right_x,
             self.sp_footer_stamp_gap, self.sp_footer_stamp_w, self.sp_footer_stamp_h
         ]
@@ -753,16 +780,34 @@ class PdfConfigWidget(QWidget):
         self.settings.update(new_settings)
         
         # Block signals temporarily
+        self.sp_header_x.blockSignals(True)
+        self.sp_header_y.blockSignals(True)
+        self.sp_header_w.blockSignals(True)
+        self.sp_date_x.blockSignals(True)
+        self.sp_date_y.blockSignals(True)
+        self.sp_table_x.blockSignals(True)
         self.sp_dest_x.blockSignals(True)
         self.sp_dest_y.blockSignals(True)
         self.sp_footer_left_x.blockSignals(True)
         self.sp_footer_right_x.blockSignals(True)
         
+        self.sp_header_x.setValue(self.settings.get('header_info_x_cm', 1.0))
+        self.sp_header_y.setValue(self.settings.get('header_info_y_cm', 5.4))
+        self.sp_header_w.setValue(self.settings.get('header_info_w_cm', 9.5))
+        self.sp_date_x.setValue(self.settings.get('creation_date_x_cm', 1.0))
+        self.sp_date_y.setValue(self.settings.get('creation_date_y_cm', 9.3))
+        self.sp_table_x.setValue(self.settings.get('table_start_x_cm', 1.0))
         self.sp_dest_x.setValue(self.settings.get('dest_box_x_cm', 11.5))
-        self.sp_dest_y.setValue(self.settings.get('dest_box_y_cm', 6.0))
+        self.sp_dest_y.setValue(self.settings.get('dest_box_y_cm', 5.4))
         self.sp_footer_left_x.setValue(self.settings.get('footer_left_x_cm', 1.0))
         self.sp_footer_right_x.setValue(self.settings.get('footer_right_x_cm', 12.0))
         
+        self.sp_header_x.blockSignals(False)
+        self.sp_header_y.blockSignals(False)
+        self.sp_header_w.blockSignals(False)
+        self.sp_date_x.blockSignals(False)
+        self.sp_date_y.blockSignals(False)
+        self.sp_table_x.blockSignals(False)
         self.sp_dest_x.blockSignals(False)
         self.sp_dest_y.blockSignals(False)
         self.sp_footer_left_x.blockSignals(False)
@@ -831,6 +876,12 @@ class PdfConfigWidget(QWidget):
             "bank_name": self.edit_bank.text(),
             "bank_acc": self.edit_rib.text(),
             "bank_y_offset_cm": self.sp_bank_y.value(),
+            "header_info_x_cm": self.sp_header_x.value(),
+            "header_info_y_cm": self.sp_header_y.value(),
+            "header_info_w_cm": self.sp_header_w.value(),
+            "creation_date_x_cm": self.sp_date_x.value(),
+            "creation_date_y_cm": self.sp_date_y.value(),
+            "table_start_x_cm": self.sp_table_x.value(),
             "dest_box_x_cm": self.sp_dest_x.value(),
             "dest_box_y_cm": self.sp_dest_y.value(),
             "dest_box_w_cm": self.sp_dest_w.value(),
@@ -909,23 +960,36 @@ class LivePreviewCanvas(QWidget):
         p.drawText(15, bank_y + 4, f"N° Compte : {s.get('bank_acc', '')}")
         
         # Destinataire Box
-        dx, dy, dw = int(s.get('dest_box_x_cm', 11.5) * 10), int(s.get('dest_box_y_cm', 6.0) * 10), int(s.get('dest_box_w_cm', 8.0) * 10)
+        dx, dy, dw = int(s.get('dest_box_x_cm', 11.5) * 10), int(s.get('dest_box_y_cm', 5.4) * 10), int(s.get('dest_box_w_cm', 8.0) * 10)
         p.setBrush(QColor(245, 245, 245))
         p.setPen(QPen(Qt.lightGray, 0.2))
-        p.drawRect(dx, dy, dw, 25)
+        p.drawRect(dx, dy, dw, 40)
         p.setPen(Qt.black)
         p.drawText(dx + 2, dy + 5, dest_label)
         p.drawText(dx + 2, dy + 10, "Nom du Partenaire")
-        p.drawText(dx + 2, dy + 14, "NIF : 123456789")
-        
+        p.drawText(dx + 2, dy + 14, "Contact / Telephone / Email")
+        p.drawText(dx + 2, dy + 19, "Adresse / Ville")
+        p.drawText(dx + 2, dy + 24, "NIF / Reg. Commerce")
+
+        header_x = int(s.get('header_info_x_cm', 1.0) * 10)
+        header_y = int(s.get('header_info_y_cm', 5.4) * 10)
+        p.setPen(Qt.black)
+        p.drawText(header_x, header_y, "Adresse / informations de l'entreprise")
+        p.drawText(header_x, header_y + 5, "NIF / RC / Banque")
+
+        date_x = int(s.get('creation_date_x_cm', 1.0) * 10)
+        date_y = int(s.get('creation_date_y_cm', 9.3) * 10)
+        p.drawText(date_x, date_y, "Date de creation")
+
         # Table
-        table_y = int(s.get('table_start_y_cm', 9.5) * 10)
+        table_x = int(s.get('table_start_x_cm', 1.0) * 10)
+        table_y = int(s.get('table_start_y_cm', 10.5) * 10)
         p.setBrush(color)
         p.setPen(Qt.NoPen)
-        p.drawRect(10, table_y, 190, 8)
+        p.drawRect(table_x, table_y, 190, 8)
         p.setBrush(Qt.NoBrush)
         p.setPen(QPen(Qt.lightGray, 0.5))
-        p.drawRect(10, table_y + 8, 190, 50) # fake table body
+        p.drawRect(table_x, table_y + 8, 190, 50) # fake table body
         
         # Footer
         table_end_y = table_y + 58

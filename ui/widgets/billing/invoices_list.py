@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from xml.sax.saxutils import escape as escape_xml
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
     QHeaderView, QPushButton, QLabel, QLineEdit,
@@ -402,27 +403,18 @@ class InvoicesListWidget(QWidget):
             primary_color = colors.HexColor(default_color)
             banner_h_cm = settings.get('banner_height_cm', 4.8)
 
-            table_start_y_cm = settings.get('table_start_y_cm', 9.5)
-            # ضبط الهوامش لكي تناسب الجدول تماماً
-            doc = SimpleDocTemplate(
-                path, pagesize=A4, rightMargin=40, leftMargin=40,
-                topMargin=table_start_y_cm * cm, bottomMargin=50
-            )
-
             elements = []
             styles = getSampleStyleSheet()
 
             current_time = datetime.now().strftime('%d/%m/%Y %H:%M')
 
             # --- الترويسة العلوية (المعلومات) ---
-            lab_name = settings.get('lab_name', 'Laboratoire')
             lab_addr = settings.get('lab_address', '')
             lab_nif = settings.get('lab_nif', '')
             lab_rc = settings.get('lab_rc', '')
-            
+
             lab_info_lines = [
-                f"<font size=14 color='{default_color}'><b>{document_title} N°: {formatted_ref}</b></font>{ref_bl_text}<br/>",
-                f"<font size=10><b>{lab_name}</b></font>"
+                f"<font size=14 color='{default_color}'><b>{escape_xml(str(document_title))} N°: {escape_xml(str(formatted_ref))}</b></font>{ref_bl_text}<br/>"
             ]
             def clean_str(val):
                 if not val: return ""
@@ -431,50 +423,101 @@ class InvoicesListWidget(QWidget):
                     return ""
                 return v
 
-            if clean_str(lab_addr): lab_info_lines.append(f"<font size=9>{clean_str(lab_addr)}</font>")
-            if clean_str(lab_nif): lab_info_lines.append(f"<font size=9>NIF : {clean_str(lab_nif)}</font>")
-            if clean_str(lab_rc): lab_info_lines.append(f"<font size=9>RC : {clean_str(lab_rc)}</font>")
+            def safe_markup(val):
+                return escape_xml(clean_str(val))
+
+            if clean_str(lab_addr): lab_info_lines.append(f"<font size=9>{safe_markup(lab_addr)}</font>")
+            if clean_str(lab_nif): lab_info_lines.append(f"<font size=9>NIF : {safe_markup(lab_nif)}</font>")
+            if clean_str(lab_rc): lab_info_lines.append(f"<font size=9>RC : {safe_markup(lab_rc)}</font>")
             
             bank_name = settings.get('bank_name', '')
             bank_acc = settings.get('bank_acc', '')
             
-            if clean_str(bank_name): lab_info_lines.append(f"<font size=9>Banque : {clean_str(bank_name)}</font>")
-            if clean_str(bank_acc): lab_info_lines.append(f"<font size=9>RIB : {clean_str(bank_acc)}</font>")
-            
+            if clean_str(bank_name): lab_info_lines.append(f"<font size=9>Banque : {safe_markup(bank_name)}</font>")
+            if clean_str(bank_acc): lab_info_lines.append(f"<font size=9>RIB : {safe_markup(bank_acc)}</font>")
+
             raw_date = header_data.get('Transaction_Date')
             if hasattr(raw_date, 'strftime'):
                 bon_date = raw_date.strftime("%d/%m/%Y %H:%M")
             else:
                 bon_date = str(raw_date or "")
                 
-            lab_info_lines.append("")
+            creation_date_text = f"Date de création : {current_time}"
             if bon_date:
-                lab_info_lines.append(f"<font size=9>Date du Bon : {bon_date}</font>")
-            lab_info_lines.append(f"<font size=9>Date d'édition : {current_time}</font>")
-            
+                creation_date_text = f"Date du Bon : {bon_date}    |    {creation_date_text}"
+
             left_text_top = "<br/>".join(lab_info_lines)
-            
+
             p_name = partner_info.get('Partner_Name', 'Inconnu')
-            p_type = partner_info.get('Partner_Type', '')
+            p_contact = partner_info.get('Contact_Person', '')
+            p_phone = partner_info.get('Phone', '')
+            p_email = partner_info.get('Email', '')
+            p_website = partner_info.get('Website', '')
+            p_addr1 = partner_info.get('Address_Line1', '')
+            p_addr2 = partner_info.get('Address_Line2', '')
+            p_city = partner_info.get('City', '')
+            p_postal = partner_info.get('Postal_Code', '')
             p_nif = partner_info.get('Tax_ID_Number', '')
             p_rc = partner_info.get('Commercial_Reg_No', '')
             p_bank = partner_info.get('Bank_Name', '')
             p_iban = partner_info.get('Bank_Account_IBAN', '')
-            
-            dest_label = 'Correspondant:'
-            p_name_clean = str(p_name).replace('\n', '').replace('\r', '').strip()
+
+            dest_label = (
+                settings.get('dest_label_rt', 'Retourné à (Sous-traitant) :')
+                if is_return else settings.get('dest_label_bl', 'Destinataire :')
+            )
             right_text_lines = [
-                f"<b>{dest_label}</b>",
+                f"<b>{safe_markup(dest_label)}</b>",
                 "",
-                f"<font size=11><b>{p_name_clean}</b></font>",
+                f"<font size=11><b>{safe_markup(p_name)}</b></font>",
             ]
-            
-            if clean_str(p_nif): right_text_lines.append(f"NIF : {clean_str(p_nif)}")
-            if clean_str(p_rc): right_text_lines.append(f"Reg. Commerce : {clean_str(p_rc)}")
-            if clean_str(p_bank): right_text_lines.append(f"Banque : {clean_str(p_bank)}")
-            if clean_str(p_iban): right_text_lines.append(f"RIB : {clean_str(p_iban)}")
-            
+
+            partner_contact_lines = (
+                ('Contact :', p_contact),
+                ('Tel. :', p_phone),
+                ('Email :', p_email),
+                ('Site web :', p_website),
+                ('Adresse :', ' - '.join(filter(None, [clean_str(p_addr1), clean_str(p_addr2)]))),
+                ('Ville :', ' '.join(filter(None, [clean_str(p_postal), clean_str(p_city)]))),
+                ('NIF :', p_nif),
+                ('Reg. Commerce :', p_rc),
+                ('Banque :', p_bank),
+                ('RIB :', p_iban),
+            )
+            for label, value in partner_contact_lines:
+                if clean_str(value):
+                    right_text_lines.append(f"{label} {safe_markup(value)}")
+
             right_text = "<br/>".join(right_text_lines)
+
+            header_info_x_cm = float(settings.get('header_info_x_cm', 1.0))
+            header_info_y_cm = float(settings.get('header_info_y_cm', 5.4))
+            header_info_w_cm = float(settings.get('header_info_w_cm', 9.5))
+            creation_date_x_cm = float(settings.get('creation_date_x_cm', 1.0))
+            creation_date_y_cm = float(settings.get('creation_date_y_cm', 9.3))
+            date_p = Paragraph(f"<font size=9>{safe_markup(creation_date_text)}</font>", styles["Normal"])
+            date_w, date_h = date_p.wrap(10.0 * cm, 1.0 * cm)
+
+            left_p = Paragraph(left_text_top, styles["Normal"])
+            left_w, left_h = left_p.wrap(header_info_w_cm * cm, 6.0 * cm)
+            right_p = Paragraph(right_text, styles["Normal"])
+            dest_w_cm = float(settings.get('dest_box_w_cm', 8.0))
+            right_w, right_h = right_p.wrap(max(1.0, dest_w_cm - 0.5) * cm, 10.0 * cm)
+            dest_box_h = max(right_h + 1.0 * cm, 2.5 * cm)
+
+            requested_table_y_cm = float(settings.get('table_start_y_cm', 10.5))
+            safe_table_y_cm = max(
+                requested_table_y_cm,
+                header_info_y_cm + left_h / cm + 0.35,
+                creation_date_y_cm + date_h / cm + 0.35,
+                float(settings.get('dest_box_y_cm', 5.4)) + dest_box_h / cm + 0.35,
+            )
+            table_start_x_cm = float(settings.get('table_start_x_cm', 1.0))
+
+            doc = SimpleDocTemplate(
+                path, pagesize=A4, rightMargin=1.0 * cm, leftMargin=1.0 * cm,
+                topMargin=safe_table_y_cm * cm, bottomMargin=50
+            )
 
             def draw_header_compact(canvas, doc):
                 canvas.saveState()
@@ -494,29 +537,28 @@ class InvoicesListWidget(QWidget):
                     canvas.setStrokeColor(colors.red)
                     canvas.rect(img_x, img_y, img_w, img_h, stroke=1)
                     
-                # Draw texts using explicit positions from settings
-                total_h_cm = settings.get('banner_height_cm', 4.8) * cm
-                top_y = PAGE_HEIGHT - total_h_cm - 0.5*cm
-                
-                # We combine everything on the left side to prevent overlap
-                left_p = Paragraph(left_text_top, styles["Normal"])
-                left_w, left_h = left_p.wrap(9.5*cm, 10.0*cm)
-                left_p.drawOn(canvas, doc.leftMargin, top_y - left_h)
-                
+                left_p.drawOn(
+                    canvas,
+                    header_info_x_cm * cm,
+                    PAGE_HEIGHT - header_info_y_cm * cm - left_h,
+                )
+
                 dest_x = settings.get('dest_box_x_cm', 11.5) * cm
-                dest_y_abs = PAGE_HEIGHT - settings.get('dest_box_y_cm', 6.0) * cm
-                dest_w = settings.get('dest_box_w_cm', 8.0) * cm
-                
-                right_p = Paragraph(right_text, styles["Normal"])
-                right_w, right_h = right_p.wrap(dest_w - 0.5*cm, 10.0*cm)
-                box_h = max(right_h + 1.0 * cm, 2.5 * cm)
-                
+                dest_y_abs = PAGE_HEIGHT - settings.get('dest_box_y_cm', 5.4) * cm
+                dest_w = dest_w_cm * cm
+                box_h = dest_box_h
+
                 canvas.setFillColor(colors.HexColor("#f8f9fa"))
                 canvas.setStrokeColor(colors.lightgrey)
                 canvas.setLineWidth(0.5)
                 canvas.rect(dest_x, dest_y_abs - box_h, dest_w, box_h, fill=1, stroke=1)
                 
                 right_p.drawOn(canvas, dest_x + 0.25*cm, dest_y_abs - right_h - 0.5*cm)
+                date_p.drawOn(
+                    canvas,
+                    creation_date_x_cm * cm,
+                    PAGE_HEIGHT - creation_date_y_cm * cm - date_h,
+                )
                 canvas.restoreState()
 
             # --- جدول المنتجات ---
@@ -551,6 +593,8 @@ class InvoicesListWidget(QWidget):
             table_data.append([Paragraph(f"<b>{total_label}</b>", styles["Normal"]), "", "", f"{grand_total:,.2f} DA"])
 
             items_table = Table(table_data, colWidths=[9.5*cm, 2.0*cm, 2.5*cm, 4.0*cm])
+            items_table.hAlign = 'LEFT'
+            items_table.leftIndent = max(0.0, table_start_x_cm * cm - doc.leftMargin)
             items_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), primary_color),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.white),
