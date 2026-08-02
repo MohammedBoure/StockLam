@@ -360,36 +360,40 @@ class InvoicesListWidget(QWidget):
             if cleaned:
                 lines.append((label, cleaned))
 
-        if cls._pdf_setting_enabled(settings, "partner_show_contact", True):
+        def show(field_key, legacy_group_key=None):
+            legacy_default = cls._pdf_setting_enabled(settings, legacy_group_key, True) if legacy_group_key else True
+            return cls._pdf_setting_enabled(settings, field_key, legacy_default)
+
+        if show("partner_show_contact_person", "partner_show_contact"):
             add("Contact :", value(partner_info, "Contact_Person", "Contact", "Correspondant"))
+        if show("partner_show_phone", "partner_show_contact"):
             add("Tél. :", value(partner_info, "Phone", "Telephone", "Mobile"))
+        if show("partner_show_email", "partner_show_contact"):
             add("Email :", value(partner_info, "Email", "E_mail"))
+        if show("partner_show_website", "partner_show_contact"):
             add("Site web :", value(partner_info, "Website", "WebSite"))
 
-        if cls._pdf_setting_enabled(settings, "partner_show_address", True):
-            address = " - ".join(
-                part for part in (
-                    text(value(partner_info, "Address_Line1", "Address")),
-                    text(value(partner_info, "Address_Line2")),
-                ) if part
-            )
-            locality = " ".join(
-                part for part in (
-                    text(value(partner_info, "Postal_Code", "Zip_Code")),
-                    text(value(partner_info, "City")),
-                ) if part
-            )
-            add("Adresse :", address)
-            add("Ville :", locality)
+        if show("partner_show_address_line1", "partner_show_address"):
+            add("Adresse :", value(partner_info, "Address_Line1", "Address"))
+        if show("partner_show_address_line2", "partner_show_address"):
+            add("Adresse (complément) :", value(partner_info, "Address_Line2"))
+        if show("partner_show_postal_code", "partner_show_address"):
+            add("Code postal :", value(partner_info, "Postal_Code", "Zip_Code"))
+        if show("partner_show_city", "partner_show_address"):
+            add("Ville :", value(partner_info, "City"))
 
-        if cls._pdf_setting_enabled(settings, "partner_show_identity", True):
+        if show("partner_show_type", "partner_show_identity"):
             add("Type :", value(partner_info, "Partner_Type"))
+        if show("partner_show_agrement", "partner_show_identity"):
             add("Agrément :", value(partner_info, "Agrement_Number", "Agreement_Number"))
+        if show("partner_show_tax_id", "partner_show_identity"):
             add("NIF :", value(partner_info, "Tax_ID_Number", "Tax_ID", "NIF"))
+        if show("partner_show_commercial_reg", "partner_show_identity"):
             add("Reg. Commerce :", value(partner_info, "Commercial_Reg_No", "RC"))
 
-        if cls._pdf_setting_enabled(settings, "partner_show_bank", True):
+        if show("partner_show_bank_name", "partner_show_bank"):
             add("Banque :", value(partner_info, "Bank_Name"))
+        if show("partner_show_iban", "partner_show_bank"):
             add("RIB :", value(partner_info, "Bank_Account_IBAN", "IBAN"))
 
         return lines
@@ -528,8 +532,9 @@ class InvoicesListWidget(QWidget):
             right_text_lines = [
                 f"<b>{safe_markup(dest_label)}</b>",
                 "",
-                f"<font size=11><b>{safe_markup(p_name)}</b></font>",
             ]
+            if self._pdf_setting_enabled(settings, "partner_show_name", True):
+                right_text_lines.append(f"<font size=11><b>{safe_markup(p_name)}</b></font>")
             for label, value in self._partner_pdf_lines(partner_info, settings):
                 right_text_lines.append(f"{safe_markup(label)} {safe_markup(value)}")
 

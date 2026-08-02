@@ -83,10 +83,21 @@ class PdfConfigWidget(QWidget):
             "dest_box_y_cm": 5.4,
             "dest_box_w_cm": 8.0,
             "dest_box_h_cm": 6.5,
-            "partner_show_contact": True,
-            "partner_show_address": True,
-            "partner_show_identity": True,
-            "partner_show_bank": True,
+            "partner_show_name": True,
+            "partner_show_contact_person": True,
+            "partner_show_phone": True,
+            "partner_show_email": True,
+            "partner_show_website": True,
+            "partner_show_address_line1": True,
+            "partner_show_address_line2": True,
+            "partner_show_postal_code": True,
+            "partner_show_city": True,
+            "partner_show_type": True,
+            "partner_show_agrement": True,
+            "partner_show_tax_id": True,
+            "partner_show_commercial_reg": True,
+            "partner_show_bank_name": True,
+            "partner_show_iban": True,
             "header_info_x_cm": 1.0,
             "header_info_y_cm": 5.4,
             "header_info_w_cm": 9.5,
@@ -117,6 +128,13 @@ class PdfConfigWidget(QWidget):
             if not value or value.lower() in legacy_labels:
                 settings[key] = "Correspondant :"
         return settings
+
+    @staticmethod
+    def _setting_enabled(settings, key, default=True):
+        value = settings.get(key, default)
+        if isinstance(value, str):
+            return value.strip().lower() not in {"0", "false", "no", "non", "off", ""}
+        return bool(value)
 
     def load_settings(self):
         defaults = self.get_default_settings()
@@ -379,10 +397,21 @@ class PdfConfigWidget(QWidget):
         }
 
         checkbox_fields = {
-            "chk_partner_contact": "partner_show_contact",
-            "chk_partner_address": "partner_show_address",
-            "chk_partner_identity": "partner_show_identity",
-            "chk_partner_bank": "partner_show_bank",
+            "chk_partner_name": "partner_show_name",
+            "chk_partner_contact_person": "partner_show_contact_person",
+            "chk_partner_phone": "partner_show_phone",
+            "chk_partner_email": "partner_show_email",
+            "chk_partner_website": "partner_show_website",
+            "chk_partner_address_line1": "partner_show_address_line1",
+            "chk_partner_address_line2": "partner_show_address_line2",
+            "chk_partner_postal_code": "partner_show_postal_code",
+            "chk_partner_city": "partner_show_city",
+            "chk_partner_type": "partner_show_type",
+            "chk_partner_agrement": "partner_show_agrement",
+            "chk_partner_tax_id": "partner_show_tax_id",
+            "chk_partner_commercial_reg": "partner_show_commercial_reg",
+            "chk_partner_bank_name": "partner_show_bank_name",
+            "chk_partner_iban": "partner_show_iban",
         }
         controls = [getattr(self, name) for name in text_fields]
         controls += [getattr(self, name) for name in spin_fields]
@@ -395,7 +424,7 @@ class PdfConfigWidget(QWidget):
             for widget_name, setting_name in spin_fields.items():
                 getattr(self, widget_name).setValue(float(self.settings.get(setting_name, 0.0)))
             for widget_name, setting_name in checkbox_fields.items():
-                getattr(self, widget_name).setChecked(bool(self.settings.get(setting_name, True)))
+                getattr(self, widget_name).setChecked(self._setting_enabled(self.settings, setting_name, True))
         finally:
             for control in controls:
                 control.blockSignals(False)
@@ -585,12 +614,40 @@ class PdfConfigWidget(QWidget):
         self.sp_dest_y = self._create_spin(0, 29, self.settings.get('dest_box_y_cm', 5.4))
         self.sp_dest_w = self._create_spin(1, 15, self.settings.get('dest_box_w_cm', 8.0))
         self.sp_dest_h = self._create_spin(2.5, 12, self.settings.get('dest_box_h_cm', 6.5))
-        self.chk_partner_contact = QCheckBox("Contact, téléphone, email et site web")
-        self.chk_partner_address = QCheckBox("Adresse, code postal et ville")
-        self.chk_partner_identity = QCheckBox("Type, agrément, NIF et RC")
-        self.chk_partner_bank = QCheckBox("Banque et RIB/IBAN")
-        for checkbox in (self.chk_partner_contact, self.chk_partner_address, self.chk_partner_identity, self.chk_partner_bank):
-            checkbox.setChecked(True)
+        self.chk_partner_name = QCheckBox("Nom du partenaire")
+        self.chk_partner_contact_person = QCheckBox("Personne de contact")
+        self.chk_partner_phone = QCheckBox("Téléphone")
+        self.chk_partner_email = QCheckBox("Email")
+        self.chk_partner_website = QCheckBox("Site web")
+        self.chk_partner_address_line1 = QCheckBox("Adresse ligne 1")
+        self.chk_partner_address_line2 = QCheckBox("Adresse ligne 2")
+        self.chk_partner_postal_code = QCheckBox("Code postal")
+        self.chk_partner_city = QCheckBox("Ville")
+        self.chk_partner_type = QCheckBox("Type de partenaire")
+        self.chk_partner_agrement = QCheckBox("Numéro d'agrément")
+        self.chk_partner_tax_id = QCheckBox("NIF")
+        self.chk_partner_commercial_reg = QCheckBox("Registre de commerce")
+        self.chk_partner_bank_name = QCheckBox("Nom de la banque")
+        self.chk_partner_iban = QCheckBox("RIB / IBAN")
+        self.partner_detail_checkboxes = (
+            ("partner_show_name", self.chk_partner_name),
+            ("partner_show_contact_person", self.chk_partner_contact_person),
+            ("partner_show_phone", self.chk_partner_phone),
+            ("partner_show_email", self.chk_partner_email),
+            ("partner_show_website", self.chk_partner_website),
+            ("partner_show_address_line1", self.chk_partner_address_line1),
+            ("partner_show_address_line2", self.chk_partner_address_line2),
+            ("partner_show_postal_code", self.chk_partner_postal_code),
+            ("partner_show_city", self.chk_partner_city),
+            ("partner_show_type", self.chk_partner_type),
+            ("partner_show_agrement", self.chk_partner_agrement),
+            ("partner_show_tax_id", self.chk_partner_tax_id),
+            ("partner_show_commercial_reg", self.chk_partner_commercial_reg),
+            ("partner_show_bank_name", self.chk_partner_bank_name),
+            ("partner_show_iban", self.chk_partner_iban),
+        )
+        for setting_name, checkbox in self.partner_detail_checkboxes:
+            checkbox.setChecked(self._setting_enabled(self.settings, setting_name, True))
         self.sp_table_y = self._create_spin(5, 20, self.settings.get('table_start_y_cm', 10.5))
         self.sp_footer_y = self._create_spin(0, 10, self.settings.get('footer_y_offset_cm', 1.5))
         self.sp_footer_h = self._create_spin(1, 15, self.settings.get('footer_height_cm', 2.5))
@@ -617,11 +674,22 @@ class PdfConfigWidget(QWidget):
         pos_form.addRow("Boîte Correspondant Y (cm):", self.sp_dest_y)
         pos_form.addRow("Largeur Boîte (cm):", self.sp_dest_w)
         pos_form.addRow("Hauteur minimale Boîte (cm):", self.sp_dest_h)
-        pos_form.addRow(QLabel("--- Informations Correspondant ---"))
-        pos_form.addRow("Afficher les coordonnées:", self.chk_partner_contact)
-        pos_form.addRow("Afficher l'adresse:", self.chk_partner_address)
-        pos_form.addRow("Afficher l'identité administrative:", self.chk_partner_identity)
-        pos_form.addRow("Afficher les données bancaires:", self.chk_partner_bank)
+        pos_form.addRow(QLabel("--- Champs Correspondant ---"))
+        pos_form.addRow("Afficher:", self.chk_partner_name)
+        pos_form.addRow("Afficher:", self.chk_partner_contact_person)
+        pos_form.addRow("Afficher:", self.chk_partner_phone)
+        pos_form.addRow("Afficher:", self.chk_partner_email)
+        pos_form.addRow("Afficher:", self.chk_partner_website)
+        pos_form.addRow("Afficher:", self.chk_partner_address_line1)
+        pos_form.addRow("Afficher:", self.chk_partner_address_line2)
+        pos_form.addRow("Afficher:", self.chk_partner_postal_code)
+        pos_form.addRow("Afficher:", self.chk_partner_city)
+        pos_form.addRow("Afficher:", self.chk_partner_type)
+        pos_form.addRow("Afficher:", self.chk_partner_agrement)
+        pos_form.addRow("Afficher:", self.chk_partner_tax_id)
+        pos_form.addRow("Afficher:", self.chk_partner_commercial_reg)
+        pos_form.addRow("Afficher:", self.chk_partner_bank_name)
+        pos_form.addRow("Afficher:", self.chk_partner_iban)
         
         tab_pos.setWidget(pos_content)
         tab_pos.setWidgetResizable(True)
@@ -811,7 +879,7 @@ class PdfConfigWidget(QWidget):
             self.sp_footer_stamp_gap, self.sp_footer_stamp_w, self.sp_footer_stamp_h
         ]
         for s in spin_widgets: s.valueChanged.connect(self.sync_settings)
-        for checkbox in (self.chk_partner_contact, self.chk_partner_address, self.chk_partner_identity, self.chk_partner_bank):
+        for setting_name, checkbox in self.partner_detail_checkboxes:
             checkbox.stateChanged.connect(self.sync_settings)
 
     def open_visual_editor_dialog(self):
@@ -933,10 +1001,21 @@ class PdfConfigWidget(QWidget):
             "dest_box_y_cm": self.sp_dest_y.value(),
             "dest_box_w_cm": self.sp_dest_w.value(),
             "dest_box_h_cm": self.sp_dest_h.value(),
-            "partner_show_contact": self.chk_partner_contact.isChecked(),
-            "partner_show_address": self.chk_partner_address.isChecked(),
-            "partner_show_identity": self.chk_partner_identity.isChecked(),
-            "partner_show_bank": self.chk_partner_bank.isChecked(),
+            "partner_show_name": self.chk_partner_name.isChecked(),
+            "partner_show_contact_person": self.chk_partner_contact_person.isChecked(),
+            "partner_show_phone": self.chk_partner_phone.isChecked(),
+            "partner_show_email": self.chk_partner_email.isChecked(),
+            "partner_show_website": self.chk_partner_website.isChecked(),
+            "partner_show_address_line1": self.chk_partner_address_line1.isChecked(),
+            "partner_show_address_line2": self.chk_partner_address_line2.isChecked(),
+            "partner_show_postal_code": self.chk_partner_postal_code.isChecked(),
+            "partner_show_city": self.chk_partner_city.isChecked(),
+            "partner_show_type": self.chk_partner_type.isChecked(),
+            "partner_show_agrement": self.chk_partner_agrement.isChecked(),
+            "partner_show_tax_id": self.chk_partner_tax_id.isChecked(),
+            "partner_show_commercial_reg": self.chk_partner_commercial_reg.isChecked(),
+            "partner_show_bank_name": self.chk_partner_bank_name.isChecked(),
+            "partner_show_iban": self.chk_partner_iban.isChecked(),
             "table_start_y_cm": self.sp_table_y.value(),
             "footer_y_offset_cm": self.sp_footer_y.value(),
             "footer_height_cm": self.sp_footer_h.value(),
@@ -1013,7 +1092,7 @@ class LivePreviewCanvas(QWidget):
         p.drawText(15, bank_y, f"Banque : {s.get('bank_name', '')}")
         p.drawText(15, bank_y + 4, f"N° Compte : {s.get('bank_acc', '')}")
         
-        # Destinataire Box
+        # Correspondant Box
         dx, dy, dw = int(s.get('dest_box_x_cm', 11.5) * 10), int(s.get('dest_box_y_cm', 5.4) * 10), int(s.get('dest_box_w_cm', 8.0) * 10)
         p.setBrush(QColor(245, 245, 245))
         p.setPen(QPen(Qt.lightGray, 0.2))
@@ -1021,10 +1100,36 @@ class LivePreviewCanvas(QWidget):
         p.drawRect(dx, dy, dw, dest_h)
         p.setPen(Qt.black)
         p.drawText(dx + 2, dy + 5, dest_label)
-        p.drawText(dx + 2, dy + 10, "Nom du Partenaire")
-        p.drawText(dx + 2, dy + 14, "Contact / Telephone / Email")
-        p.drawText(dx + 2, dy + 19, "Adresse / Ville")
-        p.drawText(dx + 2, dy + 24, "NIF / Reg. Commerce")
+
+        def show_partner_field(key):
+            value = s.get(key, True)
+            if isinstance(value, str):
+                return value.strip().lower() not in {"0", "false", "no", "non", "off", ""}
+            return bool(value)
+
+        detail_preview_lines = []
+        preview_fields = (
+            ("partner_show_name", "Nom du partenaire"),
+            ("partner_show_contact_person", "Personne de contact"),
+            ("partner_show_phone", "Téléphone"),
+            ("partner_show_email", "Email"),
+            ("partner_show_website", "Site web"),
+            ("partner_show_address_line1", "Adresse ligne 1"),
+            ("partner_show_address_line2", "Adresse ligne 2"),
+            ("partner_show_postal_code", "Code postal"),
+            ("partner_show_city", "Ville"),
+            ("partner_show_type", "Type de partenaire"),
+            ("partner_show_agrement", "Numéro d'agrément"),
+            ("partner_show_tax_id", "NIF"),
+            ("partner_show_commercial_reg", "Registre de commerce"),
+            ("partner_show_bank_name", "Nom de la banque"),
+            ("partner_show_iban", "RIB / IBAN"),
+        )
+        detail_preview_lines.extend(
+            label for key, label in preview_fields if show_partner_field(key)
+        )
+        for index, label in enumerate(detail_preview_lines):
+            p.drawText(dx + 2, dy + 10 + int(index * 3.8), label)
 
         header_x = int(s.get('header_info_x_cm', 1.0) * 10)
         header_y = int(s.get('header_info_y_cm', 5.4) * 10)
