@@ -5,6 +5,41 @@ from .base import Database
 class CompanySettingsManager:
     def __init__(self, db_instance: Database):
         self.db = db_instance
+        self._ensure_pdf_schema()
+
+    def _ensure_pdf_schema(self):
+        """Create the PDF settings tables on every application version update."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS Company_Settings (
+                        Settings_ID INT PRIMARY KEY DEFAULT 1,
+                        Settings_Data JSON,
+                        Banner_Image LONGBLOB
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS Company_Stamps (
+                        Stamp_ID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        Stamp_Name VARCHAR(150) NOT NULL,
+                        Image_Data LONGBLOB NOT NULL,
+                        Position_X_CM DECIMAL(7,2) NOT NULL DEFAULT 13.00,
+                        Position_Y_CM DECIMAL(7,2) NOT NULL DEFAULT 22.00,
+                        Width_CM DECIMAL(7,2) NOT NULL DEFAULT 4.00,
+                        Height_CM DECIMAL(7,2) NOT NULL DEFAULT 4.00,
+                        Is_Active BOOLEAN NOT NULL DEFAULT FALSE,
+                        Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        Updated_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.commit()
+        except Exception as e:
+            logging.error(f"Error ensuring PDF schema: {e}")
 
     def sync_to_local(self):
         """
@@ -219,8 +254,15 @@ class CompanySettingsManager:
                         int(stamp_id),
                     ),
                 )
+                updated = cursor.rowcount > 0
+                if not updated:
+                    cursor.execute(
+                        "SELECT Stamp_ID FROM Company_Stamps WHERE Stamp_ID = %s",
+                        (int(stamp_id),),
+                    )
+                    updated = cursor.fetchone() is not None
                 conn.commit()
-                return cursor.rowcount > 0
+                return updated
         except Exception as e:
             logging.error(f"Error updating company stamp: {e}")
             return False

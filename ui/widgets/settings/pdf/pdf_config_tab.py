@@ -566,10 +566,7 @@ class PdfConfigWidget(QWidget):
             return False
 
     def save_settings(self):
-        """Save this user's PDF layout and persist shared stamp edits."""
-        if self.current_stamp_id is not None and not self.save_current_stamp(show_message=False):
-            raise Exception("Echec de l'enregistrement du cachet selectionne.")
-
+        """Save this user's local PDF layout without changing shared stamps."""
         banner_bytes = self.new_image_bytes
         if banner_bytes is None and not self.clear_banner_on_save:
             banner_bytes = self.local_store.load_banner_bytes(self.settings)
@@ -860,8 +857,6 @@ class PdfConfigWidget(QWidget):
         self.sp_stamp_y = self._create_spin(0, 29.7, 22.0)
         self.sp_stamp_w = self._create_spin(0.5, 21, 4.0)
         self.sp_stamp_h = self._create_spin(0.5, 29.7, 4.0)
-        self.btn_save_stamp = QPushButton("Enregistrer le nom, la position et la taille")
-        self.btn_save_stamp.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
         self.btn_add_stamp.setEnabled(self.can_manage_stamps)
         self.btn_delete_stamp.setEnabled(self.can_manage_stamps)
         if not self.can_manage_stamps:
@@ -877,7 +872,6 @@ class PdfConfigWidget(QWidget):
         ))
         stamp_form.addRow("Largeur (cm) :", self.sp_stamp_w)
         stamp_form.addRow("Hauteur (cm) :", self.sp_stamp_h)
-        stamp_form.addRow("", self.btn_save_stamp)
         stamps_group_layout.addLayout(stamp_form)
 
         stamps_layout.addWidget(stamps_group)
@@ -941,7 +935,6 @@ class PdfConfigWidget(QWidget):
         self.btn_delete_stamp.clicked.connect(self.delete_stamp)
         self.btn_activate_stamp.clicked.connect(self.activate_stamp)
         self.btn_deactivate_stamp.clicked.connect(self.deactivate_stamp)
-        self.btn_save_stamp.clicked.connect(self.save_current_stamp)
         self.list_stamps.currentRowChanged.connect(self.on_stamp_selected)
         for stamp_spin in (self.sp_stamp_x, self.sp_stamp_y, self.sp_stamp_w, self.sp_stamp_h):
             stamp_spin.valueChanged.connect(self.update_stamp_preview)
