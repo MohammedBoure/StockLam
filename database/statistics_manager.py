@@ -103,7 +103,11 @@ class StatisticsManager:
                                     ELSE ABS(sml.Qty_Change)
                                 END
                             ) * 
-                            COALESCE(NULLIF(ib.Unit_Price_Received, 0), NULLIF(pm.Purchase_Price, 0), 0.0) * 
+                            COALESCE(
+                                NULLIF(ib.Unit_Price_Received, 0),
+                                (SELECT NULLIF(ib2.Unit_Price_Received, 0) FROM Inventory_Batches ib2 WHERE ib2.Product_ID = pm.Product_ID AND ib2.Unit_Price_Received > 0 ORDER BY ib2.Batch_ID DESC LIMIT 1),
+                                0.0
+                            ) * 
                             (1 - COALESCE(ib.Discount_Percent, 0) / 100.0) * 
                             (1 + COALESCE(ib.Tax_Rate_Percent, 0) / 100.0)
                         )
@@ -342,7 +346,11 @@ class StatisticsManager:
                                     ELSE ABS(sml.Qty_Change)
                                 END
                             ) * 
-                            COALESCE(NULLIF(ib.Unit_Price_Received, 0), NULLIF(pm.Purchase_Price, 0), 0.0) * 
+                            COALESCE(
+                                NULLIF(ib.Unit_Price_Received, 0),
+                                (SELECT NULLIF(ib2.Unit_Price_Received, 0) FROM Inventory_Batches ib2 WHERE ib2.Product_ID = pm.Product_ID AND ib2.Unit_Price_Received > 0 ORDER BY ib2.Batch_ID DESC LIMIT 1),
+                                0.0
+                            ) * 
                             (1 - COALESCE(ib.Discount_Percent, 0) / 100.0) * 
                             (1 + COALESCE(ib.Tax_Rate_Percent, 0) / 100.0)
                         ) as estimated_loss
@@ -412,7 +420,11 @@ class StatisticsManager:
                                     ELSE ABS(sml.Qty_Change)
                                 END
                             ) * 
-                            COALESCE(NULLIF(ib.Unit_Price_Received, 0), NULLIF(pm.Purchase_Price, 0), 0.0) * 
+                            COALESCE(
+                                NULLIF(ib.Unit_Price_Received, 0),
+                                (SELECT NULLIF(ib2.Unit_Price_Received, 0) FROM Inventory_Batches ib2 WHERE ib2.Product_ID = pm.Product_ID AND ib2.Unit_Price_Received > 0 ORDER BY ib2.Batch_ID DESC LIMIT 1),
+                                0.0
+                            ) * 
                             (1 - COALESCE(ib.Discount_Percent, 0) / 100.0) * 
                             (1 + COALESCE(ib.Tax_Rate_Percent, 0) / 100.0)
                         ) as total_loss_ttc
