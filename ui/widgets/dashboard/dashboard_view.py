@@ -86,7 +86,7 @@ class DashboardTab(QWidget):
         """)
 
         # 1. الصفحة المجمعة (Overview: KPIs + Charts)
-        self.page_overview = OverviewTab()
+        self.page_overview = OverviewTab(stats_manager=self.data_manager.stats if hasattr(self.data_manager, 'stats') else None)
         
         # باقي الصفحات
         self.page_family_reception = FamilyReceptionTab(data_manager)
@@ -130,7 +130,12 @@ class DashboardTab(QWidget):
             rec_trend = self.data_manager.stats.get_reception_trend(d1_str, d2_str)
             
             # [تعديل] تمرير البيانات (المصاريف + المداخيل) للمبيان
-            self.page_overview.charts_section.update_charts(cons_trend, rec_trend)
+            self.page_overview.charts_section.update_charts(
+                cons_trend, rec_trend, 
+                stats_manager=self.data_manager.stats if hasattr(self.data_manager, 'stats') else None,
+                global_start_date=self.date_from.date(),
+                global_end_date=self.date_to.date()
+            )
             
             # 2. التبويبات الأخرى
             self.page_valuation.refresh(self.data_manager.stats)

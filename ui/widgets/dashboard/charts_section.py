@@ -2,211 +2,1076 @@
 
 import logging
 from datetime import date, datetime, timedelta
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolTip 
-from PySide6.QtCharts import (QChart, QChartView, QLineSeries, QDateTimeAxis, 
-                              QValueAxis, QAreaSeries, QLegend)
-from PySide6.QtCore import Qt, QDateTime, QTime, QPointF, QMargins
-from PySide6.QtGui import QPainter, QColor, QPen, QFont, QLinearGradient, QGradient, QCursor
+from typing import List, Dict, Any, Optional
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, 
+    QPushButton, QComboBox, QDateEdit, QButtonGroup, 
+    QToolTip, QSizePolicy
+)
+from PySide6.QtCharts import (
+    QChart, QChartView, QBarSeries, QStackedBarSeries, 
+    QBarSet, QBarCategoryAxis, QValueAxis, QLegend
+)
+from PySide6.QtCore import Qt, QDate, QMargins, Signal
+from PySide6.QtGui import (
+    QPainter, QColor, QFont, QCursor, QBrush
+)
+
+from ui.formatting import format_money, format_quantity
+
 
 class ChartsSection(QWidget):
-    def __init__(self):
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+    """
+    Section Graphique Dashboard Professionnelle :
+    - Style Colonnes de Stock (Entrées en Vert 🟩, Sorties en Rouge 🟥).
+    - Affichage clair et explicite du périmètre temporel / historique analysé.
+    - Infobulles toujours blanches et nettes (sans impact du thème système sombre).
+    - Filtres historiques locaux dédiés au graphique (7j, 30j, 3m, 6m, 1an, Personnalisé).
+    - Granularité temporelle paramétrable (Jour / Semaine / Mois).
+    - Métriques KPI récapitulatives (Total Entrées, Total Sorties, Solde Net).
+    - Modes d'affichage extensibles (Colonnes Groupées, Empilées, Solde Net).
+    - Gestion élégante et réactive des périodes sans données.
+    """
 
-        # 1. إعداد الشارت
+    filter_changed = Signal(dict)
+
+    # --- Constantes de couleurs & style ---
+    COLOR_IN = "#27ae60"         # Vert émeraude pour les Entrées / Achats
+    COLOR_IN_BORDER = "#1e824c"
+    COLOR_IN_LIGHT = "#e8f8f0"
+
+    COLOR_OUT = "#e74c3c"        # Rouge pour les Sorties / Consommation
+    COLOR_OUT_BORDER = "#c0392b"
+    COLOR_OUT_LIGHT = "#fdeeed"
+
+    COLOR_NET_POS = "#2ecc71"
+    COLOR_NET_NEG = "#e67e22"
+
+    COLOR_PRIMARY = "#007572"    # Couleur de la charte StockLam
+    COLOR_BG_CARD = "#ffffff"
+    COLOR_BORDER = "#eef2f5"
+    COLOR_TEXT_MUTED = "#7f8c8d"
+    COLOR_TEXT_MAIN = "#2c3e50"
+
+    # --- Options de granularité ---
+    GRANULARITY_DAY = "DAY"
+    GRANULARITY_WEEK = "WEEK"
+    GRANULARITY_MONTH = "MONTH"
+
+    # --- Options de vue ---
+    VIEW_GROUPED = "GROUPED"
+    VIEW_STACKED = "STACKED"
+    VIEW_NET_FLOW = "NET_FLOW"
+
+    def __init__(self, stats_manager=None, parent=None):
+        super().__init__(parent)
+        self.stats_manager = stats_manager
+
+        # Données brutes en cache
+        self._raw_consumption: List[Dict[str, Any]] = []
+        self._raw_reception: List[Dict[str, Any]] = []
+        self._aggregated_data: List[Dict[str, Any]] = []
+
+        # Dates globales synchronisées
+        self._global_start_date: date = date.today() - timedelta(days=30)
+        self._global_end_date: date = date.today()
+
+        # Paramètres d'affichage locaux
+        self._granularity = self.GRANULARITY_DAY
+        self._view_mode = self.VIEW_GROUPED
+
+        self._init_ui()
+
+    def set_stats_manager(self, stats_manager):
+        """Affecte le gestionnaire de statistiques pour les requêtes dynamiques"""
+        self.stats_manager = stats_manager
+
+    # =========================================================================
+    # 1. INITIALISATION DE L'INTERFACE
+    # =========================================================================
+    def _init_ui(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(8)
+
+        # Style global pour forcer les infobulles toujours blanches et lisibles
+        self.setStyleSheet("""
+            QToolTip {
+                background-color: #ffffff;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 0px;
+                font-family: 'Segoe UI', sans-serif;
+            }
+        """)
+
+        # Conteneur principal sous forme de carte moderne
+        self.card_frame = QFrame()
+        self.card_frame.setStyleSheet(f"""
+            QFrame#ChartCard {{
+                background-color: {self.COLOR_BG_CARD};
+                border-radius: 12px;
+                border: 1px solid {self.COLOR_BORDER};
+            }}
+        """)
+        self.card_frame.setObjectName("ChartCard")
+
+        card_layout = QVBoxLayout(self.card_frame)
+        card_layout.setContentsMargins(15, 12, 15, 12)
+        card_layout.setSpacing(10)
+
+        # 1.1 Barre d'outils et filtres supérieurs
+        header_widget = self._create_header_toolbar()
+        card_layout.addWidget(header_widget)
+
+        # 1.2 Bannière explicite du périmètre historique
+        self.scope_banner = self._create_scope_banner()
+        card_layout.addWidget(self.scope_banner)
+
+        # 1.3 Bandeau des métriques résumées (KPI Badges)
+        self.summary_bar = self._create_summary_bar()
+        card_layout.addWidget(self.summary_bar)
+
+        # 1.4 Graphique QtCharts
         self.chart = QChart()
-        self.chart.setTitle("💸 Comparaison Financière : Entrées (Achats) vs Sorties (Consommation)")
-        self.chart.setTitleFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        self.chart.setTitle("")
         self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
         self.chart.setBackgroundVisible(False)
-        self.chart.setMargins(QMargins(0, 0, 0, 0))
+        self.chart.setMargins(QMargins(10, 5, 10, 5))
 
-        # 2. وسيلة الإيضاح (Legend)
-        self.chart.legend().setVisible(True)
-        self.chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-        self.chart.legend().setFont(QFont("Segoe UI", 10))
-        self.chart.legend().setMarkerShape(QLegend.MarkerShape.MarkerShapeCircle)
+        # Légende
+        legend = self.chart.legend()
+        legend.setVisible(True)
+        legend.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        legend.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        legend.setMarkerShape(QLegend.MarkerShape.MarkerShapeRectangle)
 
-        # 3. العرض
-        self.view = QChartView(self.chart)
-        self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # تفعيل تتبع الماوس ضروري لظهور التلميحات بسلاسة
-        self.view.setMouseTracking(True)
-        
-        self.view.setStyleSheet("""
-            background-color: white; 
-            border-radius: 12px; 
-            border: 1px solid #eef2f5;
+        self.chart_view = QChartView(self.chart)
+        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.chart_view.setMouseTracking(True)
+        self.chart_view.setStyleSheet("background: transparent; border: none;")
+        self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        # Message d'état vide
+        self.empty_state_label = QLabel("📭 Aucune donnée disponible pour la période sélectionnée.")
+        self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_label.setStyleSheet(f"""
+            color: {self.COLOR_TEXT_MUTED};
+            font-size: 13px;
+            font-weight: 600;
+            padding: 40px;
         """)
-        layout.addWidget(self.view)
+        self.empty_state_label.setVisible(False)
 
-    def _parse_date(self, date_val):
-        """تحويل موحد للتاريخ"""
-        if isinstance(date_val, datetime): return date_val.date()
-        if isinstance(date_val, date): return date_val
+        card_layout.addWidget(self.chart_view, 1)
+        card_layout.addWidget(self.empty_state_label)
+
+        main_layout.addWidget(self.card_frame)
+
+    # =========================================================================
+    # 2. BARRE D'OUTILS ET CONTRÔLES LOCAUX
+    # =========================================================================
+    def _create_header_toolbar(self) -> QWidget:
+        toolbar = QWidget()
+        layout = QHBoxLayout(toolbar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        # --- Titre du composant ---
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+
+        lbl_title = QLabel("📊 Analyse des Flux : Entrées vs Sorties")
+        lbl_title.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {self.COLOR_TEXT_MAIN};")
+        
+        lbl_subtitle = QLabel("Comparaison des Achats (Entrées 🟩) et de la Consommation (Sorties 🟥)")
+        lbl_subtitle.setStyleSheet(f"font-size: 10px; color: {self.COLOR_TEXT_MUTED}; font-weight: 600;")
+
+        title_box.addWidget(lbl_title)
+        title_box.addWidget(lbl_subtitle)
+        layout.addLayout(title_box)
+
+        layout.addStretch()
+
+        # --- Sélecteur de Granularité (Jour / Semaine / Mois) ---
+        granularity_container = QFrame()
+        granularity_container.setStyleSheet("""
+            QFrame {
+                background-color: #f1f5f9;
+                border-radius: 6px;
+                padding: 2px;
+            }
+        """)
+        g_layout = QHBoxLayout(granularity_container)
+        g_layout.setContentsMargins(2, 2, 2, 2)
+        g_layout.setSpacing(2)
+
+        self.btn_group_granularity = QButtonGroup(self)
+        self.btn_group_granularity.setExclusive(True)
+
+        self.btn_day = self._create_toggle_btn("📅 Jour", self.GRANULARITY_DAY, checked=True)
+        self.btn_week = self._create_toggle_btn("📆 Semaine", self.GRANULARITY_WEEK)
+        self.btn_month = self._create_toggle_btn("🗓️ Mois", self.GRANULARITY_MONTH)
+
+        for btn in [self.btn_day, self.btn_week, self.btn_month]:
+            self.btn_group_granularity.addButton(btn)
+            g_layout.addWidget(btn)
+
+        self.btn_group_granularity.buttonClicked.connect(self._on_granularity_clicked)
+        layout.addWidget(granularity_container)
+
+        # --- Sélecteur de Période Historique Locale ---
+        self.combo_preset = QComboBox()
+        self.combo_preset.setFixedHeight(30)
+        self.combo_preset.setStyleSheet(f"""
+            QComboBox {{
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+                font-weight: 600;
+                color: {self.COLOR_TEXT_MAIN};
+                min-width: 150px;
+            }}
+            QComboBox:hover {{ border-color: {self.COLOR_PRIMARY}; }}
+            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox QAbstractItemView {{
+                background-color: white;
+                selection-background-color: #e2e8f0;
+                selection-color: {self.COLOR_PRIMARY};
+                border: 1px solid #cbd5e1;
+                padding: 4px;
+            }}
+        """)
+        self.combo_preset.addItem("🔗 Synchronisé (Global)", "SYNC")
+        self.combo_preset.addItem("📅 7 Derniers Jours", "7D")
+        self.combo_preset.addItem("📅 14 Derniers Jours", "14D")
+        self.combo_preset.addItem("📅 30 Derniers Jours", "30D")
+        self.combo_preset.addItem("📆 Ce Mois-ci", "THIS_MONTH")
+        self.combo_preset.addItem("🗓️ 3 Derniers Mois", "3M")
+        self.combo_preset.addItem("🗓️ 6 Derniers Mois", "6M")
+        self.combo_preset.addItem("📈 Cette Année (YTD)", "YTD")
+        self.combo_preset.addItem("📊 12 Derniers Mois", "12M")
+        self.combo_preset.addItem("⚙️ Personnalisé...", "CUSTOM")
+        self.combo_preset.currentIndexChanged.connect(self._on_preset_changed)
+        layout.addWidget(self.combo_preset)
+
+        # --- Sélecteurs de date personnalisée ---
+        self.custom_dates_container = QWidget()
+        custom_layout = QHBoxLayout(self.custom_dates_container)
+        custom_layout.setContentsMargins(0, 0, 0, 0)
+        custom_layout.setSpacing(4)
+
+        lbl_from = QLabel("Du:")
+        lbl_from.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
+        self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setFixedHeight(30)
+        self.date_from.setFixedWidth(105)
+        self.date_from.setStyleSheet(self._date_edit_style())
+
+        lbl_to = QLabel("Au:")
+        lbl_to.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
+        self.date_to = QDateEdit(QDate.currentDate())
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setFixedHeight(30)
+        self.date_to.setFixedWidth(105)
+        self.date_to.setStyleSheet(self._date_edit_style())
+
+        self.btn_apply_dates = QPushButton("OK")
+        self.btn_apply_dates.setFixedHeight(30)
+        self.btn_apply_dates.setFixedWidth(36)
+        self.btn_apply_dates.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_apply_dates.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.COLOR_PRIMARY};
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+                border: none;
+            }}
+            QPushButton:hover {{ background-color: #005a58; }}
+        """)
+        self.btn_apply_dates.clicked.connect(self._on_custom_dates_applied)
+
+        custom_layout.addWidget(lbl_from)
+        custom_layout.addWidget(self.date_from)
+        custom_layout.addWidget(lbl_to)
+        custom_layout.addWidget(self.date_to)
+        custom_layout.addWidget(self.btn_apply_dates)
+        
+        self.custom_dates_container.setVisible(False)
+        layout.addWidget(self.custom_dates_container)
+
+        # --- Sélecteur de Mode d'Affichage (Extensibilité) ---
+        self.combo_view_mode = QComboBox()
+        self.combo_view_mode.setFixedHeight(30)
+        self.combo_view_mode.setStyleSheet(self.combo_preset.styleSheet())
+        self.combo_view_mode.addItem("📊 Colonnes Groupées", self.VIEW_GROUPED)
+        self.combo_view_mode.addItem("🥞 Colonnes Empilées", self.VIEW_STACKED)
+        self.combo_view_mode.addItem("⚖️ Solde Net", self.VIEW_NET_FLOW)
+        self.combo_view_mode.currentIndexChanged.connect(self._on_view_mode_changed)
+        layout.addWidget(self.combo_view_mode)
+
+        return toolbar
+
+    def _create_toggle_btn(self, text: str, mode: str, checked: bool = False) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setCheckable(True)
+        btn.setChecked(checked)
+        btn.setProperty("granularity_mode", mode)
+        btn.setFixedHeight(26)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #475569;
+                background-color: transparent;
+            }}
+            QPushButton:hover {{
+                background-color: #e2e8f0;
+                color: {self.COLOR_PRIMARY};
+            }}
+            QPushButton:checked {{
+                background-color: #ffffff;
+                color: {self.COLOR_PRIMARY};
+                font-weight: 700;
+                border: 1px solid #cbd5e1;
+            }}
+        """)
+        return btn
+
+    def _date_edit_style(self) -> str:
+        return f"""
+            QDateEdit {{
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 11px;
+                color: {self.COLOR_TEXT_MAIN};
+            }}
+            QDateEdit:hover {{ border-color: {self.COLOR_PRIMARY}; }}
+        """
+
+    # =========================================================================
+    # 3. BANNIÈRE DU PÉRIMÈTRE HISTORIQUE (HISTORICAL SCOPE DISPLAY)
+    # =========================================================================
+    def _create_scope_banner(self) -> QFrame:
+        """Crée une bannière d'information claire sur l'étendue temporelle affichée"""
+        banner = QFrame()
+        banner.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 6px 12px;
+            }
+        """)
+        layout = QHBoxLayout(banner)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(12)
+
+        # Icône calendrier
+        lbl_icon = QLabel("🗓️")
+        lbl_icon.setStyleSheet("font-size: 14px; border: none; background: transparent;")
+
+        # Texte principal du périmètre
+        self.lbl_scope_dates = QLabel("Périmètre historique : Du -- au --")
+        self.lbl_scope_dates.setStyleSheet(f"""
+            font-size: 11px;
+            font-weight: 700;
+            color: {self.COLOR_TEXT_MAIN};
+            border: none;
+            background: transparent;
+        """)
+
+        # Badge de durée / couverture
+        self.lbl_scope_duration = QLabel("Durée : -- jours")
+        self.lbl_scope_duration.setStyleSheet("""
+            font-size: 10px;
+            font-weight: 600;
+            color: #007572;
+            background-color: #e6f4f3;
+            border: 1px solid #b2dfdb;
+            border-radius: 4px;
+            padding: 2px 8px;
+        """)
+
+        # Badge du mode d'agrégation actif
+        self.lbl_scope_mode = QLabel("Agrégation : Par Jour")
+        self.lbl_scope_mode.setStyleSheet("""
+            font-size: 10px;
+            font-weight: 600;
+            color: #475569;
+            background-color: #e2e8f0;
+            border-radius: 4px;
+            padding: 2px 8px;
+            border: none;
+        """)
+
+        # Badge du statut de synchronisation
+        self.lbl_scope_source = QLabel("🔗 Synchronisé")
+        self.lbl_scope_source.setStyleSheet("""
+            font-size: 10px;
+            font-weight: 600;
+            color: #64748b;
+            background-color: transparent;
+            border: none;
+        """)
+
+        layout.addWidget(lbl_icon)
+        layout.addWidget(self.lbl_scope_dates)
+        layout.addWidget(self.lbl_scope_duration)
+        layout.addWidget(self.lbl_scope_mode)
+        layout.addStretch()
+        layout.addWidget(self.lbl_scope_source)
+
+        return banner
+
+    def _update_scope_banner(self, start_date: date, end_date: date, bucket_count: int):
+        """Met à jour le texte et les indicateurs de la bannière de périmètre"""
+        month_fr_full = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+        s_formatted = f"{start_date.day:02d} {month_fr_full[start_date.month]} {start_date.year}"
+        e_formatted = f"{end_date.day:02d} {month_fr_full[end_date.month]} {end_date.year}"
+
+        total_days = max((end_date - start_date).days + 1, 1)
+
+        # 1. Texte des dates
+        self.lbl_scope_dates.setText(f"Périmètre historique : Du <b>{s_formatted}</b> au <b>{e_formatted}</b>")
+
+        # 2. Texte de durée
+        if total_days <= 31:
+            dur_str = f"Étendue : {total_days} Jours"
+        elif total_days <= 120:
+            weeks = round(total_days / 7, 1)
+            dur_str = f"Étendue : {total_days} Jours (~{weeks} Semaines)"
+        else:
+            months = round(total_days / 30.4, 1)
+            dur_str = f"Étendue : {total_days} Jours (~{months} Mois)"
+        self.lbl_scope_duration.setText(f"⏱️ {dur_str}")
+
+        # 3. Mode d'agrégation et nombre de colonnes
+        gran_text = "Par Jour" if self._granularity == self.GRANULARITY_DAY else ("Par Semaine" if self._granularity == self.GRANULARITY_WEEK else "Par Mois")
+        unit_text = "jours" if self._granularity == self.GRANULARITY_DAY else ("semaines" if self._granularity == self.GRANULARITY_WEEK else "mois")
+        self.lbl_scope_mode.setText(f"📊 {gran_text} ({bucket_count} {unit_text})")
+
+        # 4. Source / Mode
+        preset = self.combo_preset.currentData()
+        preset_name = self.combo_preset.currentText()
+        if preset == "SYNC":
+            self.lbl_scope_source.setText("🔗 Synchronisé avec Tableau de Bord")
+            self.lbl_scope_source.setStyleSheet("font-size: 10px; font-weight: 600; color: #007572; border: none; background: transparent;")
+        else:
+            self.lbl_scope_source.setText(f"🔍 Filtre Graphique : {preset_name}")
+            self.lbl_scope_source.setStyleSheet("font-size: 10px; font-weight: 600; color: #d97706; border: none; background: transparent;")
+
+    # =========================================================================
+    # 4. BANDEAU DE MÉTRIQUES RÉSUMÉES (KPI MINI-BADGES)
+    # =========================================================================
+    def _create_summary_bar(self) -> QWidget:
+        bar = QWidget()
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        # 4.1 Total Entrées (Achats)
+        self.badge_in = self._create_metric_pill(
+            title="TOTAL ENTRÉES (ACHATS)", 
+            value="0 DA", 
+            icon="📥", 
+            bg_color=self.COLOR_IN_LIGHT, 
+            text_color=self.COLOR_IN_BORDER,
+            border_color="#a7f3d0"
+        )
+        # 4.2 Total Sorties (Consommation)
+        self.badge_out = self._create_metric_pill(
+            title="TOTAL SORTIES (CONSOMMATION)", 
+            value="0 DA", 
+            icon="📤", 
+            bg_color=self.COLOR_OUT_LIGHT, 
+            text_color=self.COLOR_OUT_BORDER,
+            border_color="#fecaca"
+        )
+        # 4.3 Solde Net
+        self.badge_net = self._create_metric_pill(
+            title="SOLDE NET (FLUX)", 
+            value="0 DA", 
+            icon="⚖️", 
+            bg_color="#f8fafc", 
+            text_color=self.COLOR_TEXT_MAIN,
+            border_color="#e2e8f0"
+        )
+        # 4.4 Périodes Actives
+        self.badge_count = self._create_metric_pill(
+            title="COLONNES ACTIVES", 
+            value="0", 
+            icon="📊", 
+            bg_color="#f8fafc", 
+            text_color="#475569",
+            border_color="#e2e8f0"
+        )
+
+        layout.addWidget(self.badge_in)
+        layout.addWidget(self.badge_out)
+        layout.addWidget(self.badge_net)
+        layout.addWidget(self.badge_count)
+        layout.addStretch()
+
+        return bar
+
+    def _create_metric_pill(self, title: str, value: str, icon: str, 
+                            bg_color: str, text_color: str, border_color: str) -> QFrame:
+        pill = QFrame()
+        pill.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 4px 10px;
+            }}
+        """)
+        p_layout = QHBoxLayout(pill)
+        p_layout.setContentsMargins(8, 4, 8, 4)
+        p_layout.setSpacing(8)
+
+        lbl_icon = QLabel(icon)
+        lbl_icon.setStyleSheet("font-size: 15px; border: none; background: transparent;")
+
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(0)
+
+        lbl_title = QLabel(title)
+        lbl_title.setStyleSheet("font-size: 9px; font-weight: 700; color: #64748b; border: none; background: transparent;")
+
+        lbl_val = QLabel(value)
+        lbl_val.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {text_color}; border: none; background: transparent;")
+        lbl_val.setObjectName("val_label")
+
+        text_layout.addWidget(lbl_title)
+        text_layout.addWidget(lbl_val)
+
+        p_layout.addWidget(lbl_icon)
+        p_layout.addLayout(text_layout)
+
+        return pill
+
+    def _update_summary_metrics(self, total_in: float, total_out: float, period_count: int):
+        """Met à jour les valeurs dans les badges du haut"""
+        net_val = total_in - total_out
+
+        lbl_in = self.badge_in.findChild(QLabel, "val_label")
+        if lbl_in:
+            lbl_in.setText(f"{format_money(total_in, 'DA').replace(',', ' ')}")
+
+        lbl_out = self.badge_out.findChild(QLabel, "val_label")
+        if lbl_out:
+            lbl_out.setText(f"{format_money(total_out, 'DA').replace(',', ' ')}")
+
+        lbl_net = self.badge_net.findChild(QLabel, "val_label")
+        if lbl_net:
+            prefix = "+" if net_val > 0 else ""
+            lbl_net.setText(f"{prefix}{format_money(net_val, 'DA').replace(',', ' ')}")
+            if net_val > 0:
+                lbl_net.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {self.COLOR_IN_BORDER}; border: none; background: transparent;")
+            elif net_val < 0:
+                lbl_net.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {self.COLOR_OUT_BORDER}; border: none; background: transparent;")
+            else:
+                lbl_net.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {self.COLOR_TEXT_MAIN}; border: none; background: transparent;")
+
+        lbl_cnt = self.badge_count.findChild(QLabel, "val_label")
+        if lbl_cnt:
+            unit = "Jour(s)" if self._granularity == self.GRANULARITY_DAY else ("Semaine(s)" if self._granularity == self.GRANULARITY_WEEK else "Mois")
+            lbl_cnt.setText(f"{period_count} {unit}")
+
+    # =========================================================================
+    # 5. GESTION DES DATES ET AGRÉGATION TEMPORELLE
+    # =========================================================================
+    def _parse_date(self, date_val: Any) -> Optional[date]:
+        """Conversion unifiée et robuste de formats de dates"""
+        if isinstance(date_val, datetime):
+            return date_val.date()
+        if isinstance(date_val, date):
+            return date_val
         if isinstance(date_val, str):
-            try: 
-                if "T" in date_val: return datetime.fromisoformat(date_val).date()
-                return datetime.strptime(date_val, "%Y-%m-%d").date()
-            except: pass
+            try:
+                date_clean = date_val.strip()
+                if "T" in date_clean:
+                    return datetime.fromisoformat(date_clean).date()
+                if " " in date_clean:
+                    return datetime.strptime(date_clean.split(" ")[0], "%Y-%m-%d").date()
+                return datetime.strptime(date_clean, "%Y-%m-%d").date()
+            except Exception:
+                pass
         return None
 
-    def _align_and_fill_data(self, consumption_data, reception_data):
-        """توحيد البيانات زمنياً"""
-        from collections import defaultdict
+    def _get_active_date_range(self) -> tuple[date, date]:
+        """Retourne la plage de dates active selon le filtre sélectionné"""
+        preset = self.combo_preset.currentData()
+        today = date.today()
 
-        cons_map = defaultdict(float)
-        for x in consumption_data:
-            d = self._parse_date(x.get('date'))
-            val = float(x.get('daily_cost', 0) or x.get('daily_value', 0))
-            if d: cons_map[d] += val
+        if preset == "SYNC":
+            return self._global_start_date, self._global_end_date
+        elif preset == "7D":
+            return today - timedelta(days=6), today
+        elif preset == "14D":
+            return today - timedelta(days=13), today
+        elif preset == "30D":
+            return today - timedelta(days=29), today
+        elif preset == "THIS_MONTH":
+            start_month = date(today.year, today.month, 1)
+            return start_month, today
+        elif preset == "3M":
+            start_date = today - timedelta(days=90)
+            return start_date, today
+        elif preset == "6M":
+            start_date = today - timedelta(days=180)
+            return start_date, today
+        elif preset == "YTD":
+            start_year = date(today.year, 1, 1)
+            return start_year, today
+        elif preset == "12M":
+            start_year = today - timedelta(days=365)
+            return start_year, today
+        elif preset == "CUSTOM":
+            d_from = self.date_from.date().toPython()
+            d_to = self.date_to.date().toPython()
+            if d_from > d_to:
+                d_from, d_to = d_to, d_from
+            return d_from, d_to
 
-        rec_map = defaultdict(float)
-        for x in reception_data:
-            d = self._parse_date(x.get('date'))
-            val = float(x.get('daily_cost', 0) or x.get('daily_value', 0))
-            if d: rec_map[d] += val
+        return self._global_start_date, self._global_end_date
 
-        all_dates = list(set(list(cons_map.keys()) + list(rec_map.keys())))
-        all_dates.sort()
+    def _generate_period_buckets(self, start_date: date, end_date: date, granularity: str) -> List[Dict[str, Any]]:
+        """Génère la liste ordonnée des périodes (Jours, Semaines, Mois)"""
+        month_fr_short = ['', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
+        month_fr_full = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+        periods: List[Dict[str, Any]] = []
+
+        if granularity == self.GRANULARITY_DAY:
+            curr = start_date
+            while curr <= end_date:
+                key = curr.strftime("%Y-%m-%d")
+                label = curr.strftime("%d/%m")
+                detail = f"{curr.day:02d} {month_fr_full[curr.month]} {curr.year}"
+                periods.append({
+                    'key': key,
+                    'label': label,
+                    'detail': detail,
+                    'start': curr,
+                    'end': curr,
+                    'in': 0.0,
+                    'out': 0.0,
+                    'count_in': 0,
+                    'count_out': 0
+                })
+                curr += timedelta(days=1)
+
+        elif granularity == self.GRANULARITY_WEEK:
+            curr_monday = start_date - timedelta(days=start_date.weekday())
+            end_sunday = end_date + timedelta(days=(6 - end_date.weekday()))
+            seen_weeks = set()
+            curr = curr_monday
+            while curr <= end_sunday:
+                iso_year, iso_week, _ = curr.isocalendar()
+                week_key = f"{iso_year}-W{iso_week:02d}"
+                if week_key not in seen_weeks:
+                    seen_weeks.add(week_key)
+                    w_start = curr
+                    w_end = curr + timedelta(days=6)
+                    s_str = w_start.strftime("%d/%m")
+                    e_str = w_end.strftime("%d/%m/%Y")
+                    label = f"S{iso_week:02d}"
+                    detail = f"Semaine {iso_week} ({s_str} au {e_str})"
+                    periods.append({
+                        'key': week_key,
+                        'label': label,
+                        'detail': detail,
+                        'start': w_start,
+                        'end': w_end,
+                        'in': 0.0,
+                        'out': 0.0,
+                        'count_in': 0,
+                        'count_out': 0
+                    })
+                curr += timedelta(days=7)
+
+        elif granularity == self.GRANULARITY_MONTH:
+            y, m = start_date.year, start_date.month
+            ey, em = end_date.year, end_date.month
+            while (y < ey) or (y == ey and m <= em):
+                month_key = f"{y}-{m:02d}"
+                label = f"{month_fr_short[m]} {str(y)[2:]}"
+                detail = f"{month_fr_full[m]} {y}"
+                periods.append({
+                    'key': month_key,
+                    'label': label,
+                    'detail': detail,
+                    'year': y,
+                    'month': m,
+                    'in': 0.0,
+                    'out': 0.0,
+                    'count_in': 0,
+                    'count_out': 0
+                })
+                m += 1
+                if m > 12:
+                    m = 1
+                    y += 1
+
+        return periods
+
+    def _aggregate_data(self, consumption_data: List[Dict[str, Any]], 
+                        reception_data: List[Dict[str, Any]], 
+                        start_date: date, end_date: date, 
+                        granularity: str) -> tuple[List[Dict[str, Any]], float, float, float]:
+        """Agrège les transactions d'entrées et de sorties par période"""
+        buckets = self._generate_period_buckets(start_date, end_date, granularity)
+        lookup = {b['key']: b for b in buckets}
+
+        # 1. Agrégation des Réceptions (Entrées / Achats)
+        for item in reception_data:
+            d = self._parse_date(item.get('date'))
+            if not d or d < start_date or d > end_date:
+                continue
+            val = float(item.get('daily_value', 0) or item.get('daily_cost', 0) or item.get('Invoice_Total_TTC', 0) or 0.0)
+            count = int(item.get('transaction_count', 1) or 1)
+
+            if granularity == self.GRANULARITY_DAY:
+                key = d.strftime("%Y-%m-%d")
+            elif granularity == self.GRANULARITY_WEEK:
+                iy, iw, _ = d.isocalendar()
+                key = f"{iy}-W{iw:02d}"
+            else:
+                key = f"{d.year}-{d.month:02d}"
+
+            if key in lookup:
+                lookup[key]['in'] += val
+                lookup[key]['count_in'] += count
+
+        # 2. Agrégation des Consommations (Sorties / Consommation)
+        for item in consumption_data:
+            d = self._parse_date(item.get('date'))
+            if not d or d < start_date or d > end_date:
+                continue
+            val = float(item.get('daily_value', 0) or item.get('daily_cost', 0) or 0.0)
+            count = int(item.get('transaction_count', 1) or 1)
+
+            if granularity == self.GRANULARITY_DAY:
+                key = d.strftime("%Y-%m-%d")
+            elif granularity == self.GRANULARITY_WEEK:
+                iy, iw, _ = d.isocalendar()
+                key = f"{iy}-W{iw:02d}"
+            else:
+                key = f"{d.year}-{d.month:02d}"
+
+            if key in lookup:
+                lookup[key]['out'] += val
+                lookup[key]['count_out'] += count
+
+        total_in = sum(b['in'] for b in buckets)
+        total_out = sum(b['out'] for b in buckets)
         
-        if not all_dates:
-            return [], [], 0.0, date.today(), date.today()
-
-        min_date = all_dates[0]
-        max_date = all_dates[-1]
-
-        points_cons = []
-        points_rec = []
-        
-        current_date = min_date
-        max_val_found = 0.0
-
-        while current_date <= max_date:
-            q_dt = QDateTime(current_date, QTime(0, 0))
-            ms_ts = q_dt.toMSecsSinceEpoch()
-
-            val_c = cons_map.get(current_date, 0.0)
-            val_r = rec_map.get(current_date, 0.0)
-
-            if val_c > max_val_found: max_val_found = val_c
-            if val_r > max_val_found: max_val_found = val_r
-
-            points_cons.append(QPointF(ms_ts, val_c))
-            points_rec.append(QPointF(ms_ts, val_r))
-
-            current_date += timedelta(days=1)
-
-        return points_cons, points_rec, max_val_found, min_date, max_date
-
-    def show_tooltip(self, point, state):
-        """
-        دالة لعرض القيمة والتاريخ عند مرور الماوس
-        point: إحداثيات النقطة في الرسم
-        state: True إذا دخل الماوس للنقطة، False إذا خرج
-        """
-        if state:
-            # 1. تحويل التاريخ من ميلي ثانية إلى نص مقروء
-            date_val = QDateTime.fromMSecsSinceEpoch(int(point.x())).toString("dd/MM/yyyy")
-            
-            # 2. تنسيق المبلغ (بدون فواصل عشرية وبإضافة DA)
-            amount_val = point.y()
-            formatted_amount = f"{amount_val:,.0f} DA".replace(",", " ")
-            
-            # 3. إعداد نص التلميح
-            tooltip_text = f"📅 Date: {date_val}\n💰 Montant: {formatted_amount}"
-            
-            # 4. إظهار التلميح بجانب الماوس
-            QToolTip.showText(QCursor.pos(), tooltip_text)
+        # Trouver la valeur maximale pour l'échelle de l'axe Y
+        if self._view_mode == self.VIEW_STACKED:
+            max_val = max([b['in'] + b['out'] for b in buckets] + [0.0])
+        elif self._view_mode == self.VIEW_NET_FLOW:
+            max_val = max([abs(b['in'] - b['out']) for b in buckets] + [0.0])
         else:
-            # إخفاء التلميح عند الابتعاد
-            QToolTip.hideText()
+            max_val = max([max(b['in'], b['out']) for b in buckets] + [0.0])
 
-    def update_charts(self, consumption_data, reception_data):
+        return buckets, total_in, total_out, max_val
+
+    # =========================================================================
+    # 6. DESSIN ET MISE À JOUR DU GRAPHIQUE (QTCHARTS)
+    # =========================================================================
+    def render_chart(self):
+        """Reconstruit et dessine le graphique à barres selon les réglages actuels"""
         try:
+            # 1. Nettoyage des anciennes séries et axes
             self.chart.removeAllSeries()
-            for ax in self.chart.axes():
-                self.chart.removeAxis(ax)
+            for axis in self.chart.axes():
+                self.chart.removeAxis(axis)
 
-            pts_cons, pts_rec, max_val, start_date, end_date = self._align_and_fill_data(consumption_data, reception_data)
+            start_date, end_date = self._get_active_date_range()
+            buckets, total_in, total_out, max_val = self._aggregate_data(
+                self._raw_consumption, self._raw_reception, 
+                start_date, end_date, self._granularity
+            )
+            self._aggregated_data = buckets
 
-            if not pts_cons and not pts_rec:
+            # 2. Mise à jour de la bannière de périmètre & badges résumés
+            self._update_scope_banner(start_date, end_date, len(buckets))
+            self._update_summary_metrics(total_in, total_out, len(buckets))
+
+            # 3. Vérification de l'état vide
+            has_data = any(b['in'] > 0 or b['out'] > 0 for b in buckets)
+            if not buckets or not has_data:
+                self.chart_view.setVisible(False)
+                self.empty_state_label.setVisible(True)
                 return
 
-            q_start = QDateTime(start_date, QTime(0,0))
-            q_end = QDateTime(end_date, QTime(0,0))
-            
-            # --- رسم الخطوط ---
-            
-            # 1. استهلاك (أحمر)
-            series_cons = QLineSeries()
-            series_cons.setName("Sorties (Consommation)")
-            series_cons.setPen(QPen(QColor("#e74c3c"), 3))
-            
-            # تفعيل النقاط لتسهيل عملية Hover
-            series_cons.setPointsVisible(True) 
-            series_cons.setPointLabelsVisible(False)
-            
-            # ربط إشارة التمرير بدالة العرض
-            series_cons.hovered.connect(self.show_tooltip) 
+            self.chart_view.setVisible(True)
+            self.empty_state_label.setVisible(False)
 
-            for p in pts_cons: series_cons.append(p)
+            # 4. Construction des séries de colonnes
+            categories = [b['label'] for b in buckets]
 
-            area_cons = QAreaSeries(series_cons)
-            grad_cons = QLinearGradient(0, 0, 0, 1)
-            grad_cons.setCoordinateMode(QGradient.CoordinateMode.ObjectBoundingMode)
-            grad_cons.setColorAt(0.0, QColor(231, 76, 60, 80)) 
-            grad_cons.setColorAt(1.0, QColor(231, 76, 60, 10))
-            area_cons.setBrush(grad_cons)
-            area_cons.setPen(QPen(Qt.PenStyle.NoPen))
-
-            # 2. مشتريات (أخضر)
-            series_rec = QLineSeries()
-            series_rec.setName("Entrées (Achats)")
-            series_rec.setPen(QPen(QColor("#27ae60"), 3))
-            
-            # تفعيل النقاط وربط الإشارة
-            series_rec.setPointsVisible(True)
-            series_rec.hovered.connect(self.show_tooltip)
-
-            for p in pts_rec: series_rec.append(p)
-
-            area_rec = QAreaSeries(series_rec)
-            grad_rec = QLinearGradient(0, 0, 0, 1)
-            grad_rec.setCoordinateMode(QGradient.CoordinateMode.ObjectBoundingMode)
-            grad_rec.setColorAt(0.0, QColor(39, 174, 96, 80))
-            grad_rec.setColorAt(1.0, QColor(39, 174, 96, 10))
-            area_rec.setBrush(grad_rec)
-            area_rec.setPen(QPen(Qt.PenStyle.NoPen))
-
-            self.chart.addSeries(area_rec)
-            self.chart.addSeries(area_cons)
-            self.chart.addSeries(series_rec)
-            self.chart.addSeries(series_cons)
-
-            # إخفاء التكرار في المفتاح
-            for marker in self.chart.legend().markers(area_cons): marker.setVisible(False)
-            for marker in self.chart.legend().markers(area_rec): marker.setVisible(False)
-
-            # --- المحاور ---
-            ax_x = QDateTimeAxis()
-            ax_x.setFormat("dd/MM")
-            ax_x.setTickCount(min(len(pts_cons), 8))
-            ax_x.setRange(q_start, q_end)
-            self.chart.addAxis(ax_x, Qt.AlignmentFlag.AlignBottom)
-
-            ax_y = QValueAxis()
-            ax_y.setLabelFormat("%.0f") 
-            if max_val > 1000000:
-                ax_y.setTitleText("Montant (DA)")
-            ax_y.setRange(0, max_val * 1.1) 
-            self.chart.addAxis(ax_y, Qt.AlignmentFlag.AlignLeft)
-
-            for s in [series_cons, area_cons, series_rec, area_rec]:
-                s.attachAxis(ax_x)
-                s.attachAxis(ax_y)
+            if self._view_mode == self.VIEW_NET_FLOW:
+                self._render_net_flow_chart(buckets, categories, max_val)
+            else:
+                self._render_in_out_bars(buckets, categories, max_val)
 
         except Exception as e:
-            logging.error(f"Error updating charts: {e}")
+            logging.error(f"Erreur lors du rendu du graphique de stock: {e}", exc_info=True)
+
+    def _render_in_out_bars(self, buckets: List[Dict[str, Any]], categories: List[str], max_val: float):
+        """Construit les colonnes d'entrées (Vert) et sorties (Rouge) groupées ou empilées"""
+        # Colonnes Entrées (Vert)
+        set_in = QBarSet("📥 Entrées (Achats)")
+        set_in.setColor(QColor(self.COLOR_IN))
+        set_in.setBorderColor(QColor(self.COLOR_IN_BORDER))
+        set_in.setBrush(QBrush(QColor(self.COLOR_IN)))
+
+        # Colonnes Sorties (Rouge)
+        set_out = QBarSet("📤 Sorties (Consommation)")
+        set_out.setColor(QColor(self.COLOR_OUT))
+        set_out.setBorderColor(QColor(self.COLOR_OUT_BORDER))
+        set_out.setBrush(QBrush(QColor(self.COLOR_OUT)))
+
+        for b in buckets:
+            set_in.append(b['in'])
+            set_out.append(b['out'])
+
+        if self._view_mode == self.VIEW_STACKED:
+            series = QStackedBarSeries()
+        else:
+            series = QBarSeries()
+
+        series.append(set_in)
+        series.append(set_out)
+        series.setBarWidth(0.7 if self._view_mode == self.VIEW_STACKED else 0.75)
+
+        # Connexion du signal Hover
+        series.hovered.connect(self._on_bar_hovered)
+
+        self.chart.addSeries(series)
+
+        # --- Axe X (Catégories) ---
+        axis_x = QBarCategoryAxis()
+        axis_x.append(categories)
+        axis_x.setLabelsFont(QFont("Segoe UI", 9))
+        axis_x.setGridLineColor(QColor("#f1f5f9"))
+        
+        if len(categories) > 14 and self._granularity == self.GRANULARITY_DAY:
+            axis_x.setLabelsAngle(-45)
+        else:
+            axis_x.setLabelsAngle(0)
+
+        self.chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        series.attachAxis(axis_x)
+
+        # --- Axe Y (Valeurs en DA) ---
+        axis_y = QValueAxis()
+        axis_y.setLabelsFont(QFont("Segoe UI", 9))
+        axis_y.setGridLineColor(QColor("#f1f5f9"))
+        
+        y_max = max(max_val * 1.15, 1000.0)
+        axis_y.setRange(0, y_max)
+        axis_y.setLabelFormat("%.0f")
+        axis_y.setTitleText("Montant (DA)")
+        axis_y.setTitleFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+
+        self.chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(axis_y)
+
+    def _render_net_flow_chart(self, buckets: List[Dict[str, Any]], categories: List[str], max_val: float):
+        """Construit le graphique de solde net (Vert si positif, Rouge si négatif)"""
+        set_pos = QBarSet("🟩 Solde Positif (Entrées > Sorties)")
+        set_pos.setColor(QColor(self.COLOR_IN))
+        set_pos.setBorderColor(QColor(self.COLOR_IN_BORDER))
+        set_pos.setBrush(QBrush(QColor(self.COLOR_IN)))
+
+        set_neg = QBarSet("🟥 Solde Négatif (Sorties > Entrées)")
+        set_neg.setColor(QColor(self.COLOR_OUT))
+        set_neg.setBorderColor(QColor(self.COLOR_OUT_BORDER))
+        set_neg.setBrush(QBrush(QColor(self.COLOR_OUT)))
+
+        for b in buckets:
+            net = b['in'] - b['out']
+            if net >= 0:
+                set_pos.append(net)
+                set_neg.append(0.0)
+            else:
+                set_pos.append(0.0)
+                set_neg.append(abs(net))
+
+        series = QBarSeries()
+        series.append(set_pos)
+        series.append(set_neg)
+        series.hovered.connect(self._on_bar_hovered)
+
+        self.chart.addSeries(series)
+
+        axis_x = QBarCategoryAxis()
+        axis_x.append(categories)
+        axis_x.setLabelsFont(QFont("Segoe UI", 9))
+        self.chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        series.attachAxis(axis_x)
+
+        axis_y = QValueAxis()
+        axis_y.setRange(0, max(max_val * 1.15, 1000.0))
+        axis_y.setTitleText("Solde Net (DA)")
+        axis_y.setLabelFormat("%.0f")
+        self.chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(axis_y)
+
+    # =========================================================================
+    # 7. GESTION DES INFOBULLES (TOOLTIPS TOUJOURS BLANCHES)
+    # =========================================================================
+    def _on_bar_hovered(self, status: bool, index: int, barset: QBarSet = None):
+        """Affiche une infobulle riche et garantie toujours blanche au survol d'une colonne"""
+        if status and 0 <= index < len(self._aggregated_data):
+            item = self._aggregated_data[index]
+            val_in = item['in']
+            val_out = item['out']
+            net_val = val_in - val_out
+            
+            str_in = format_money(val_in, 'DA').replace(',', ' ')
+            str_out = format_money(val_out, 'DA').replace(',', ' ')
+            net_prefix = "+" if net_val > 0 else ""
+            str_net = f"{net_prefix}{format_money(net_val, 'DA').replace(',', ' ')}"
+            net_color = self.COLOR_IN_BORDER if net_val > 0 else (self.COLOR_OUT_BORDER if net_val < 0 else self.COLOR_TEXT_MAIN)
+
+            tx_info = ""
+            if item.get('count_in', 0) > 0 or item.get('count_out', 0) > 0:
+                tx_info = f"<div style='margin-top: 6px; font-size: 10px; color: #64748b;'>📋 <i>Transactions : {item.get('count_in', 0)} entrées / {item.get('count_out', 0)} sorties</i></div>"
+
+            # Structure HTML encapsulée dans un conteneur blanc pur avec ombrage et bordure
+            tooltip_html = f"""
+            <div style="background-color: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-family: 'Segoe UI', Arial, sans-serif; min-width: 220px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                <div style="font-size: 12px; font-weight: 800; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 6px;">
+                    📅 {item['detail']}
+                </div>
+                <div style="margin-bottom: 4px; font-size: 11px;">
+                    <span style="color: #64748b;">📥 Entrées (Achats) :</span> 
+                    <span style="font-weight: 700; color: {self.COLOR_IN_BORDER}; float: right;">{str_in}</span>
+                </div>
+                <div style="margin-bottom: 6px; font-size: 11px;">
+                    <span style="color: #64748b;">📤 Sorties (Consommation) :</span> 
+                    <span style="font-weight: 700; color: {self.COLOR_OUT_BORDER}; float: right;">{str_out}</span>
+                </div>
+                <div style="border-top: 1px dashed #e2e8f0; padding-top: 5px; margin-top: 4px; font-size: 11px;">
+                    <span style="font-weight: 700; color: #334155;">⚖️ Solde Net :</span> 
+                    <span style="font-weight: 800; color: {net_color}; float: right;">{str_net}</span>
+                </div>
+                {tx_info}
+            </div>
+            """
+            QToolTip.showText(QCursor.pos(), tooltip_html, self.chart_view)
+        else:
+            QToolTip.hideText()
+
+    # =========================================================================
+    # 8. ÉVÉNEMENTS ET ACTIONS UTILISATEUR
+    # =========================================================================
+    def _on_granularity_clicked(self, button: QPushButton):
+        """Changement de granularité (Jour / Semaine / Mois)"""
+        mode = button.property("granularity_mode")
+        if mode and mode != self._granularity:
+            self._granularity = mode
+            self.render_chart()
+
+    def _on_preset_changed(self, index: int):
+        """Changement du filtre de période prédéfini"""
+        preset = self.combo_preset.currentData()
+        self.custom_dates_container.setVisible(preset == "CUSTOM")
+
+        # Ajustement intelligent de la granularité recommandée
+        if preset in ["7D", "14D", "30D", "THIS_MONTH"]:
+            self._set_granularity_silent(self.GRANULARITY_DAY)
+        elif preset in ["3M", "6M"]:
+            self._set_granularity_silent(self.GRANULARITY_WEEK)
+        elif preset in ["YTD", "12M"]:
+            self._set_granularity_silent(self.GRANULARITY_MONTH)
+
+        self._fetch_and_render_data()
+
+    def _set_granularity_silent(self, mode: str):
+        self._granularity = mode
+        if mode == self.GRANULARITY_DAY:
+            self.btn_day.setChecked(True)
+        elif mode == self.GRANULARITY_WEEK:
+            self.btn_week.setChecked(True)
+        elif mode == self.GRANULARITY_MONTH:
+            self.btn_month.setChecked(True)
+
+    def _on_custom_dates_applied(self):
+        """Application de dates personnalisées"""
+        self._fetch_and_render_data()
+
+    def _on_view_mode_changed(self, index: int):
+        """Changement de mode de visualisation (Groupé / Empilé / Solde Net)"""
+        mode = self.combo_view_mode.currentData()
+        if mode and mode != self._view_mode:
+            self._view_mode = mode
+            self.render_chart()
+
+    def _fetch_and_render_data(self):
+        """Charge les données requises depuis stats_manager ou réagrège les données locales"""
+        start_d, end_d = self._get_active_date_range()
+        s_str = start_d.strftime("%Y-%m-%d")
+        e_str = end_d.strftime("%Y-%m-%d")
+
+        preset = self.combo_preset.currentData()
+        # Si stats_manager est disponible et qu'on utilise un filtre spécifique, on peut re-requêter la DB
+        if self.stats_manager and preset != "SYNC":
+            try:
+                cons_data = self.stats_manager.get_consumption_trend(s_str, e_str)
+                rec_data = self.stats_manager.get_reception_trend(s_str, e_str)
+                self._raw_consumption = cons_data or []
+                self._raw_reception = rec_data or []
+            except Exception as e:
+                logging.error(f"Erreur chargement données historiques du graphique: {e}")
+
+        self.render_chart()
+
+    # =========================================================================
+    # 9. API PUBLIQUE POUR LE DASHBOARD PARENT
+    # =========================================================================
+    def update_charts(self, consumption_data: List[Dict[str, Any]], 
+                      reception_data: List[Dict[str, Any]], 
+                      stats_manager=None,
+                      global_start_date=None, 
+                      global_end_date=None):
+        """
+        Point d'entrée principal appelé par OverviewTab / DashboardTab.
+        Maintient une compatibilité 100% avec les appels existants.
+        """
+        if stats_manager:
+            self.stats_manager = stats_manager
+
+        if global_start_date:
+            parsed_start = self._parse_date(global_start_date)
+            if parsed_start: self._global_start_date = parsed_start
+
+        if global_end_date:
+            parsed_end = self._parse_date(global_end_date)
+            if parsed_end: self._global_end_date = parsed_end
+
+        # Si nous sommes en mode synchronisé ou première réception, mettre à jour le cache
+        preset = self.combo_preset.currentData()
+        if preset == "SYNC" or not self._raw_consumption:
+            self._raw_consumption = consumption_data or []
+            self._raw_reception = reception_data or []
+
+        self.render_chart()
