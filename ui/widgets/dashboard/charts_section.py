@@ -7,31 +7,181 @@ from typing import List, Dict, Any, Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, 
     QPushButton, QComboBox, QDateEdit, QButtonGroup, 
-    QToolTip, QSizePolicy
+    QSizePolicy, QGraphicsDropShadowEffect
 )
 from PySide6.QtCharts import (
     QChart, QChartView, QBarSeries, QStackedBarSeries, 
     QBarSet, QBarCategoryAxis, QValueAxis, QLegend
 )
-from PySide6.QtCore import Qt, QDate, QMargins, Signal
+from PySide6.QtCore import Qt, QDate, QMargins, Signal, QPoint, QRect, QEvent
 from PySide6.QtGui import (
-    QPainter, QColor, QFont, QCursor, QBrush
+    QPainter, QColor, QFont, QCursor, QBrush, QPen
 )
 
 from ui.formatting import format_money, format_quantity
+
+
+class ChartHoverCard(QFrame):
+    """
+    Carte flottante d'infobulle persistante et élégante :
+    - Reste affichée sans jamais disparaître prématurément durant le survol d'une colonne.
+    - Fond 100% blanc avec bordure subtile et ombre portée moderne.
+    - Totalement indépendante des thèmes système ou du mode sombre OS.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Permet aux événements de souris de traverser la carte vers le graphique
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setObjectName("HoverDetailCard")
+        self.setStyleSheet("""
+            QFrame#HoverDetailCard {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+            }
+        """)
+
+        # Ombre portée douce
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(18)
+        shadow.setColor(QColor(15, 23, 42, 45))
+        shadow.setOffset(0, 5)
+        self.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
+
+        # En-tête : Période
+        self.lbl_period = QLabel("", self)
+        self.lbl_period.setStyleSheet("""
+            font-size: 12px;
+            font-weight: 800;
+            color: #0f172a;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 4px;
+            margin-bottom: 2px;
+        """)
+        layout.addWidget(self.lbl_period)
+
+        # Ligne Entrées (Achats)
+        self.row_in = QHBoxLayout()
+        self.lbl_in_title = QLabel("📥 Entrées (Achats) :", self)
+        self.lbl_in_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
+        self.lbl_in_val = QLabel("0 DA", self)
+        self.lbl_in_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #1e824c;")
+        self.row_in.addWidget(self.lbl_in_title)
+        self.row_in.addStretch()
+        self.row_in.addWidget(self.lbl_in_val)
+        layout.addLayout(self.row_in)
+
+        # Ligne Sorties (Consommation)
+        self.row_out = QHBoxLayout()
+        self.lbl_out_title = QLabel("📤 Sorties (Consommation) :", self)
+        self.lbl_out_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
+        self.lbl_out_val = QLabel("0 DA", self)
+        self.lbl_out_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #c0392b;")
+        self.row_out.addWidget(self.lbl_out_title)
+        self.row_out.addStretch()
+        self.row_out.addWidget(self.lbl_out_val)
+        layout.addLayout(self.row_out)
+
+        # Ligne Solde Net
+        self.row_net = QHBoxLayout()
+        self.lbl_net_title = QLabel("⚖️ Solde Net (Flux) :", self)
+        self.lbl_net_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #334155;")
+        self.lbl_net_val = QLabel("0 DA", self)
+        self.lbl_net_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #007572;")
+        self.row_net.addWidget(self.lbl_net_title)
+        self.row_net.addStretch()
+        self.row_net.addWidget(self.lbl_net_val)
+        layout.addLayout(self.row_net)
+
+        # Ligne Transactions
+        self.lbl_tx = QLabel("", self)
+        self.lbl_tx.setStyleSheet("""
+            font-size: 10px;
+            font-weight: 500;
+            color: #64748b;
+            border-top: 1px dashed #e2e8f0;
+            padding-top: 4px;
+            margin-top: 2px;
+        """)
+        layout.addWidget(self.lbl_tx)
+
+        self.hide()
+
+    def update_and_show(self, data: Dict[str, Any], mouse_pos: QPoint, bounds: QRect):
+        """Met à jour les informations et positionne la carte sans collision"""
+        val_in = data.get('in', 0.0)
+        val_out = data.get('out', 0.0)
+        net_val = val_in - val_out
+        cnt_in = data.get('count_in', 0)
+        cnt_out = data.get('count_out', 0)
+
+        # 1. Période
+        self.lbl_period.setText(f"📅 {data.get('detail', '')}")
+
+        # 2. Valeurs formatées
+        self.lbl_in_val.setText(f"{format_money(val_in, 'DA').replace(',', ' ')}")
+        self.lbl_out_val.setText(f"{format_money(val_out, 'DA').replace(',', ' ')}")
+
+        net_prefix = "+" if net_val > 0 else ""
+        self.lbl_net_val.setText(f"{net_prefix}{format_money(net_val, 'DA').replace(',', ' ')}")
+        if net_val > 0:
+            self.lbl_net_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #1e824c;")
+        elif net_val < 0:
+            self.lbl_net_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #c0392b;")
+        else:
+            self.lbl_net_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #334155;")
+
+        # 3. Détail des transactions
+        if cnt_in > 0 or cnt_out > 0:
+            self.lbl_tx.setText(f"📋 {cnt_in} réception(s) / {cnt_out} sortie(s)")
+            self.lbl_tx.setVisible(True)
+        else:
+            self.lbl_tx.setVisible(False)
+
+        self.adjustSize()
+        card_w = max(self.sizeHint().width(), 230)
+        card_h = max(self.sizeHint().height(), 120)
+        self.resize(card_w, card_h)
+
+        # Positionnement intelligent par rapport au curseur
+        offset_x = 18
+        offset_y = 18
+
+        target_x = mouse_pos.x() + offset_x
+        target_y = mouse_pos.y() - card_h - 10
+
+        # Éviter le débordement à droite
+        if target_x + card_w > bounds.right() - 15:
+            target_x = mouse_pos.x() - card_w - offset_x
+
+        # Éviter le débordement en haut
+        if target_y < bounds.top() + 10:
+            target_y = mouse_pos.y() + offset_y
+
+        # Éviter le débordement en bas
+        if target_y + card_h > bounds.bottom() - 10:
+            target_y = bounds.bottom() - card_h - 10
+
+        self.move(max(10, target_x), max(10, target_y))
+        self.show()
+        self.raise_()
 
 
 class ChartsSection(QWidget):
     """
     Section Graphique Dashboard Professionnelle :
     - Style Colonnes de Stock (Entrées en Vert 🟩, Sorties en Rouge 🟥).
-    - Affichage clair et explicite du périmètre temporel / historique analysé.
-    - Infobulles toujours blanches et nettes (sans impact du thème système sombre).
+    - Carte d'information flottante persistante qui reste visible tant que la souris est sur la colonne.
+    - Affichage explicite du périmètre temporel / historique analysé.
     - Filtres historiques locaux dédiés au graphique (7j, 30j, 3m, 6m, 1an, Personnalisé).
     - Granularité temporelle paramétrable (Jour / Semaine / Mois).
     - Métriques KPI récapitulatives (Total Entrées, Total Sorties, Solde Net).
     - Modes d'affichage extensibles (Colonnes Groupées, Empilées, Solde Net).
-    - Gestion élégante et réactive des périodes sans données.
     """
 
     filter_changed = Signal(dict)
@@ -45,10 +195,8 @@ class ChartsSection(QWidget):
     COLOR_OUT_BORDER = "#c0392b"
     COLOR_OUT_LIGHT = "#fdeeed"
 
-    COLOR_NET_POS = "#2ecc71"
-    COLOR_NET_NEG = "#e67e22"
-
-    COLOR_PRIMARY = "#007572"    # Couleur de la charte StockLam
+    COLOR_PRIMARY = "#007572"    # Couleur principale StockLam
+    COLOR_PRIMARY_HOVER = "#005a58"
     COLOR_BG_CARD = "#ffffff"
     COLOR_BORDER = "#eef2f5"
     COLOR_TEXT_MUTED = "#7f8c8d"
@@ -80,6 +228,8 @@ class ChartsSection(QWidget):
         # Paramètres d'affichage locaux
         self._granularity = self.GRANULARITY_DAY
         self._view_mode = self.VIEW_GROUPED
+        self._hovered_index: Optional[int] = None
+        self._pinned_index: Optional[int] = None
 
         self._init_ui()
 
@@ -95,18 +245,6 @@ class ChartsSection(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(8)
 
-        # Style global pour forcer les infobulles toujours blanches et lisibles
-        self.setStyleSheet("""
-            QToolTip {
-                background-color: #ffffff;
-                color: #1e293b;
-                border: 1px solid #cbd5e1;
-                border-radius: 8px;
-                padding: 0px;
-                font-family: 'Segoe UI', sans-serif;
-            }
-        """)
-
         # Conteneur principal sous forme de carte moderne
         self.card_frame = QFrame()
         self.card_frame.setStyleSheet(f"""
@@ -119,14 +257,14 @@ class ChartsSection(QWidget):
         self.card_frame.setObjectName("ChartCard")
 
         card_layout = QVBoxLayout(self.card_frame)
-        card_layout.setContentsMargins(15, 12, 15, 12)
+        card_layout.setContentsMargins(16, 14, 16, 14)
         card_layout.setSpacing(10)
 
-        # 1.1 Barre d'outils et filtres supérieurs
+        # 1.1 Barre d'outils supérieure et filtres
         header_widget = self._create_header_toolbar()
         card_layout.addWidget(header_widget)
 
-        # 1.2 Bannière explicite du périmètre historique
+        # 1.2 Bannière claire et explicite du périmètre historique
         self.scope_banner = self._create_scope_banner()
         card_layout.addWidget(self.scope_banner)
 
@@ -154,8 +292,11 @@ class ChartsSection(QWidget):
         self.chart_view.setStyleSheet("background: transparent; border: none;")
         self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+        # 1.5 Carte d'information flottante persistante (enfant direct de chart_view)
+        self.hover_card = ChartHoverCard(parent=self.chart_view)
+
         # Message d'état vide
-        self.empty_state_label = QLabel("📭 Aucune donnée disponible pour la période sélectionnée.")
+        self.empty_state_label = QLabel("📭 Aucune transaction enregistrée pour la période sélectionnée.")
         self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_state_label.setStyleSheet(f"""
             color: {self.COLOR_TEXT_MUTED};
@@ -179,15 +320,15 @@ class ChartsSection(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        # --- Titre du composant ---
+        # --- Titre & Thème du composant ---
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
 
         lbl_title = QLabel("📊 Analyse des Flux : Entrées vs Sorties")
-        lbl_title.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {self.COLOR_TEXT_MAIN};")
+        lbl_title.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {self.COLOR_TEXT_MAIN};")
         
-        lbl_subtitle = QLabel("Comparaison des Achats (Entrées 🟩) et de la Consommation (Sorties 🟥)")
-        lbl_subtitle.setStyleSheet(f"font-size: 10px; color: {self.COLOR_TEXT_MUTED}; font-weight: 600;")
+        lbl_subtitle = QLabel("Comparaison financière des Achats (Entrées 🟩) et de la Consommation (Sorties 🟥)")
+        lbl_subtitle.setStyleSheet(f"font-size: 10.5px; color: {self.COLOR_TEXT_MUTED}; font-weight: 600;")
 
         title_box.addWidget(lbl_title)
         title_box.addWidget(lbl_subtitle)
@@ -200,7 +341,8 @@ class ChartsSection(QWidget):
         granularity_container.setStyleSheet("""
             QFrame {
                 background-color: #f1f5f9;
-                border-radius: 6px;
+                border: 1px solid #e2e8f0;
+                border-radius: 7px;
                 padding: 2px;
             }
         """)
@@ -224,7 +366,7 @@ class ChartsSection(QWidget):
 
         # --- Sélecteur de Période Historique Locale ---
         self.combo_preset = QComboBox()
-        self.combo_preset.setFixedHeight(30)
+        self.combo_preset.setFixedHeight(32)
         self.combo_preset.setStyleSheet(f"""
             QComboBox {{
                 background-color: #ffffff;
@@ -234,7 +376,7 @@ class ChartsSection(QWidget):
                 font-size: 11px;
                 font-weight: 600;
                 color: {self.COLOR_TEXT_MAIN};
-                min-width: 150px;
+                min-width: 155px;
             }}
             QComboBox:hover {{ border-color: {self.COLOR_PRIMARY}; }}
             QComboBox::drop-down {{ border: none; width: 20px; }}
@@ -269,7 +411,7 @@ class ChartsSection(QWidget):
         lbl_from.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_from.setCalendarPopup(True)
-        self.date_from.setFixedHeight(30)
+        self.date_from.setFixedHeight(32)
         self.date_from.setFixedWidth(105)
         self.date_from.setStyleSheet(self._date_edit_style())
 
@@ -277,13 +419,13 @@ class ChartsSection(QWidget):
         lbl_to.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
-        self.date_to.setFixedHeight(30)
+        self.date_to.setFixedHeight(32)
         self.date_to.setFixedWidth(105)
         self.date_to.setStyleSheet(self._date_edit_style())
 
         self.btn_apply_dates = QPushButton("OK")
-        self.btn_apply_dates.setFixedHeight(30)
-        self.btn_apply_dates.setFixedWidth(36)
+        self.btn_apply_dates.setFixedHeight(32)
+        self.btn_apply_dates.setFixedWidth(38)
         self.btn_apply_dates.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_apply_dates.setStyleSheet(f"""
             QPushButton {{
@@ -293,7 +435,7 @@ class ChartsSection(QWidget):
                 border-radius: 4px;
                 border: none;
             }}
-            QPushButton:hover {{ background-color: #005a58; }}
+            QPushButton:hover {{ background-color: {self.COLOR_PRIMARY_HOVER}; }}
         """)
         self.btn_apply_dates.clicked.connect(self._on_custom_dates_applied)
 
@@ -308,7 +450,7 @@ class ChartsSection(QWidget):
 
         # --- Sélecteur de Mode d'Affichage (Extensibilité) ---
         self.combo_view_mode = QComboBox()
-        self.combo_view_mode.setFixedHeight(30)
+        self.combo_view_mode.setFixedHeight(32)
         self.combo_view_mode.setStyleSheet(self.combo_preset.styleSheet())
         self.combo_view_mode.addItem("📊 Colonnes Groupées", self.VIEW_GROUPED)
         self.combo_view_mode.addItem("🥞 Colonnes Empilées", self.VIEW_STACKED)
@@ -323,13 +465,13 @@ class ChartsSection(QWidget):
         btn.setCheckable(True)
         btn.setChecked(checked)
         btn.setProperty("granularity_mode", mode)
-        btn.setFixedHeight(26)
+        btn.setFixedHeight(28)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(f"""
             QPushButton {{
                 border: none;
-                border-radius: 4px;
-                padding: 4px 10px;
+                border-radius: 5px;
+                padding: 4px 11px;
                 font-size: 11px;
                 font-weight: 600;
                 color: #475569;
@@ -353,7 +495,7 @@ class ChartsSection(QWidget):
             QDateEdit {{
                 background-color: white;
                 border: 1px solid #cbd5e1;
-                border-radius: 4px;
+                border-radius: 5px;
                 padding: 3px 6px;
                 font-size: 11px;
                 color: {self.COLOR_TEXT_MAIN};
@@ -376,28 +518,25 @@ class ChartsSection(QWidget):
             }
         """)
         layout = QHBoxLayout(banner)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(12)
 
-        # Icône calendrier
         lbl_icon = QLabel("🗓️")
         lbl_icon.setStyleSheet("font-size: 14px; border: none; background: transparent;")
 
-        # Texte principal du périmètre
         self.lbl_scope_dates = QLabel("Périmètre historique : Du -- au --")
         self.lbl_scope_dates.setStyleSheet(f"""
-            font-size: 11px;
+            font-size: 11.5px;
             font-weight: 700;
             color: {self.COLOR_TEXT_MAIN};
             border: none;
             background: transparent;
         """)
 
-        # Badge de durée / couverture
         self.lbl_scope_duration = QLabel("Durée : -- jours")
         self.lbl_scope_duration.setStyleSheet("""
             font-size: 10px;
-            font-weight: 600;
+            font-weight: 700;
             color: #007572;
             background-color: #e6f4f3;
             border: 1px solid #b2dfdb;
@@ -405,7 +544,6 @@ class ChartsSection(QWidget):
             padding: 2px 8px;
         """)
 
-        # Badge du mode d'agrégation actif
         self.lbl_scope_mode = QLabel("Agrégation : Par Jour")
         self.lbl_scope_mode.setStyleSheet("""
             font-size: 10px;
@@ -417,7 +555,6 @@ class ChartsSection(QWidget):
             border: none;
         """)
 
-        # Badge du statut de synchronisation
         self.lbl_scope_source = QLabel("🔗 Synchronisé")
         self.lbl_scope_source.setStyleSheet("""
             font-size: 10px;
@@ -437,7 +574,7 @@ class ChartsSection(QWidget):
         return banner
 
     def _update_scope_banner(self, start_date: date, end_date: date, bucket_count: int):
-        """Met à jour le texte et les indicateurs de la bannière de périmètre"""
+        """Met à jour les données du bandeau de périmètre historique"""
         month_fr_full = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
         s_formatted = f"{start_date.day:02d} {month_fr_full[start_date.month]} {start_date.year}"
@@ -445,10 +582,8 @@ class ChartsSection(QWidget):
 
         total_days = max((end_date - start_date).days + 1, 1)
 
-        # 1. Texte des dates
-        self.lbl_scope_dates.setText(f"Périmètre historique : Du <b>{s_formatted}</b> au <b>{e_formatted}</b>")
+        self.lbl_scope_dates.setText(f"Périmètre historique analysé : Du <b>{s_formatted}</b> au <b>{e_formatted}</b>")
 
-        # 2. Texte de durée
         if total_days <= 31:
             dur_str = f"Étendue : {total_days} Jours"
         elif total_days <= 120:
@@ -459,12 +594,10 @@ class ChartsSection(QWidget):
             dur_str = f"Étendue : {total_days} Jours (~{months} Mois)"
         self.lbl_scope_duration.setText(f"⏱️ {dur_str}")
 
-        # 3. Mode d'agrégation et nombre de colonnes
         gran_text = "Par Jour" if self._granularity == self.GRANULARITY_DAY else ("Par Semaine" if self._granularity == self.GRANULARITY_WEEK else "Par Mois")
         unit_text = "jours" if self._granularity == self.GRANULARITY_DAY else ("semaines" if self._granularity == self.GRANULARITY_WEEK else "mois")
         self.lbl_scope_mode.setText(f"📊 {gran_text} ({bucket_count} {unit_text})")
 
-        # 4. Source / Mode
         preset = self.combo_preset.currentData()
         preset_name = self.combo_preset.currentText()
         if preset == "SYNC":
@@ -797,7 +930,11 @@ class ChartsSection(QWidget):
     def render_chart(self):
         """Reconstruit et dessine le graphique à barres selon les réglages actuels"""
         try:
-            # 1. Nettoyage des anciennes séries et axes
+            # 1. Cacher la carte flottante avant redessin
+            self.hover_card.hide()
+            self._hovered_index = None
+
+            # 2. Nettoyage des anciennes séries et axes
             self.chart.removeAllSeries()
             for axis in self.chart.axes():
                 self.chart.removeAxis(axis)
@@ -809,11 +946,11 @@ class ChartsSection(QWidget):
             )
             self._aggregated_data = buckets
 
-            # 2. Mise à jour de la bannière de périmètre & badges résumés
+            # 3. Mise à jour de la bannière de périmètre & badges résumés
             self._update_scope_banner(start_date, end_date, len(buckets))
             self._update_summary_metrics(total_in, total_out, len(buckets))
 
-            # 3. Vérification de l'état vide
+            # 4. Vérification de l'état vide
             has_data = any(b['in'] > 0 or b['out'] > 0 for b in buckets)
             if not buckets or not has_data:
                 self.chart_view.setVisible(False)
@@ -823,7 +960,7 @@ class ChartsSection(QWidget):
             self.chart_view.setVisible(True)
             self.empty_state_label.setVisible(False)
 
-            # 4. Construction des séries de colonnes
+            # 5. Construction des séries de colonnes
             categories = [b['label'] for b in buckets]
 
             if self._view_mode == self.VIEW_NET_FLOW:
@@ -863,6 +1000,7 @@ class ChartsSection(QWidget):
 
         # Connexion du signal Hover
         series.hovered.connect(self._on_bar_hovered)
+        series.clicked.connect(self._on_bar_clicked)
 
         self.chart.addSeries(series)
 
@@ -919,6 +1057,7 @@ class ChartsSection(QWidget):
         series.append(set_pos)
         series.append(set_neg)
         series.hovered.connect(self._on_bar_hovered)
+        series.clicked.connect(self._on_bar_clicked)
 
         self.chart.addSeries(series)
 
@@ -936,50 +1075,36 @@ class ChartsSection(QWidget):
         series.attachAxis(axis_y)
 
     # =========================================================================
-    # 7. GESTION DES INFOBULLES (TOOLTIPS TOUJOURS BLANCHES)
+    # 7. GESTION DES INFOBULLES PERSISTANTES (CHARTHOVERCARD)
     # =========================================================================
     def _on_bar_hovered(self, status: bool, index: int, barset: QBarSet = None):
-        """Affiche une infobulle riche et garantie toujours blanche au survol d'une colonne"""
+        """Affiche ou masque la carte d'information persistante sans timeout abrupt"""
         if status and 0 <= index < len(self._aggregated_data):
+            self._hovered_index = index
             item = self._aggregated_data[index]
-            val_in = item['in']
-            val_out = item['out']
-            net_val = val_in - val_out
             
-            str_in = format_money(val_in, 'DA').replace(',', ' ')
-            str_out = format_money(val_out, 'DA').replace(',', ' ')
-            net_prefix = "+" if net_val > 0 else ""
-            str_net = f"{net_prefix}{format_money(net_val, 'DA').replace(',', ' ')}"
-            net_color = self.COLOR_IN_BORDER if net_val > 0 else (self.COLOR_OUT_BORDER if net_val < 0 else self.COLOR_TEXT_MAIN)
-
-            tx_info = ""
-            if item.get('count_in', 0) > 0 or item.get('count_out', 0) > 0:
-                tx_info = f"<div style='margin-top: 6px; font-size: 10px; color: #64748b;'>📋 <i>Transactions : {item.get('count_in', 0)} entrées / {item.get('count_out', 0)} sorties</i></div>"
-
-            # Structure HTML encapsulée dans un conteneur blanc pur avec ombrage et bordure
-            tooltip_html = f"""
-            <div style="background-color: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-family: 'Segoe UI', Arial, sans-serif; min-width: 220px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-                <div style="font-size: 12px; font-weight: 800; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 6px;">
-                    📅 {item['detail']}
-                </div>
-                <div style="margin-bottom: 4px; font-size: 11px;">
-                    <span style="color: #64748b;">📥 Entrées (Achats) :</span> 
-                    <span style="font-weight: 700; color: {self.COLOR_IN_BORDER}; float: right;">{str_in}</span>
-                </div>
-                <div style="margin-bottom: 6px; font-size: 11px;">
-                    <span style="color: #64748b;">📤 Sorties (Consommation) :</span> 
-                    <span style="font-weight: 700; color: {self.COLOR_OUT_BORDER}; float: right;">{str_out}</span>
-                </div>
-                <div style="border-top: 1px dashed #e2e8f0; padding-top: 5px; margin-top: 4px; font-size: 11px;">
-                    <span style="font-weight: 700; color: #334155;">⚖️ Solde Net :</span> 
-                    <span style="font-weight: 800; color: {net_color}; float: right;">{str_net}</span>
-                </div>
-                {tx_info}
-            </div>
-            """
-            QToolTip.showText(QCursor.pos(), tooltip_html, self.chart_view)
+            # Positionner la carte par rapport aux coordonnées relatives de chart_view
+            global_pos = QCursor.pos()
+            local_pos = self.chart_view.mapFromGlobal(global_pos)
+            self.hover_card.update_and_show(item, local_pos, self.chart_view.rect())
         else:
-            QToolTip.hideText()
+            self._hovered_index = None
+            # Masquer seulement si aucune sélection n'est verrouillée
+            if self._pinned_index is None:
+                self.hover_card.hide()
+
+    def _on_bar_clicked(self, index: int, barset: QBarSet = None):
+        """Permet de verrouiller/déverrouiller l'affichage d'une colonne au clic"""
+        if 0 <= index < len(self._aggregated_data):
+            if self._pinned_index == index:
+                self._pinned_index = None
+                self.hover_card.hide()
+            else:
+                self._pinned_index = index
+                item = self._aggregated_data[index]
+                global_pos = QCursor.pos()
+                local_pos = self.chart_view.mapFromGlobal(global_pos)
+                self.hover_card.update_and_show(item, local_pos, self.chart_view.rect())
 
     # =========================================================================
     # 8. ÉVÉNEMENTS ET ACTIONS UTILISATEUR
@@ -1033,7 +1158,6 @@ class ChartsSection(QWidget):
         e_str = end_d.strftime("%Y-%m-%d")
 
         preset = self.combo_preset.currentData()
-        # Si stats_manager est disponible et qu'on utilise un filtre spécifique, on peut re-requêter la DB
         if self.stats_manager and preset != "SYNC":
             try:
                 cons_data = self.stats_manager.get_consumption_trend(s_str, e_str)
@@ -1068,7 +1192,6 @@ class ChartsSection(QWidget):
             parsed_end = self._parse_date(global_end_date)
             if parsed_end: self._global_end_date = parsed_end
 
-        # Si nous sommes en mode synchronisé ou première réception, mettre à jour le cache
         preset = self.combo_preset.currentData()
         if preset == "SYNC" or not self._raw_consumption:
             self._raw_consumption = consumption_data or []
