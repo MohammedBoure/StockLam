@@ -279,20 +279,20 @@ class MainWindow(QMainWindow):
         self.nav_group.idClicked.connect(self.switch_page)
 
         buttons_info = [
-            (0, "Tableau de Bord", "fa5s.chart-pie"),
-            (1, "Données de Base", "fa5s.layer-group"),
-            (2, "Achats & Entrées", "fa5s.shopping-cart"), 
-            (3, "Stock & Magasin",  "fa5s.boxes"),
-            (6, "Sous-Traitants",   "fa5s.file-invoice-dollar"), 
-            (8, "Réclamations",    "fa5s.exclamation-circle"),
-            (9, "Inventaire", "fa5s.clipboard-list"),
-            (7, "Traçabilité",      "fa5s.history"),
-            (5, "Utilisateurs",    "fa5s.users"),
-            (4, "Paramètres",      "fa5s.sliders-h")
+            (0, "Tableau de Bord", "fa5s.chart-pie",          "#2563eb"),  # Royal Blue
+            (1, "Données de Base", "fa5s.layer-group",         "#7c3aed"),  # Deep Violet
+            (2, "Achats & Entrées", "fa5s.shopping-cart",      "#059669"),  # Emerald Green
+            (3, "Stock & Magasin",  "fa5s.boxes",              "#d97706"),  # Amber / Warm Orange
+            (6, "Sous-Traitants",   "fa5s.file-invoice-dollar","#0d9488"),  # Teal
+            (8, "Réclamations",    "fa5s.exclamation-circle",  "#dc2626"),  # Crimson Red
+            (9, "Inventaire",       "fa5s.clipboard-list",     "#0284c7"),  # Sky Blue
+            (7, "Traçabilité",      "fa5s.history",            "#9333ea"),  # Vibrant Purple
+            (5, "Utilisateurs",    "fa5s.users",              "#4f46e5"),  # Indigo
+            (4, "Paramètres",      "fa5s.sliders-h",          "#64748b"),  # Slate Gray
         ]
 
-        for btn_id, text, icon_name in buttons_info:
-            icon = qta.icon(icon_name, color="#546e7a", color_active="#007572")
+        for btn_id, text, icon_name, icon_color in buttons_info:
+            icon = qta.icon(icon_name, color=icon_color, color_active="#ffffff", color_selected="#ffffff")
             btn = QPushButton(text)
             btn.setIcon(icon)
             btn.setIconSize(QSize(20, 20))
