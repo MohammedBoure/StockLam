@@ -264,11 +264,7 @@ class ChartsSection(QWidget):
         header_widget = self._create_header_toolbar()
         card_layout.addWidget(header_widget)
 
-        # 1.2 Bannière claire et explicite du périmètre historique
-        self.scope_banner = self._create_scope_banner()
-        card_layout.addWidget(self.scope_banner)
-
-        # 1.3 Bandeau des métriques résumées (KPI Badges)
+        # 1.2 Bandeau des métriques résumées (KPI Badges)
         self.summary_bar = self._create_summary_bar()
         card_layout.addWidget(self.summary_bar)
 
@@ -319,22 +315,6 @@ class ChartsSection(QWidget):
         layout = QHBoxLayout(toolbar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-
-        # --- Titre & Thème du composant ---
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
-
-        lbl_title = QLabel("📊 Analyse des Flux : Entrées vs Sorties")
-        lbl_title.setStyleSheet(f"font-size: 15px; font-weight: 800; color: {self.COLOR_TEXT_MAIN};")
-        
-        lbl_subtitle = QLabel("Comparaison financière des Achats (Entrées 🟩) et de la Consommation (Sorties 🟥)")
-        lbl_subtitle.setStyleSheet(f"font-size: 10.5px; color: {self.COLOR_TEXT_MUTED}; font-weight: 600;")
-
-        title_box.addWidget(lbl_title)
-        title_box.addWidget(lbl_subtitle)
-        layout.addLayout(title_box)
-
-        layout.addStretch()
 
         # --- Sélecteur de Granularité (Jour / Semaine / Mois) ---
         granularity_container = QFrame()
@@ -448,6 +428,8 @@ class ChartsSection(QWidget):
         self.custom_dates_container.setVisible(False)
         layout.addWidget(self.custom_dates_container)
 
+        layout.addStretch()
+
         # --- Sélecteur de Mode d'Affichage (Extensibilité) ---
         self.combo_view_mode = QComboBox()
         self.combo_view_mode.setFixedHeight(32)
@@ -504,111 +486,7 @@ class ChartsSection(QWidget):
         """
 
     # =========================================================================
-    # 3. BANNIÈRE DU PÉRIMÈTRE HISTORIQUE (HISTORICAL SCOPE DISPLAY)
-    # =========================================================================
-    def _create_scope_banner(self) -> QFrame:
-        """Crée une bannière d'information claire sur l'étendue temporelle affichée"""
-        banner = QFrame()
-        banner.setStyleSheet("""
-            QFrame {
-                background-color: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 6px 12px;
-            }
-        """)
-        layout = QHBoxLayout(banner)
-        layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(12)
-
-        lbl_icon = QLabel("🗓️")
-        lbl_icon.setStyleSheet("font-size: 14px; border: none; background: transparent;")
-
-        self.lbl_scope_dates = QLabel("Périmètre historique : Du -- au --")
-        self.lbl_scope_dates.setStyleSheet(f"""
-            font-size: 11.5px;
-            font-weight: 700;
-            color: {self.COLOR_TEXT_MAIN};
-            border: none;
-            background: transparent;
-        """)
-
-        self.lbl_scope_duration = QLabel("Durée : -- jours")
-        self.lbl_scope_duration.setStyleSheet("""
-            font-size: 10px;
-            font-weight: 700;
-            color: #007572;
-            background-color: #e6f4f3;
-            border: 1px solid #b2dfdb;
-            border-radius: 4px;
-            padding: 2px 8px;
-        """)
-
-        self.lbl_scope_mode = QLabel("Agrégation : Par Jour")
-        self.lbl_scope_mode.setStyleSheet("""
-            font-size: 10px;
-            font-weight: 600;
-            color: #475569;
-            background-color: #e2e8f0;
-            border-radius: 4px;
-            padding: 2px 8px;
-            border: none;
-        """)
-
-        self.lbl_scope_source = QLabel("🔗 Synchronisé")
-        self.lbl_scope_source.setStyleSheet("""
-            font-size: 10px;
-            font-weight: 600;
-            color: #64748b;
-            background-color: transparent;
-            border: none;
-        """)
-
-        layout.addWidget(lbl_icon)
-        layout.addWidget(self.lbl_scope_dates)
-        layout.addWidget(self.lbl_scope_duration)
-        layout.addWidget(self.lbl_scope_mode)
-        layout.addStretch()
-        layout.addWidget(self.lbl_scope_source)
-
-        return banner
-
-    def _update_scope_banner(self, start_date: date, end_date: date, bucket_count: int):
-        """Met à jour les données du bandeau de périmètre historique"""
-        month_fr_full = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
-
-        s_formatted = f"{start_date.day:02d} {month_fr_full[start_date.month]} {start_date.year}"
-        e_formatted = f"{end_date.day:02d} {month_fr_full[end_date.month]} {end_date.year}"
-
-        total_days = max((end_date - start_date).days + 1, 1)
-
-        self.lbl_scope_dates.setText(f"Périmètre historique analysé : Du <b>{s_formatted}</b> au <b>{e_formatted}</b>")
-
-        if total_days <= 31:
-            dur_str = f"Étendue : {total_days} Jours"
-        elif total_days <= 120:
-            weeks = round(total_days / 7, 1)
-            dur_str = f"Étendue : {total_days} Jours (~{weeks} Semaines)"
-        else:
-            months = round(total_days / 30.4, 1)
-            dur_str = f"Étendue : {total_days} Jours (~{months} Mois)"
-        self.lbl_scope_duration.setText(f"⏱️ {dur_str}")
-
-        gran_text = "Par Jour" if self._granularity == self.GRANULARITY_DAY else ("Par Semaine" if self._granularity == self.GRANULARITY_WEEK else "Par Mois")
-        unit_text = "jours" if self._granularity == self.GRANULARITY_DAY else ("semaines" if self._granularity == self.GRANULARITY_WEEK else "mois")
-        self.lbl_scope_mode.setText(f"📊 {gran_text} ({bucket_count} {unit_text})")
-
-        preset = self.combo_preset.currentData()
-        preset_name = self.combo_preset.currentText()
-        if preset == "SYNC":
-            self.lbl_scope_source.setText("🔗 Synchronisé avec Tableau de Bord")
-            self.lbl_scope_source.setStyleSheet("font-size: 10px; font-weight: 600; color: #007572; border: none; background: transparent;")
-        else:
-            self.lbl_scope_source.setText(f"🔍 Filtre Graphique : {preset_name}")
-            self.lbl_scope_source.setStyleSheet("font-size: 10px; font-weight: 600; color: #d97706; border: none; background: transparent;")
-
-    # =========================================================================
-    # 4. BANDEAU DE MÉTRIQUES RÉSUMÉES (KPI MINI-BADGES)
+    # 3. BANDEAU DE MÉTRIQUES RÉSUMÉES (KPI MINI-BADGES)
     # =========================================================================
     def _create_summary_bar(self) -> QWidget:
         bar = QWidget()
@@ -946,8 +824,7 @@ class ChartsSection(QWidget):
             )
             self._aggregated_data = buckets
 
-            # 3. Mise à jour de la bannière de périmètre & badges résumés
-            self._update_scope_banner(start_date, end_date, len(buckets))
+            # 3. Mise à jour des badges résumés
             self._update_summary_metrics(total_in, total_out, len(buckets))
 
             # 4. Vérification de l'état vide
