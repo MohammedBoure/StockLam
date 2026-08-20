@@ -114,7 +114,7 @@ class StatisticsManager:
                     FROM Stock_Movement_Log sml
                     JOIN Products_Master pm ON sml.Product_ID = pm.Product_ID
                     LEFT JOIN Inventory_Batches ib ON sml.Batch_ID = ib.Batch_ID
-                    WHERE (sml.Movement_Type = 'Waste' OR (sml.Movement_Type = 'Adjustment' AND sml.Reason_ID IS NOT NULL AND sml.Qty_Change < 0))
+                    WHERE sml.Movement_Type = 'Waste'
                 """
                 cursor.execute(query_waste)
                 row_waste = cursor.fetchone()
@@ -358,7 +358,7 @@ class StatisticsManager:
                     JOIN Products_Master pm ON sml.Product_ID = pm.Product_ID
                     LEFT JOIN Waste_Reasons wr ON sml.Reason_ID = wr.Reason_ID
                     LEFT JOIN Inventory_Batches ib ON sml.Batch_ID = ib.Batch_ID
-                    WHERE (sml.Movement_Type = 'Waste' OR (sml.Movement_Type = 'Adjustment' AND sml.Reason_ID IS NOT NULL AND sml.Qty_Change < 0))
+                    WHERE sml.Movement_Type = 'Waste'
                       AND DATE(sml.Transaction_Date) BETWEEN %s AND %s
                     GROUP BY COALESCE(wr.Reason_Name, 'Autre / Non spécifié')
                     ORDER BY estimated_loss DESC
@@ -379,8 +379,8 @@ class StatisticsManager:
                 cursor = conn.cursor(dictionary=True)
                 query = """
                     SELECT 
-                        pm.Product_ID,
-                        pm.Product_Name,
+                        pm.Product_ID, 
+                        pm.Product_Name, 
                         COALESCE(pf.Family_Name, 'Non définie') as Family_Name,
                         COALESCE(m.Manuf_Name, 'Non défini') as Manuf_Name,
                         pm.Stock_Unit,
@@ -435,7 +435,7 @@ class StatisticsManager:
                     LEFT JOIN Manufacturers m ON pm.Manuf_ID = m.Manuf_ID
                     LEFT JOIN Inventory_Batches ib ON sml.Batch_ID = ib.Batch_ID
                     LEFT JOIN Waste_Reasons wr ON sml.Reason_ID = wr.Reason_ID
-                    WHERE (sml.Movement_Type = 'Waste' OR (sml.Movement_Type = 'Adjustment' AND sml.Reason_ID IS NOT NULL AND sml.Qty_Change < 0))
+                    WHERE sml.Movement_Type = 'Waste'
                       AND DATE(sml.Transaction_Date) BETWEEN %s AND %s
                 """
                 params = [start_date, end_date]
