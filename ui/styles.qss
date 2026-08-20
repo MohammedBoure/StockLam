@@ -54,30 +54,20 @@ QPushButton.nav_button {
 }
 
 QPushButton.nav_button:hover {
-    background-color: #e0f2f1; /* خلفية خضراء فاتحة جداً عند التمرير */
+    background-color: transparent;
     color: #007572;
 }
 
 QPushButton.nav_button:pressed {
-    background-color: #b2dfdb;
+    background-color: transparent;
     color: #004d40;
 }
 
 QPushButton.nav_button:checked {
-    background-color: #007572; /* خلفية خضراء غامقة عند التحديد */
-    color: #ffffff; /* نص أبيض */
-    font-weight: 700;
+    background-color: transparent;
+    color: #007572;
+    font-weight: 800;
     qproperty-iconSize: 20px 20px; 
-}
-
-QPushButton.nav_button:checked:hover {
-    background-color: #00605d;
-    color: #ffffff;
-}
-
-QPushButton.nav_button:checked:pressed {
-    background-color: #004d4a;
-    color: #ffffff;
 }
 
 /* ============================================================
@@ -396,20 +386,21 @@ QCalendarWidget QTableView {
     border: none;
     border-radius: 8px;
     background-color: transparent;
-    color: #2c3e50; /* لون النص */
+    color: #607d8b;
     font-size: 14px;
     font-weight: 500;
 }
 
-/* عند اختيار الزر */
-.nav_button:checked {
-    background-color: #007572; /* لون MODERNLAM الأخضر */
-    color: white;
+.nav_button:hover {
+    background-color: transparent;
+    color: #007572;
 }
 
-/* لجعل الأيقونة تتحول للأبيض عند الضغط (إذا كانت SVG تدعم ذلك) */
+/* عند اختيار الزر */
 .nav_button:checked {
-    border-left: 5px solid #004d4a;
+    background-color: transparent;
+    color: #007572;
+    font-weight: 800;
 }
 
 
@@ -573,7 +564,7 @@ QPushButton[class="nav_button"] {
 /* --- التفاعل عند التمرير (Hover) --- */
 QPushButton[class="nav_button"]:hover {
     color: #007572;            /* يتغير لون النص للـ Teal */
-    background-color: #f0f7f7; /* خلفية شفافة جداً جداً للمساعدة البصرية */
+    background-color: transparent;
 }
 
 /* ==========================================================
@@ -617,15 +608,11 @@ QFrame[state="compact"] QPushButton[class="nav_button"] {
 }
 
 QFrame[state="compact"] QPushButton[class="nav_button"]:hover {
-    background-color: #e0f2f1;
+    background-color: transparent;
 }
 
 QFrame[state="compact"] QPushButton[class="nav_button"]:checked {
-    background-color: #007572;
-}
-
-QFrame[state="compact"] QPushButton[class="nav_button"]:checked:hover {
-    background-color: #00605d;
+    background-color: transparent;
 }
 
 
