@@ -28,12 +28,50 @@ class ApiClient {
     return _decode(response);
   }
 
-  Future<Map<String, dynamic>> sendRemoteBarcode(String barcode) async {
+  Future<AuthUser> login({
+    required String username,
+    required String password,
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/auth/login'),
+          headers: headers,
+          body: jsonEncode({
+            'username': username,
+            'password': password,
+          }),
+        )
+        .timeout(const Duration(seconds: 8));
+    final data = _decode(response);
+    if (data['success'] == true && data['user'] != null) {
+      return AuthUser.fromJson(data['user'] as Map<String, dynamic>);
+    }
+    throw Exception(data['message'] ?? 'Échec de l\'authentification');
+  }
+
+  Future<List<Map<String, dynamic>>> getUsersList() async {
+    final response = await http
+        .get(uri('/api/users/list'), headers: headers)
+        .timeout(const Duration(seconds: 8));
+    final data = _decode(response);
+    final list = data['users'] as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> sendRemoteBarcode(
+    String barcode, {
+    int? userId,
+    String? userName,
+  }) async {
     final response = await http
         .post(
           uri('/api/remote-scans'),
           headers: headers,
-          body: jsonEncode({'barcode': barcode}),
+          body: jsonEncode({
+            'barcode': barcode,
+            if (userId != null) 'user_id': userId,
+            if (userName != null) 'user_name': userName,
+          }),
         )
         .timeout(const Duration(seconds: 8));
     return _decode(response);
@@ -62,6 +100,7 @@ class ApiClient {
   Future<Map<String, dynamic>> consumeStock({
     required int batchId,
     required int qty,
+    int? userId,
     bool allowFefoOverride = false,
     String? notes,
   }) async {
@@ -72,6 +111,7 @@ class ApiClient {
           body: jsonEncode({
             'batch_id': batchId,
             'qty': qty,
+            if (userId != null) 'user_id': userId,
             'allow_fefo_override': allowFefoOverride,
             if (notes != null && notes.isNotEmpty) 'notes': notes,
           }),
@@ -84,6 +124,7 @@ class ApiClient {
     required int batchId,
     required int targetLocationId,
     required int qty,
+    int? userId,
   }) async {
     final response = await http
         .post(
@@ -93,9 +134,31 @@ class ApiClient {
             'batch_id': batchId,
             'target_location_id': targetLocationId,
             'qty': qty,
+            if (userId != null) 'user_id': userId,
           }),
         )
         .timeout(const Duration(seconds: 8));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> bulkDispatch({
+    required String mode,
+    required List<BulkDispatchItem> items,
+    int? userId,
+    bool allowFefoOverride = false,
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/stock/bulk-dispatch'),
+          headers: headers,
+          body: jsonEncode({
+            'mode': mode,
+            'items': items.map((i) => i.toJson()).toList(),
+            if (userId != null) 'user_id': userId,
+            'allow_fefo_override': allowFefoOverride,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
     return _decode(response);
   }
 

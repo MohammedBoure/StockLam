@@ -1,8 +1,8 @@
 # api/services/dispatch_service.py
-"""Safe dispatch service for stock consumption and location transfers with FEFO guarantees."""
+"""Safe dispatch service for stock consumption, location transfers, and bulk operations with FEFO guarantees."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from .fefo_service import evaluate_fefo_compliance, sort_batches_by_fefo
 
 
@@ -14,7 +14,7 @@ def safe_consume(
     allow_fefo_override: bool = False,
     notes: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Exécute une consommation directe sécurisée avec contrôle FEFO strict.
+    """Exécute une consommation directe sécurisée avec contrôle FEFO strict et traçabilité utilisateur.
     
     Si un lot plus ancien existe pour le même produit et que 'allow_fefo_override' est False,
     l'opération est bloquée avec une alerte FEFO détaillée pour validation de l'opérateur.
@@ -100,6 +100,7 @@ def safe_consume(
             batch_id=batch_id,
             qty=qty,
             user_id=user_id,
+            notes=notes,
         )
         if not success:
             return {"success": False, "message": "Échec de l'enregistrement de la consommation en base de données."}
@@ -127,7 +128,7 @@ def safe_transfer(
     qty: int = 1,
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Exécute un transfert sécurisé d'un lot vers un nouvel emplacement."""
+    """Exécute un transfert sécurisé d'un lot vers un nouvel emplacement avec traçabilité utilisateur."""
     if qty <= 0:
         return {"success": False, "message": "La quantité à transférer doit être supérieure à zéro."}
 
@@ -188,3 +189,78 @@ def safe_transfer(
     except Exception as exc:
         logging.exception("Erreur lors du transfert d'emplacement")
         return {"success": False, "message": f"Erreur système: {exc}"}
+
+
+def bulk_dispatch(
+    data_manager: Any,
+    mode: str,
+    items: List[Dict[str, Any]],
+    user_id: Optional[int] = None,
+    allow_fefo_override: bool = False,
+) -> Dict[str, Any]:
+    """Exécute une saisie rapide multi-produits (sortie groupée ou transfert groupé)
+
+    Chaque opération enregistre l'événement et le User_ID dans Stock_Movement_Logs.
+    """
+    if not items:
+        return {"success": False, "message": "Aucun produit dans la liste à traiter."}
+
+    action_mode = (mode or "consume").lower()
+    success_count = 0
+    failed_count = 0
+    results = []
+
+    for item in items:
+        batch_id = item.get("batch_id")
+        qty = int(item.get("qty", 1) or 1)
+        notes = item.get("notes")
+        item_override = item.get("allow_fefo_override", allow_fefo_override)
+
+        if not batch_id:
+            failed_count += 1
+            results.append({"batch_id": None, "success": False, "message": "ID de lot manquant."})
+            continue
+
+        if action_mode == "consume":
+            res = safe_consume(
+                data_manager=data_manager,
+                batch_id=batch_id,
+                qty=qty,
+                user_id=user_id,
+                allow_fefo_override=item_override,
+                notes=notes,
+            )
+        elif action_mode == "transfer":
+            target_location_id = item.get("target_location_id")
+            if not target_location_id:
+                failed_count += 1
+                results.append({"batch_id": batch_id, "success": False, "message": "Emplacement de destination manquant."})
+                continue
+            res = safe_transfer(
+                data_manager=data_manager,
+                batch_id=batch_id,
+                target_location_id=int(target_location_id),
+                qty=qty,
+                user_id=user_id,
+            )
+        else:
+            failed_count += 1
+            results.append({"batch_id": batch_id, "success": False, "message": f"Mode inconnu: {action_mode}"})
+            continue
+
+        results.append(res)
+        if res.get("success"):
+            success_count += 1
+        else:
+            failed_count += 1
+
+    all_succeeded = (failed_count == 0 and success_count > 0)
+    return {
+        "success": all_succeeded,
+        "mode": action_mode,
+        "total_items": len(items),
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "message": f"{success_count}/{len(items)} opération(s) traitée(s) avec succès.",
+        "results": results,
+    }

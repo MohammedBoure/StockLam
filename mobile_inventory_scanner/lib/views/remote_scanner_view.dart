@@ -15,6 +15,7 @@ class RemoteScannerView extends StatefulWidget {
     required this.selectedDevice,
     required this.recentScans,
     required this.onScanSent,
+    this.currentUser,
   });
 
   final ApiClient api;
@@ -22,6 +23,7 @@ class RemoteScannerView extends StatefulWidget {
   final DesktopDevice? selectedDevice;
   final List<ScanEntry> recentScans;
   final ValueChanged<ScanEntry> onScanSent;
+  final AuthUser? currentUser;
 
   @override
   State<RemoteScannerView> createState() => _RemoteScannerViewState();
@@ -59,7 +61,11 @@ class _RemoteScannerViewState extends State<RemoteScannerView> {
     });
 
     try {
-      await widget.api.sendRemoteBarcode(barcode);
+      await widget.api.sendRemoteBarcode(
+        barcode,
+        userId: widget.currentUser?.userId,
+        userName: widget.currentUser?.fullName ?? widget.currentUser?.username,
+      );
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       final entry = ScanEntry(

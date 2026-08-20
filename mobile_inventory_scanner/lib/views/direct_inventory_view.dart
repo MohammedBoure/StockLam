@@ -12,10 +12,12 @@ class DirectInventoryView extends StatefulWidget {
     super.key,
     required this.api,
     required this.connected,
+    this.currentUser,
   });
 
   final ApiClient api;
   final bool connected;
+  final AuthUser? currentUser;
 
   @override
   State<DirectInventoryView> createState() => _DirectInventoryViewState();
@@ -224,6 +226,7 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
       final res = await widget.api.consumeStock(
         batchId: batch.batchId,
         qty: qty,
+        userId: widget.currentUser?.userId,
         allowFefoOverride: allowFefoOverride,
         notes: notes,
       );
@@ -461,6 +464,7 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
         batchId: batch.batchId,
         targetLocationId: selectedLocId!,
         qty: qty,
+        userId: widget.currentUser?.userId,
       );
 
       if (!mounted) return;

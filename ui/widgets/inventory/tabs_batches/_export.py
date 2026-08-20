@@ -39,13 +39,13 @@ EXPORT_COLUMN_KEYS = {
     6: 'Unit_Price_Received',
     7: 'Unit_Price_Received_TTC',
     8: 'Total_Value',
-    9: 'Family_Name',
-    10: 'Manuf_Name',
-    11: 'Automate_Name',
-    12: 'Supplier_Name',
-    13: 'PO_ID',
-    14: 'Date_Received',
-    15: 'Location_Name',
+    9: 'Location_Name',
+    10: 'Family_Name',
+    11: 'Manuf_Name',
+    12: 'Automate_Name',
+    13: 'Supplier_Name',
+    14: 'PO_ID',
+    15: 'Date_Received',
 }
 
 
@@ -94,7 +94,7 @@ def _format_export_cell(row, column_index):
         discount = float(row.get('Discount_Percent', 0) or 0) / 100.0
         tax = float(row.get('Tax_Rate_Percent', 0) or 0) / 100.0
         return format_money(qty * price * (1 - discount) * (1 + tax))
-    if column_index == 14:
+    if column_index == 15:
         return str(row.get('Date_Received') or row.get('Created_At', ''))[:10]
 
     key = EXPORT_COLUMN_KEYS.get(column_index)

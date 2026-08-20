@@ -217,8 +217,8 @@ def _build_table(self):
     cols = [
         "Désignation Produit", "Stock (Actuel)", "N° Lot", "Date Exp.",
         "Qté Init.", "Code-Barres", "Prix U. HT", "Prix U. TTC",
-        "Valeur (DA)", "Famille", "Marque", "Automate",
-        "Fournisseur", "Ref PO", "Date Entrée", "Emplacement",
+        "Valeur (DA)", "Emplacement", "Famille", "Marque",
+        "Automate", "Fournisseur", "Ref PO", "Date Entrée",
         "Réclamation"
     ]
     self.table.setColumnCount(len(cols))

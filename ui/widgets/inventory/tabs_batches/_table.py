@@ -207,16 +207,16 @@ def _fill_row(table, r, b, hide_fin):
         table.setItem(r, 7, _make_item("", bg_color=bg_color))
         table.setItem(r, 8, _make_item("", bg_color=bg_color))
 
-    table.setItem(r, 9,  _make_item(b.get('Family_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 10, _make_item(b.get('Manuf_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 11, _make_item(b.get('Automate_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 12, _make_item(b.get('Supplier_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 13, _make_item(b.get('PO_ID'), bg_color=bg_color))
-    table.setItem(r, 14, _make_item(
+    table.setItem(r, 9,  _make_item(b.get('Location_Name'), bg_color=bg_color))
+    table.setItem(r, 10, _make_item(b.get('Family_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 11, _make_item(b.get('Manuf_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 12, _make_item(b.get('Automate_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 13, _make_item(b.get('Supplier_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 14, _make_item(b.get('PO_ID'), bg_color=bg_color))
+    table.setItem(r, 15, _make_item(
         str(b.get('Date_Received') or b.get('Created_At', ''))[:10],
         bg_color=bg_color
     ))
-    table.setItem(r, 15, _make_item(b.get('Location_Name'), bg_color=bg_color))
     rec_item = _make_item(reclamation, bg_color=bg_color)
     if reclamation:
         rec_item.setIcon(get_reclamation_icon())
@@ -238,19 +238,19 @@ def _fill_row(table, r, b, hide_fin):
 # ---------------------------------------------------------------------------
 
 COL_MAP = {
-    0: 'Product_Name',      1: 'Quantity_Current',
-    2: 'Lot_Number',        3: 'Expiry_Date',
-    4: 'Quantity_Initial',  5: 'Internal_Barcode',
-    6: 'Unit_Price_Received', 7: 'Unit_Price_Received_TTC',
-    8: 'Total_Value',       9: 'Family_Name',
-    10: 'Manuf_Name',       11: 'Automate_Name',
-    12: 'Supplier_Name',    13: 'PO_ID',
-    14: 'Date_Received',    15: 'Location_Name',
+    0: 'Product_Name',          1: 'Quantity_Current',
+    2: 'Lot_Number',            3: 'Expiry_Date',
+    4: 'Quantity_Initial',      5: 'Internal_Barcode',
+    6: 'Unit_Price_Received',   7: 'Unit_Price_Received_TTC',
+    8: 'Total_Value',           9: 'Location_Name',
+    10: 'Family_Name',          11: 'Manuf_Name',
+    12: 'Automate_Name',        13: 'Supplier_Name',
+    14: 'PO_ID',                15: 'Date_Received',
     16: 'Reception_Note'
 }
 
 NUMERIC_COLS = {1, 4, 6}
-DATE_COLS    = {3, 14}
+DATE_COLS    = {3, 15}
 
 
 def _sort_key(col_index, item):

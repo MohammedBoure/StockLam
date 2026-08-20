@@ -9,16 +9,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
 import 'models.dart';
+import 'views/auth_dialog.dart';
 import 'views/direct_inventory_view.dart';
+import 'views/fast_dispatch_view.dart';
 import 'views/remote_scanner_view.dart';
 
 void main() {
   runApp(const ModernStockApp());
-}
-
-T? firstOrNull<T>(Iterable<T> values) {
-  final iterator = values.iterator;
-  return iterator.moveNext() ? iterator.current : null;
 }
 
 class ModernStockApp extends StatelessWidget {
@@ -68,6 +65,10 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   List<DesktopDevice> discoveredDevices = const [];
   List<ScanEntry> recentScans = const [];
   DesktopDevice? selectedDevice;
+  AuthUser? currentUser;
+  SavedAccount? activeSavedAccount;
+  List<SavedAccount> savedAccounts = const [];
+
   String status = 'Recherchez ou sélectionnez un ordinateur ModernStock.';
   bool loading = false;
   bool discovering = false;
@@ -90,13 +91,26 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
 
   Future<void> _loadSettings() async {
     final preferences = await SharedPreferences.getInstance();
+    savedAccounts = await AccountStorage.loadSavedAccounts();
+    final activeId = await AccountStorage.getActiveAccountId();
+
+    if (activeId != null && savedAccounts.isNotEmpty) {
+      final found = savedAccounts.where((a) => a.id == activeId).toList();
+      if (found.isNotEmpty) {
+        activeSavedAccount = found.first;
+      }
+    }
+
     final savedServer = preferences.getString(serverKey);
-    if (!mounted || savedServer == null || savedServer.isEmpty) {
+    if (!mounted) return;
+
+    if (savedServer == null || savedServer.isEmpty) {
       setState(() => settingsOpen = true);
       return;
     }
+
     setState(() => serverController.text = savedServer);
-    await checkServer();
+    await checkServer(autoAuth: true);
   }
 
   Future<void> _saveSettings() async {
@@ -193,10 +207,10 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
       serverController.text = device.baseUrl;
       connected = false;
     });
-    await checkServer();
+    await checkServer(autoAuth: true);
   }
 
-  Future<void> checkServer() async {
+  Future<void> checkServer({bool autoAuth = false}) async {
     final baseUrl = cleanBaseUrl(serverController.text);
     if (baseUrl.isEmpty) {
       setState(() => status = 'Choisissez un ordinateur ou saisissez son adresse.');
@@ -221,6 +235,11 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
         settingsOpen = false;
         status = 'Connecté à ${device.name}.';
       });
+
+      // Tentative d'auto-authentification avec un compte déjà enregistré pour ce serveur
+      if (autoAuth) {
+        await _tryAutoAuth(baseUrl, device.name);
+      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -231,6 +250,124 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  Future<void> _tryAutoAuth(String baseUrl, String serverName) async {
+    final accounts = await AccountStorage.loadSavedAccounts();
+    savedAccounts = accounts;
+
+    final matchingAccounts = accounts.where((a) => cleanBaseUrl(a.serverUrl) == cleanBaseUrl(baseUrl)).toList();
+    if (matchingAccounts.isNotEmpty) {
+      final acc = matchingAccounts.first;
+      try {
+        final authUser = await api.login(username: acc.username, password: acc.password);
+        if (mounted) {
+          setState(() {
+            currentUser = authUser;
+            activeSavedAccount = acc;
+          });
+        }
+        return;
+      } catch (_) {
+        // En cas d'échec du mot de passe sauvegardé, on demandera la connexion
+      }
+    }
+
+    // Si aucun compte valide n'est connecté, proposer la connexion
+    if (currentUser == null && mounted) {
+      await _promptLoginDialog(serverName: serverName, serverUrl: baseUrl);
+    }
+  }
+
+  Future<void> _promptLoginDialog({String? serverName, String? serverUrl}) async {
+    final sName = serverName ?? selectedDevice?.name ?? 'StockLam PC';
+    final sUrl = serverUrl ?? cleanBaseUrl(serverController.text);
+
+    final savedAcc = await showDialog<SavedAccount?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => LoginDialog(
+        api: api,
+        serverName: sName,
+        serverUrl: sUrl,
+      ),
+    );
+
+    if (savedAcc != null && mounted) {
+      setState(() {
+        activeSavedAccount = savedAcc;
+        currentUser = AuthUser(
+          userId: savedAcc.userId,
+          username: savedAcc.username,
+          fullName: savedAcc.fullName,
+          role: savedAcc.role,
+        );
+      });
+      savedAccounts = await AccountStorage.loadSavedAccounts();
+    }
+  }
+
+  void _showSavedAccountsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SavedAccountsSheet(
+        accounts: savedAccounts,
+        activeAccountId: activeSavedAccount?.id,
+        onSelectAccount: (acc) async {
+          setState(() {
+            serverController.text = acc.serverUrl;
+          });
+          await checkServer(autoAuth: false);
+          try {
+            final user = await api.login(username: acc.username, password: acc.password);
+            await AccountStorage.setActiveAccountId(acc.id);
+            if (mounted) {
+              setState(() {
+                currentUser = user;
+                activeSavedAccount = acc;
+              });
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Échec de connexion : $e')),
+              );
+              await _promptLoginDialog(serverName: acc.serverName, serverUrl: acc.serverUrl);
+            }
+          }
+        },
+        onDeleteAccount: (id) async {
+          await AccountStorage.removeAccount(id);
+          final updated = await AccountStorage.loadSavedAccounts();
+          if (mounted) {
+            setState(() {
+              savedAccounts = updated;
+              if (activeSavedAccount?.id == id) {
+                activeSavedAccount = null;
+                currentUser = null;
+              }
+            });
+          }
+        },
+        onAddNewLogin: () async {
+          await _promptLoginDialog();
+        },
+        onLogout: () async {
+          await AccountStorage.setActiveAccountId(null);
+          if (mounted) {
+            setState(() {
+              activeSavedAccount = null;
+              currentUser = null;
+            });
+            await _promptLoginDialog();
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -245,6 +382,14 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
         surfaceTintColor: Colors.transparent,
         elevation: 1,
         actions: [
+          IconButton(
+            tooltip: 'Comptes & Sessions',
+            onPressed: _showSavedAccountsSheet,
+            icon: Icon(
+              currentUser != null ? Icons.account_circle : Icons.no_accounts_outlined,
+              color: currentUser != null ? const Color(0xFF007572) : Colors.black54,
+            ),
+          ),
           IconButton(
             tooltip: 'Connexion Serveur',
             onPressed: () => setState(() => settingsOpen = !settingsOpen),
@@ -271,11 +416,18 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                       DirectInventoryView(
                         api: api,
                         connected: connected,
+                        currentUser: currentUser,
+                      ),
+                      FastDispatchView(
+                        api: api,
+                        connected: connected,
+                        currentUser: currentUser,
                       ),
                       RemoteScannerView(
                         api: api,
                         connected: connected,
                         selectedDevice: selectedDevice,
+                        currentUser: currentUser,
                         recentScans: recentScans,
                         onScanSent: (entry) {
                           setState(() {
@@ -309,6 +461,11 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
             label: 'Stock Direct',
           ),
           NavigationDestination(
+            icon: Icon(Icons.flash_on_outlined),
+            selectedIcon: Icon(Icons.flash_on, color: Color(0xFF007572)),
+            label: 'Saisie Rapide',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.phone_android_outlined),
             selectedIcon: Icon(Icons.phone_android, color: Color(0xFF007572)),
             label: 'Pont Bureau',
@@ -321,35 +478,75 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
   Widget _connectionBar() {
     return Container(
       color: connected ? const Color(0xFFE8F8F0) : const Color(0xFFFFF3CD),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: [
           Icon(
             connected ? Icons.check_circle : Icons.link_off,
             color: connected ? const Color(0xFF27AE60) : const Color(0xFF856404),
-            size: 18,
+            size: 16,
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              connected
-                  ? 'Connecté à ${selectedDevice?.name ?? 'ModernStock'}'
-                  : 'Non connecté ($status)',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: connected ? const Color(0xFF155724) : const Color(0xFF856404),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  connected
+                      ? 'Connecté à ${selectedDevice?.name ?? 'ModernStock'}'
+                      : 'Non connecté ($status)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: connected ? const Color(0xFF155724) : const Color(0xFF856404),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (connected && currentUser != null)
+                  Text(
+                    '👤 ${currentUser!.fullName} (${currentUser!.role})',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF007572), fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  )
+                else if (connected && currentUser == null)
+                  const Text(
+                    '⚠️ Non authentifié - Cliquez pour vous connecter',
+                    style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.w600),
+                  ),
+              ],
+            ),
+          ),
+          if (connected && currentUser == null)
+            FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
               ),
-              overflow: TextOverflow.ellipsis,
+              onPressed: () => _promptLoginDialog(),
+              child: const Text('Connexion', style: TextStyle(fontSize: 11)),
+            )
+          else if (connected && currentUser != null)
+            TextButton(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              onPressed: _showSavedAccountsSheet,
+              child: const Text('Changer', style: TextStyle(fontSize: 11)),
+            )
+          else
+            TextButton(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              onPressed: () => setState(() => settingsOpen = !settingsOpen),
+              child: Text(
+                settingsOpen ? 'Fermer' : 'Modifier',
+                style: const TextStyle(fontSize: 11),
+              ),
             ),
-          ),
-          TextButton(
-            onPressed: () => setState(() => settingsOpen = !settingsOpen),
-            child: Text(
-              settingsOpen ? 'Fermer' : 'Modifier',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
         ],
       ),
     );
@@ -403,12 +600,12 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                     isDense: true,
                   ),
                   keyboardType: TextInputType.url,
-                  onSubmitted: (_) => checkServer(),
+                  onSubmitted: (_) => checkServer(autoAuth: true),
                 ),
               ),
               const SizedBox(width: 8),
               FilledButton(
-                onPressed: loading ? null : checkServer,
+                onPressed: loading ? null : () => checkServer(autoAuth: true),
                 child: const Text('OK'),
               ),
             ],

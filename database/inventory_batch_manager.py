@@ -520,7 +520,7 @@ class InventoryBatchManager:
                     cursor.close()
                 conn.close()
 
-    def direct_consume_batch_unit(self, batch_id: int, qty: int = 1, user_id: Optional[int] = None) -> bool:
+    def direct_consume_batch_unit(self, batch_id: int, qty: int = 1, user_id: Optional[int] = None, notes: Optional[str] = None) -> bool:
         """
         تم تصحيح الخطأ Ambiguous Product_ID هنا عن طريق تحديد b.Product_ID
         """
@@ -580,7 +580,7 @@ class InventoryBatchManager:
                     unit_used=unit_used if unit_used else 'Unit',
                     batch_id=batch_id,
                     user_id=user_id,
-                    notes="Consommation Directe",
+                    notes=notes or "Consommation Directe",
                     external_cursor=cursor
                 )
                 if not movement_id:

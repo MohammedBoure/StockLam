@@ -14,10 +14,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import parse_qs, urlparse
 
-from .auth import is_request_authorized
+from .auth import authenticate_user, get_active_users_list, is_request_authorized
 from .services.barcode_service import resolve_barcode
-from .services.dispatch_service import safe_consume, safe_transfer
-from .services.fefo_service import evaluate_fefo_compliance, parse_date_safe
+from .services.dispatch_service import bulk_dispatch, safe_consume, safe_transfer
+from .services.fefo_service import evaluate_fefo_compliance
 from .services.inventory_count_service import (
     get_session_line,
     get_session_summary,
@@ -45,7 +45,7 @@ def _device_identity() -> tuple[str, str]:
 
 
 class StockLamApiHandler(BaseHTTPRequestHandler):
-    server_version = "StockLamAPI/1.0"
+    server_version = "StockLamAPI/1.1"
 
     def log_message(self, format, *args):
         logging.info("API HTTP %s - %s", self.client_address[0], format % args)
@@ -103,20 +103,22 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
 
         try:
-            # 1. Health & Capabilities (Ouvert sans authentification préalable pour la découverte)
+            # 1. Health & Capabilities
             if path == "/api/health":
                 self._send_json(HTTPStatus.OK, {
                     "success": True,
                     "app": "StockLam",
-                    "version": "1.0",
+                    "version": "1.1",
                     "service": "stocklam_api",
                     "device_name": getattr(self.server, "device_name", "StockLam PC"),
                     "device_id": getattr(self.server, "device_id", "stocklam-pc"),
                     "remote_input": callable(getattr(self.server, "remote_scan_callback", None)),
                     "capabilities": [
                         "barcode_lookup",
+                        "user_auth",
                         "safe_consumption",
                         "safe_transfer",
+                        "bulk_dispatch",
                         "fefo_validation",
                         "location_catalog",
                         "remote_scans",
@@ -134,7 +136,13 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Gestionnaire de données StockLam indisponible.")
                 return
 
-            # 2. Barcode Lookup (Résolution de produit / lots / FEFO)
+            # 2. Active Users List (pour la sélection sur mobile)
+            if path == "/api/users/list":
+                users = get_active_users_list(self.data_manager)
+                self._send_json(HTTPStatus.OK, {"success": True, "users": users})
+                return
+
+            # 3. Barcode Lookup (Résolution de produit / lots / FEFO)
             if path == "/api/barcode/lookup":
                 barcode = (query.get("barcode", [""])[0] or "").strip()
                 if not barcode:
@@ -144,7 +152,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, result)
                 return
 
-            # 3. FEFO Check Endpoint
+            # 4. FEFO Check Endpoint
             if path == "/api/stock/fefo-check":
                 batch_id_str = query.get("batch_id", [""])[0]
                 if not batch_id_str:
@@ -184,13 +192,13 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # 4. Storage Locations List
+            # 5. Storage Locations List
             if path == "/api/locations":
                 locations = get_locations(self.data_manager)
                 self._send_json(HTTPStatus.OK, {"success": True, "locations": locations})
                 return
 
-            # 5. Inventory Sessions (Compatibilité mobile existante)
+            # 6. Inventory Sessions
             if path == "/api/inventory-sessions":
                 status = query.get("status", ["Counting"])[0] or None
                 limit = int(query.get("limit", ["50"])[0] or 50)
@@ -230,7 +238,36 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
-        # 1. Pont de Scan Bureau (Desktop Remote Scan Bridge)
+        if not self.data_manager:
+            self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Gestionnaire de données StockLam indisponible.")
+            return
+
+        # 1. Authentification utilisateur / Connexion compte
+        if path == "/api/auth/login":
+            try:
+                data = self._read_body()
+                username = str(data.get("username") or "").strip()
+                password = str(data.get("password") or "").strip()
+                if not username or not password:
+                    self._send_error(HTTPStatus.BAD_REQUEST, "Nom d'utilisateur et mot de passe obligatoires.")
+                    return
+
+                user = authenticate_user(self.data_manager, username, password)
+                if not user:
+                    self._send_error(HTTPStatus.UNAUTHORIZED, "Nom d'utilisateur ou mot de passe incorrect.")
+                    return
+
+                self._send_json(HTTPStatus.OK, {
+                    "success": True,
+                    "message": "Authentification réussie.",
+                    "user": user,
+                })
+            except Exception as exc:
+                logging.exception("Erreur lors de l'authentification API")
+                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+            return
+
+        # 2. Pont de Scan Bureau (Desktop Remote Scan Bridge)
         if path == "/api/remote-scans":
             try:
                 data = self._read_body()
@@ -260,11 +297,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
             return
 
-        if not self.data_manager:
-            self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Gestionnaire de données StockLam indisponible.")
-            return
-
-        # 2. Consommation directe sécurisée avec vérification FEFO
+        # 3. Consommation directe sécurisée avec vérification FEFO
         if path == "/api/stock/consume":
             try:
                 data = self._read_body()
@@ -307,7 +340,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
             return
 
-        # 3. Transfert d'emplacement sécurisé
+        # 4. Transfert d'emplacement sécurisé
         if path == "/api/stock/transfer":
             try:
                 data = self._read_body()
@@ -337,7 +370,31 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
             return
 
-        # 4. Inventory Sessions Scan (Comptage d'inventaire)
+        # 5. Saisie Rapide Groupée (Bulk Dispatch / Multi-Produits)
+        if path == "/api/stock/bulk-dispatch":
+            try:
+                data = self._read_body()
+                mode = str(data.get("mode") or "consume")
+                items = data.get("items") or []
+                user_id = data.get("user_id")
+                allow_fefo_override = bool(data.get("allow_fefo_override", False))
+
+                result = bulk_dispatch(
+                    data_manager=self.data_manager,
+                    mode=mode,
+                    items=items,
+                    user_id=user_id,
+                    allow_fefo_override=allow_fefo_override,
+                )
+                self._send_json(HTTPStatus.OK, result)
+            except json.JSONDecodeError:
+                self._send_error(HTTPStatus.BAD_REQUEST, "Corps JSON invalide.")
+            except Exception as exc:
+                logging.exception("Erreur lors de la saisie groupée multi-produits")
+                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+            return
+
+        # 6. Inventory Sessions Scan (Comptage d'inventaire)
         session_id, action = self._parse_session_route(path)
         if session_id and action == "scan":
             try:

@@ -22,11 +22,14 @@ Le serveur API s'exécute sur le réseau local (LAN/WiFi).
 | Méthode | Route | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/health` | Vérification de l'état du serveur, nom du poste et capacités supportées |
+| `GET` | `/api/users/list` | Liste des utilisateurs actifs pour sélection et attribution mobile |
+| `POST` | `/api/auth/login` | Authentification utilisateur par mot de passe avec profil et permissions |
 | `GET` | `/api/barcode/lookup?barcode=...` | Résolution d'un code-barres (produit, lots actifs, recommandations FEFO) |
 | `GET` | `/api/stock/fefo-check?batch_id=...` | Analyse et conformité FEFO/FIFO pour un lot spécifique |
 | `GET` | `/api/locations` | Liste des emplacements de stockage disponibles pour les transferts |
-| `POST` | `/api/stock/consume` | Consommation directe sécurisée avec blocage FEFO et possibilité d'outrepassation |
-| `POST` | `/api/stock/transfer` | Transfert de lot vers un nouvel emplacement de stockage |
+| `POST` | `/api/stock/consume` | Consommation directe sécurisée avec traçabilité utilisateur, notes et contrôle FEFO |
+| `POST` | `/api/stock/transfer` | Transfert de lot vers un nouvel emplacement avec traçabilité utilisateur |
+| `POST` | `/api/stock/bulk-dispatch` | Saisie groupée multi-produits (sorties ou transferts groupés avec emplacements dédiés) |
 | `POST` | `/api/remote-scans` | Pont de saisie distante directe vers le champ actif de l'application bureau |
 | `GET` | `/api/inventory-sessions` | Liste des sessions de comptage d'inventaire physique |
 | `POST` | `/api/inventory-sessions/<id>/scan` | Enregistrement d'un comptage de code-barres en session d'inventaire |
