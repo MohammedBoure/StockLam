@@ -1,7 +1,10 @@
-# Mobile Inventory Scanner - Lib
+# Mobile Inventory Scanner - Lib (`lib`)
 
-Core Flutter application code for the MODERNSTOCK mobile barcode scanner companion.
+Code source Flutter pour l'application mobile compagne MODERNSTOCK / StockLam.
 
-## Files
+## Fichiers et Structure
 
-- main.dart: Main entry point and single-screen/dialog interface handling UDP desktop discovery, HTTP barcode relay API requests, flash/camera switching controls, barcode scanning with mobile_scanner, and local preferences storage.
+- **`main.dart`** : Point d'entrée de l'application, gestion de la barre de navigation inférieure (Tabs), écoute UDP et sélection du poste serveur.
+- **`api_client.dart`** : Client HTTP communiquant avec l'API StockLam (`/api/health`, `/api/barcode/lookup`, `/api/stock/consume`, `/api/stock/transfer`, `/api/locations`, `/api/remote-scans`).
+- **`models.dart`** : Modèles de données typés (`DesktopDevice`, `ScanEntry`, `ProductDetails`, `BatchDetails`, `LocationItem`, `FefoViolationData`).
+- **`views/`** : Dossier des vues graphiques et composants modulaires (`direct_inventory_view.dart`, `remote_scanner_view.dart`, `scanner_camera_widget.dart`).

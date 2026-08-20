@@ -1,46 +1,34 @@
-# MODERNSTOCK Mobile Barcode Scanner
+# MODERNSTOCK Mobile Companion & Direct Stock Scanner
 
-The Android companion connects to a running MODERNSTOCK desktop application on the same Wi-Fi/LAN and sends barcode scans to the active desktop input field.
+Application mobile Flutter compagne pour StockLam / MODERNSTOCK permettant d'effectuer la gestion directe du stock sur site et de servir de douchette code-barres sans fil.
 
-## Desktop Host
+## Modes de Fonctionnement
 
-Open the MODERNSTOCK desktop application normally. After login it starts:
+### 1. 📦 Mode Stock Direct (Inventaire & Dispatch sur site)
+- **Recherche par Code-Barres ou Saisie Manuelle** : Scan caméra ou saisie directe du numéro de code-barres / numéro de lot.
+- **Fiche Produit et Consultation des Lots** : Affichage du nom, famille, fabricant, unité et de tous les lots actifs avec leurs emplacements respectifs et dates de péremption.
+- **Priorité FEFO Intelligente** : Surlignage du lot prioritaire (**⭐ RECOMMANDÉ**) selon la règle First Expired First Out.
+- **Consommation Directe Sécurisée** : Sortie de stock avec alerte interactive et protection contre les infractions FEFO.
+- **Transfert d'Emplacement Direct** : Changement d'emplacement avec sélection dans la liste des zones de stockage.
 
-- HTTP API on TCP port 8787;
-- device discovery on UDP port 8788;
-- the desktop barcode bridge.
+### 2. 📱 Mode Pont Bureau (Scanner sans fil)
+- Scannez les codes-barres avec la caméra du téléphone pour les transmettre instantanément dans le champ actif du logiciel bureau.
 
-If Windows Firewall blocks the phone, allow private-network inbound TCP 8787 and UDP 8788.
+## Connexion Réseau et Découverte
 
-## Phone Workflow
+- **Découverte automatique (UDP)** : L'application détecte automatiquement les ordinateurs StockLam sur le réseau local (WiFi).
+- **Configuration manuelle** : Saisie possible de l'adresse IP (`http://IP_DU_PC:8787`).
 
-1. Install the release APK on the Android phone (pp-arm64-v8a-release.apk for modern devices).
-2. Connect the phone and computer to the same Wi-Fi/LAN.
-3. Tap **Rechercher les ordinateurs ModernStock**.
-4. Select the computer and wait for the connected status.
-5. In MODERNSTOCK desktop, place the cursor in the barcode input field.
-6. Open the camera and scan. The code is sent and submitted on the computer.
-7. The camera starts on the rear camera. Use the camera switch button to switch between rear and front cameras.
+## Build et Développement
 
-Manual fallback: enter http://MAIN_PC_IP:8787 and connect.
-
-## Development and Build
-
-`powershell
+```powershell
 flutter pub get
 flutter analyze
 flutter test
 
-# Standard universal release APK:
+# Génération APK Release universel :
 flutter build apk --release
 
-# Ultra-lightweight ABI-split release APKs (< 25 MB each, recommended):
+# Génération APK par architecture (optimisé < 25 Mo) :
 flutter build apk --split-per-abi --obfuscate --split-debug-info=build/symbols
-`
-
-### Generated Release APKs
-
-- Modern 64-bit phones (99% of Android phones): uild/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-- 32-bit legacy devices: uild/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-- 64-bit emulators: uild/app/outputs/flutter-apk/app-x86_64-release.apk
-- Universal fallback APK: uild/app/outputs/flutter-apk/app-release.apk
+```
