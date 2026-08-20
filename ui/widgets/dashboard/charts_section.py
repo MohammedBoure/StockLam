@@ -340,7 +340,37 @@ class ChartsSection(QWidget):
         self.btn_group_granularity.buttonClicked.connect(self._on_granularity_clicked)
         layout.addWidget(granularity_container)
 
-        # --- 2. Sélecteur de Période Historique Locale ---
+        # --- 2. Sélecteur de Mode d'Affichage / Type de Graphique ---
+        self.combo_view_mode = QComboBox()
+        self.combo_view_mode.setFixedHeight(28)
+        self.combo_view_mode.setStyleSheet(f"""
+            QComboBox {{
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 2px 8px;
+                font-size: 11px;
+                font-weight: 600;
+                color: {self.COLOR_TEXT_MAIN};
+                min-width: 115px;
+            }}
+            QComboBox:hover {{ border-color: {self.COLOR_PRIMARY}; }}
+            QComboBox::drop-down {{ border: none; width: 18px; }}
+            QComboBox QAbstractItemView {{
+                background-color: white;
+                selection-background-color: #e2e8f0;
+                selection-color: {self.COLOR_PRIMARY};
+                border: 1px solid #cbd5e1;
+                padding: 4px;
+            }}
+        """)
+        self.combo_view_mode.addItem("📊 Groupées", self.VIEW_GROUPED)
+        self.combo_view_mode.addItem("🥞 Empilées", self.VIEW_STACKED)
+        self.combo_view_mode.addItem("⚖️ Solde Net", self.VIEW_NET_FLOW)
+        self.combo_view_mode.currentIndexChanged.connect(self._on_view_mode_changed)
+        layout.addWidget(self.combo_view_mode)
+
+        # --- 3. Sélecteur de Période Historique Locale ---
         self.combo_preset = QComboBox()
         self.combo_preset.setFixedHeight(28)
         self.combo_preset.setStyleSheet(f"""
@@ -377,7 +407,7 @@ class ChartsSection(QWidget):
         self.combo_preset.currentIndexChanged.connect(self._on_preset_changed)
         layout.addWidget(self.combo_preset)
 
-        # --- 3. Sélecteurs de date personnalisée ---
+        # --- 4. Sélecteurs de date personnalisée ---
         self.custom_dates_container = QWidget()
         custom_layout = QHBoxLayout(self.custom_dates_container)
         custom_layout.setContentsMargins(0, 0, 0, 0)
@@ -426,7 +456,7 @@ class ChartsSection(QWidget):
 
         layout.addStretch()
 
-        # --- 4. Badges KPI Compacts (sur la même ligne que les filtres) ---
+        # --- 5. Badges KPI Compacts (sur la droite) ---
         self.badge_in = self._create_compact_metric_pill(
             title="Entrées :", 
             value="0 DA", 
@@ -455,36 +485,6 @@ class ChartsSection(QWidget):
         layout.addWidget(self.badge_in)
         layout.addWidget(self.badge_out)
         layout.addWidget(self.badge_net)
-
-        # --- 5. Sélecteur de Mode d'Affichage (Extensibilité) ---
-        self.combo_view_mode = QComboBox()
-        self.combo_view_mode.setFixedHeight(28)
-        self.combo_view_mode.setStyleSheet(f"""
-            QComboBox {{
-                background-color: #ffffff;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 2px 8px;
-                font-size: 11px;
-                font-weight: 600;
-                color: {self.COLOR_TEXT_MAIN};
-                min-width: 115px;
-            }}
-            QComboBox:hover {{ border-color: {self.COLOR_PRIMARY}; }}
-            QComboBox::drop-down {{ border: none; width: 18px; }}
-            QComboBox QAbstractItemView {{
-                background-color: white;
-                selection-background-color: #e2e8f0;
-                selection-color: {self.COLOR_PRIMARY};
-                border: 1px solid #cbd5e1;
-                padding: 4px;
-            }}
-        """)
-        self.combo_view_mode.addItem("📊 Groupées", self.VIEW_GROUPED)
-        self.combo_view_mode.addItem("🥞 Empilées", self.VIEW_STACKED)
-        self.combo_view_mode.addItem("⚖️ Solde Net", self.VIEW_NET_FLOW)
-        self.combo_view_mode.currentIndexChanged.connect(self._on_view_mode_changed)
-        layout.addWidget(self.combo_view_mode)
 
         return toolbar
 
