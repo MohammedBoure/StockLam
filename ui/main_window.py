@@ -292,7 +292,16 @@ class MainWindow(QMainWindow):
         ]
 
         for btn_id, text, icon_name, icon_color in buttons_info:
-            icon = qta.icon(icon_name, color=icon_color, color_active="#ffffff", color_selected="#ffffff")
+            icon = qta.icon(
+                icon_name,
+                color=icon_color,
+                color_off=icon_color,
+                color_off_active=icon_color,
+                color_off_selected=icon_color,
+                color_on="#ffffff",
+                color_on_active="#ffffff",
+                color_on_selected="#ffffff",
+            )
             btn = QPushButton(text)
             btn.setIcon(icon)
             btn.setIconSize(QSize(20, 20))

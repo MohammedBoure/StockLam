@@ -58,12 +58,26 @@ QPushButton.nav_button:hover {
     color: #007572;
 }
 
+QPushButton.nav_button:pressed {
+    background-color: #b2dfdb;
+    color: #004d40;
+}
+
 QPushButton.nav_button:checked {
     background-color: #007572; /* خلفية خضراء غامقة عند التحديد */
     color: #ffffff; /* نص أبيض */
     font-weight: 700;
-    /* ظل خفيف للزر النشط لإبرازه */
     qproperty-iconSize: 20px 20px; 
+}
+
+QPushButton.nav_button:checked:hover {
+    background-color: #00605d;
+    color: #ffffff;
+}
+
+QPushButton.nav_button:checked:pressed {
+    background-color: #004d4a;
+    color: #ffffff;
 }
 
 /* ============================================================
@@ -602,10 +616,16 @@ QFrame[state="compact"] QPushButton[class="nav_button"] {
     border-radius: 8px;
 }
 
-/* في الوضع الصغير: الأيقونة تصبح خضراء (بفضل كود بايثون) */
+QFrame[state="compact"] QPushButton[class="nav_button"]:hover {
+    background-color: #e0f2f1;
+}
+
 QFrame[state="compact"] QPushButton[class="nav_button"]:checked {
-    /* لا نحتاج لشيء إضافي هنا، الأيقونة ستتغير واللون سيتغير */
-    background-color: transparent;
+    background-color: #007572;
+}
+
+QFrame[state="compact"] QPushButton[class="nav_button"]:checked:hover {
+    background-color: #00605d;
 }
 
 
