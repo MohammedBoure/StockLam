@@ -214,10 +214,10 @@ def _build_table(self):
     self.table.verticalHeader().setLayoutDirection(Qt.RightToLeft)
 
     cols = [
-        "Désignation Produit", "Famille", "Marque", "Automate",
-        "Fournisseur", "Stock (Actuel)", "Date Entrée", "N° Lot",
-        "Date Exp.", "Qté Init.", "Code-Barres", "Prix U. HT",
-        "Prix U. TTC", "Valeur (DA)", "Ref PO", "Emplacement",
+        "Désignation Produit", "Stock (Actuel)", "N° Lot", "Date Exp.",
+        "Qté Init.", "Code-Barres", "Prix U. HT", "Prix U. TTC",
+        "Valeur (DA)", "Famille", "Marque", "Automate",
+        "Fournisseur", "Ref PO", "Date Entrée", "Emplacement",
         "Réclamation"
     ]
     self.table.setColumnCount(len(cols))

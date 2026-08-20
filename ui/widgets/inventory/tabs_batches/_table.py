@@ -112,9 +112,9 @@ def _append_rows(self, chunk):
         self.table.insertRow(r)
         _fill_row(self.table, r, b, hide_fin)
 
-    self.table.setColumnHidden(11, hide_fin)
-    self.table.setColumnHidden(12, hide_fin)
-    self.table.setColumnHidden(13, hide_fin)
+    self.table.setColumnHidden(6, hide_fin)
+    self.table.setColumnHidden(7, hide_fin)
+    self.table.setColumnHidden(8, hide_fin)
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +147,9 @@ def populate_table(self, data):
         _fill_row(self.table, r, b, hide_fin)
 
     self.table.setSortingEnabled(False)
-    self.table.setColumnHidden(11, hide_fin)
-    self.table.setColumnHidden(12, hide_fin)
-    self.table.setColumnHidden(13, hide_fin)
+    self.table.setColumnHidden(6, hide_fin)
+    self.table.setColumnHidden(7, hide_fin)
+    self.table.setColumnHidden(8, hide_fin)
 
     if hide_fin:
         self.lbl_total_value.hide()
@@ -178,24 +178,16 @@ def _fill_row(table, r, b, hide_fin):
     prod_item.setData(Qt.UserRole, b)
     table.setItem(r, 0, prod_item)
 
-    table.setItem(r, 1,  _make_item(b.get('Family_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 2,  _make_item(b.get('Manuf_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 3,  _make_item(b.get('Automate_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 4,  _make_item(b.get('Supplier_Name', '---'), bg_color=bg_color))
-    table.setItem(r, 5,  _make_item(
+    table.setItem(r, 1, _make_item(
         format_quantity(qty),
         color=QColor("#27ae60"),
         font=QFont("", -1, QFont.Bold),
         bg_color=bg_color
     ))
-    table.setItem(r, 6,  _make_item(
-        str(b.get('Date_Received') or b.get('Created_At', ''))[:10],
-        bg_color=bg_color
-    ))
-    table.setItem(r, 7,  _make_item(b.get('Lot_Number', '---'), bg_color=bg_color))
-    table.setItem(r, 8,  _make_item(str(b.get('Expiry_Date', ''))[:10], bg_color=bg_color))
-    table.setItem(r, 9,  _make_item(format_quantity(b.get('Quantity_Initial', 0)), bg_color=bg_color))
-    table.setItem(r, 10, _make_item(
+    table.setItem(r, 2, _make_item(b.get('Lot_Number', '---'), bg_color=bg_color))
+    table.setItem(r, 3, _make_item(str(b.get('Expiry_Date', ''))[:10], bg_color=bg_color))
+    table.setItem(r, 4, _make_item(format_quantity(b.get('Quantity_Initial', 0)), bg_color=bg_color))
+    table.setItem(r, 5, _make_item(
         b.get('Internal_Barcode') or b.get('Barcode'),
         bg_color=bg_color
     ))
@@ -207,15 +199,23 @@ def _fill_row(table, r, b, hide_fin):
         t  = float(b.get('Tax_Rate_Percent', 0)) / 100.0
         p_ttc = p * (1 - d) * (1 + t)
         lv = qty * p_ttc
-        table.setItem(r, 11, _make_item(format_money(p), bg_color=bg_color))
-        table.setItem(r, 12, _make_item(format_money(p_ttc), bg_color=bg_color))
-        table.setItem(r, 13, _make_item(format_money(lv), bg_color=bg_color))
+        table.setItem(r, 6, _make_item(format_money(p), bg_color=bg_color))
+        table.setItem(r, 7, _make_item(format_money(p_ttc), bg_color=bg_color))
+        table.setItem(r, 8, _make_item(format_money(lv), bg_color=bg_color))
     else:
-        table.setItem(r, 11, _make_item("", bg_color=bg_color))
-        table.setItem(r, 12, _make_item("", bg_color=bg_color))
-        table.setItem(r, 13, _make_item("", bg_color=bg_color))
+        table.setItem(r, 6, _make_item("", bg_color=bg_color))
+        table.setItem(r, 7, _make_item("", bg_color=bg_color))
+        table.setItem(r, 8, _make_item("", bg_color=bg_color))
 
-    table.setItem(r, 14, _make_item(b.get('PO_ID'), bg_color=bg_color))
+    table.setItem(r, 9,  _make_item(b.get('Family_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 10, _make_item(b.get('Manuf_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 11, _make_item(b.get('Automate_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 12, _make_item(b.get('Supplier_Name', '---'), bg_color=bg_color))
+    table.setItem(r, 13, _make_item(b.get('PO_ID'), bg_color=bg_color))
+    table.setItem(r, 14, _make_item(
+        str(b.get('Date_Received') or b.get('Created_At', ''))[:10],
+        bg_color=bg_color
+    ))
     table.setItem(r, 15, _make_item(b.get('Location_Name'), bg_color=bg_color))
     rec_item = _make_item(reclamation, bg_color=bg_color)
     if reclamation:
@@ -238,31 +238,33 @@ def _fill_row(table, r, b, hide_fin):
 # ---------------------------------------------------------------------------
 
 COL_MAP = {
-    0: 'Product_Name',      1: 'Family_Name',
-    2: 'Manuf_Name',        3: 'Automate_Name',
-    4: 'Supplier_Name',     5: 'Quantity_Current',
-    6: 'Date_Received',     7: 'Lot_Number',
-    8: 'Expiry_Date',       9: 'Quantity_Initial',
-    10: 'Internal_Barcode', 11: 'Unit_Price_Received',
-    12: 'Unit_Price_Received_TTC', 13: 'Total_Value',
-    14: 'PO_ID',            15: 'Location_Name',
+    0: 'Product_Name',      1: 'Quantity_Current',
+    2: 'Lot_Number',        3: 'Expiry_Date',
+    4: 'Quantity_Initial',  5: 'Internal_Barcode',
+    6: 'Unit_Price_Received', 7: 'Unit_Price_Received_TTC',
+    8: 'Total_Value',       9: 'Family_Name',
+    10: 'Manuf_Name',       11: 'Automate_Name',
+    12: 'Supplier_Name',    13: 'PO_ID',
+    14: 'Date_Received',    15: 'Location_Name',
     16: 'Reception_Note'
 }
 
-NUMERIC_COLS = {5, 9, 11}
-DATE_COLS    = {6, 8}
+NUMERIC_COLS = {1, 4, 6}
+DATE_COLS    = {3, 14}
 
 
 def _sort_key(col_index, item):
-    if col_index == 13:
-        try:
-            return (float(item.get('Quantity_Current', 0))
-                    * float(item.get('Unit_Price_Received', 0)))
-        except Exception:
-            return 0.0
-    elif col_index == 12:
+    if col_index == 8:
         try:
             qty = float(item.get('Quantity_Current', 0))
+            p  = float(item.get('Unit_Price_Received', 0))
+            d  = float(item.get('Discount_Percent', 0)) / 100.0
+            t  = float(item.get('Tax_Rate_Percent', 0)) / 100.0
+            return qty * p * (1 - d) * (1 + t)
+        except Exception:
+            return 0.0
+    elif col_index == 7:
+        try:
             p  = float(item.get('Unit_Price_Received', 0))
             d  = float(item.get('Discount_Percent', 0)) / 100.0
             t  = float(item.get('Tax_Rate_Percent', 0)) / 100.0
@@ -322,7 +324,7 @@ def apply_sorting(self):
         )
 
         key_name = COL_MAP.get(col)
-        if not key_name and col != 12:
+        if not key_name and col != 7:
             return
 
         self.filtered_data.sort(

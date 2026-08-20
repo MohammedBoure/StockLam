@@ -12,9 +12,9 @@ def apply_role_permissions(self, role=None):
     # استخدام الدالة الديناميكية للتحقق من صلاحية "tab_inv_financials"
     hide_fin = not _can_view_financials(self)
 
-    self.table.setColumnHidden(11, hide_fin)
-    self.table.setColumnHidden(12, hide_fin)
-    self.table.setColumnHidden(13, hide_fin)
+    self.table.setColumnHidden(6, hide_fin)
+    self.table.setColumnHidden(7, hide_fin)
+    self.table.setColumnHidden(8, hide_fin)
 
     if hasattr(self, 'lbl_total_value'):
         if hide_fin:
