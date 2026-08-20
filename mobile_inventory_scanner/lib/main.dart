@@ -28,7 +28,7 @@ class ModernStockApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ModernStock',
+      title: 'MODERNSTOCK',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF007572)),
@@ -476,7 +476,7 @@ class _ScannerHomePageState extends State<ScannerHomePage>
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F8),
       appBar: AppBar(
-        title: const Text('ModernStock'),
+        title: const Text('MODERNSTOCK'),
         actions: [
           IconButton(
             tooltip: 'Ordinateurs ModernStock',
