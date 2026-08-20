@@ -222,11 +222,11 @@ class ChartsSection(QWidget):
         self._aggregated_data: List[Dict[str, Any]] = []
 
         # Dates globales synchronisées
-        self._global_start_date: date = date.today() - timedelta(days=30)
+        self._global_start_date: date = date.today() - timedelta(days=365)
         self._global_end_date: date = date.today()
 
-        # Paramètres d'affichage locaux
-        self._granularity = self.GRANULARITY_DAY
+        # Paramètres d'affichage locaux (Par défaut : 12 Mois en mode Mensuel)
+        self._granularity = self.GRANULARITY_MONTH
         self._view_mode = self.VIEW_GROUPED
         self._hovered_index: Optional[int] = None
         self._pinned_index: Optional[int] = None
@@ -329,9 +329,9 @@ class ChartsSection(QWidget):
         self.btn_group_granularity = QButtonGroup(self)
         self.btn_group_granularity.setExclusive(True)
 
-        self.btn_day = self._create_toggle_btn("📅 Jour", self.GRANULARITY_DAY, checked=True)
+        self.btn_day = self._create_toggle_btn("📅 Jour", self.GRANULARITY_DAY)
         self.btn_week = self._create_toggle_btn("📆 Semaine", self.GRANULARITY_WEEK)
-        self.btn_month = self._create_toggle_btn("🗓️ Mois", self.GRANULARITY_MONTH)
+        self.btn_month = self._create_toggle_btn("🗓️ Mois", self.GRANULARITY_MONTH, checked=True)
 
         for btn in [self.btn_day, self.btn_week, self.btn_month]:
             self.btn_group_granularity.addButton(btn)
@@ -404,6 +404,12 @@ class ChartsSection(QWidget):
         self.combo_preset.addItem("📈 Année (YTD)", "YTD")
         self.combo_preset.addItem("📊 12 Mois", "12M")
         self.combo_preset.addItem("⚙️ Personnalisé...", "CUSTOM")
+        
+        # Par défaut : 12 Mois (Dernière Année)
+        idx_12m = self.combo_preset.findData("12M")
+        if idx_12m != -1:
+            self.combo_preset.setCurrentIndex(idx_12m)
+            
         self.combo_preset.currentIndexChanged.connect(self._on_preset_changed)
         layout.addWidget(self.combo_preset)
 
@@ -1055,8 +1061,9 @@ class ChartsSection(QWidget):
             if parsed_end: self._global_end_date = parsed_end
 
         preset = self.combo_preset.currentData()
-        if preset == "SYNC" or not self._raw_consumption:
+        if preset == "SYNC" or not self.stats_manager:
             self._raw_consumption = consumption_data or []
             self._raw_reception = reception_data or []
-
-        self.render_chart()
+            self.render_chart()
+        else:
+            self._fetch_and_render_data()
