@@ -257,23 +257,19 @@ class ChartsSection(QWidget):
         self.card_frame.setObjectName("ChartCard")
 
         card_layout = QVBoxLayout(self.card_frame)
-        card_layout.setContentsMargins(16, 14, 16, 14)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(14, 10, 14, 8)
+        card_layout.setSpacing(6)
 
-        # 1.1 Barre d'outils supérieure et filtres
+        # 1.1 Barre d'outils supérieure (Filtres & Badges KPI combinés sur la même ligne)
         header_widget = self._create_header_toolbar()
         card_layout.addWidget(header_widget)
 
-        # 1.2 Bandeau des métriques résumées (KPI Badges)
-        self.summary_bar = self._create_summary_bar()
-        card_layout.addWidget(self.summary_bar)
-
-        # 1.4 Graphique QtCharts
+        # 1.2 Graphique QtCharts
         self.chart = QChart()
         self.chart.setTitle("")
         self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
         self.chart.setBackgroundVisible(False)
-        self.chart.setMargins(QMargins(10, 5, 10, 5))
+        self.chart.setMargins(QMargins(6, 4, 6, 4))
 
         # Légende
         legend = self.chart.legend()
@@ -314,16 +310,16 @@ class ChartsSection(QWidget):
         toolbar = QWidget()
         layout = QHBoxLayout(toolbar)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
-        # --- Sélecteur de Granularité (Jour / Semaine / Mois) ---
+        # --- 1. Sélecteur de Granularité (Jour / Semaine / Mois) ---
         granularity_container = QFrame()
         granularity_container.setStyleSheet("""
             QFrame {
                 background-color: #f1f5f9;
                 border: 1px solid #e2e8f0;
-                border-radius: 7px;
-                padding: 2px;
+                border-radius: 6px;
+                padding: 1px;
             }
         """)
         g_layout = QHBoxLayout(granularity_container)
@@ -344,22 +340,22 @@ class ChartsSection(QWidget):
         self.btn_group_granularity.buttonClicked.connect(self._on_granularity_clicked)
         layout.addWidget(granularity_container)
 
-        # --- Sélecteur de Période Historique Locale ---
+        # --- 2. Sélecteur de Période Historique Locale ---
         self.combo_preset = QComboBox()
-        self.combo_preset.setFixedHeight(32)
+        self.combo_preset.setFixedHeight(28)
         self.combo_preset.setStyleSheet(f"""
             QComboBox {{
                 background-color: #ffffff;
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 2px 8px;
                 font-size: 11px;
                 font-weight: 600;
                 color: {self.COLOR_TEXT_MAIN};
-                min-width: 155px;
+                min-width: 135px;
             }}
             QComboBox:hover {{ border-color: {self.COLOR_PRIMARY}; }}
-            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox::drop-down {{ border: none; width: 18px; }}
             QComboBox QAbstractItemView {{
                 background-color: white;
                 selection-background-color: #e2e8f0;
@@ -368,44 +364,44 @@ class ChartsSection(QWidget):
                 padding: 4px;
             }}
         """)
-        self.combo_preset.addItem("🔗 Synchronisé (Global)", "SYNC")
-        self.combo_preset.addItem("📅 7 Derniers Jours", "7D")
-        self.combo_preset.addItem("📅 14 Derniers Jours", "14D")
-        self.combo_preset.addItem("📅 30 Derniers Jours", "30D")
+        self.combo_preset.addItem("🔗 Synchronisé", "SYNC")
+        self.combo_preset.addItem("📅 7 Jours", "7D")
+        self.combo_preset.addItem("📅 14 Jours", "14D")
+        self.combo_preset.addItem("📅 30 Jours", "30D")
         self.combo_preset.addItem("📆 Ce Mois-ci", "THIS_MONTH")
-        self.combo_preset.addItem("🗓️ 3 Derniers Mois", "3M")
-        self.combo_preset.addItem("🗓️ 6 Derniers Mois", "6M")
-        self.combo_preset.addItem("📈 Cette Année (YTD)", "YTD")
-        self.combo_preset.addItem("📊 12 Derniers Mois", "12M")
+        self.combo_preset.addItem("🗓️ 3 Mois", "3M")
+        self.combo_preset.addItem("🗓️ 6 Mois", "6M")
+        self.combo_preset.addItem("📈 Année (YTD)", "YTD")
+        self.combo_preset.addItem("📊 12 Mois", "12M")
         self.combo_preset.addItem("⚙️ Personnalisé...", "CUSTOM")
         self.combo_preset.currentIndexChanged.connect(self._on_preset_changed)
         layout.addWidget(self.combo_preset)
 
-        # --- Sélecteurs de date personnalisée ---
+        # --- 3. Sélecteurs de date personnalisée ---
         self.custom_dates_container = QWidget()
         custom_layout = QHBoxLayout(self.custom_dates_container)
         custom_layout.setContentsMargins(0, 0, 0, 0)
-        custom_layout.setSpacing(4)
+        custom_layout.setSpacing(3)
 
         lbl_from = QLabel("Du:")
-        lbl_from.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
+        lbl_from.setStyleSheet("font-size: 10px; font-weight: 600; color: #64748b;")
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_from.setCalendarPopup(True)
-        self.date_from.setFixedHeight(32)
-        self.date_from.setFixedWidth(105)
+        self.date_from.setFixedHeight(28)
+        self.date_from.setFixedWidth(95)
         self.date_from.setStyleSheet(self._date_edit_style())
 
         lbl_to = QLabel("Au:")
-        lbl_to.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
+        lbl_to.setStyleSheet("font-size: 10px; font-weight: 600; color: #64748b;")
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
-        self.date_to.setFixedHeight(32)
-        self.date_to.setFixedWidth(105)
+        self.date_to.setFixedHeight(28)
+        self.date_to.setFixedWidth(95)
         self.date_to.setStyleSheet(self._date_edit_style())
 
         self.btn_apply_dates = QPushButton("OK")
-        self.btn_apply_dates.setFixedHeight(32)
-        self.btn_apply_dates.setFixedWidth(38)
+        self.btn_apply_dates.setFixedHeight(28)
+        self.btn_apply_dates.setFixedWidth(32)
         self.btn_apply_dates.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_apply_dates.setStyleSheet(f"""
             QPushButton {{
@@ -430,12 +426,62 @@ class ChartsSection(QWidget):
 
         layout.addStretch()
 
-        # --- Sélecteur de Mode d'Affichage (Extensibilité) ---
+        # --- 4. Badges KPI Compacts (sur la même ligne que les filtres) ---
+        self.badge_in = self._create_compact_metric_pill(
+            title="Entrées :", 
+            value="0 DA", 
+            icon="📥", 
+            bg_color=self.COLOR_IN_LIGHT, 
+            text_color=self.COLOR_IN_BORDER,
+            border_color="#a7f3d0"
+        )
+        self.badge_out = self._create_compact_metric_pill(
+            title="Sorties :", 
+            value="0 DA", 
+            icon="📤", 
+            bg_color=self.COLOR_OUT_LIGHT, 
+            text_color=self.COLOR_OUT_BORDER,
+            border_color="#fecaca"
+        )
+        self.badge_net = self._create_compact_metric_pill(
+            title="Solde :", 
+            value="0 DA", 
+            icon="⚖️", 
+            bg_color="#f8fafc", 
+            text_color=self.COLOR_TEXT_MAIN,
+            border_color="#e2e8f0"
+        )
+
+        layout.addWidget(self.badge_in)
+        layout.addWidget(self.badge_out)
+        layout.addWidget(self.badge_net)
+
+        # --- 5. Sélecteur de Mode d'Affichage (Extensibilité) ---
         self.combo_view_mode = QComboBox()
-        self.combo_view_mode.setFixedHeight(32)
-        self.combo_view_mode.setStyleSheet(self.combo_preset.styleSheet())
-        self.combo_view_mode.addItem("📊 Colonnes Groupées", self.VIEW_GROUPED)
-        self.combo_view_mode.addItem("🥞 Colonnes Empilées", self.VIEW_STACKED)
+        self.combo_view_mode.setFixedHeight(28)
+        self.combo_view_mode.setStyleSheet(f"""
+            QComboBox {{
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 2px 8px;
+                font-size: 11px;
+                font-weight: 600;
+                color: {self.COLOR_TEXT_MAIN};
+                min-width: 115px;
+            }}
+            QComboBox:hover {{ border-color: {self.COLOR_PRIMARY}; }}
+            QComboBox::drop-down {{ border: none; width: 18px; }}
+            QComboBox QAbstractItemView {{
+                background-color: white;
+                selection-background-color: #e2e8f0;
+                selection-color: {self.COLOR_PRIMARY};
+                border: 1px solid #cbd5e1;
+                padding: 4px;
+            }}
+        """)
+        self.combo_view_mode.addItem("📊 Groupées", self.VIEW_GROUPED)
+        self.combo_view_mode.addItem("🥞 Empilées", self.VIEW_STACKED)
         self.combo_view_mode.addItem("⚖️ Solde Net", self.VIEW_NET_FLOW)
         self.combo_view_mode.currentIndexChanged.connect(self._on_view_mode_changed)
         layout.addWidget(self.combo_view_mode)
@@ -453,7 +499,7 @@ class ChartsSection(QWidget):
             QPushButton {{
                 border: none;
                 border-radius: 5px;
-                padding: 4px 11px;
+                padding: 3px 10px;
                 font-size: 11px;
                 font-weight: 600;
                 color: #475569;
@@ -486,92 +532,36 @@ class ChartsSection(QWidget):
         """
 
     # =========================================================================
-    # 3. BANDEAU DE MÉTRIQUES RÉSUMÉES (KPI MINI-BADGES)
+    # 3. BADGES DE MÉTRIQUES RÉSUMÉES (KPI MINI-BADGES COMPACTS)
     # =========================================================================
-    def _create_summary_bar(self) -> QWidget:
-        bar = QWidget()
-        layout = QHBoxLayout(bar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
-        # 4.1 Total Entrées (Achats)
-        self.badge_in = self._create_metric_pill(
-            title="TOTAL ENTRÉES (ACHATS)", 
-            value="0 DA", 
-            icon="📥", 
-            bg_color=self.COLOR_IN_LIGHT, 
-            text_color=self.COLOR_IN_BORDER,
-            border_color="#a7f3d0"
-        )
-        # 4.2 Total Sorties (Consommation)
-        self.badge_out = self._create_metric_pill(
-            title="TOTAL SORTIES (CONSOMMATION)", 
-            value="0 DA", 
-            icon="📤", 
-            bg_color=self.COLOR_OUT_LIGHT, 
-            text_color=self.COLOR_OUT_BORDER,
-            border_color="#fecaca"
-        )
-        # 4.3 Solde Net
-        self.badge_net = self._create_metric_pill(
-            title="SOLDE NET (FLUX)", 
-            value="0 DA", 
-            icon="⚖️", 
-            bg_color="#f8fafc", 
-            text_color=self.COLOR_TEXT_MAIN,
-            border_color="#e2e8f0"
-        )
-        # 4.4 Périodes Actives
-        self.badge_count = self._create_metric_pill(
-            title="COLONNES ACTIVES", 
-            value="0", 
-            icon="📊", 
-            bg_color="#f8fafc", 
-            text_color="#475569",
-            border_color="#e2e8f0"
-        )
-
-        layout.addWidget(self.badge_in)
-        layout.addWidget(self.badge_out)
-        layout.addWidget(self.badge_net)
-        layout.addWidget(self.badge_count)
-        layout.addStretch()
-
-        return bar
-
-    def _create_metric_pill(self, title: str, value: str, icon: str, 
-                            bg_color: str, text_color: str, border_color: str) -> QFrame:
+    def _create_compact_metric_pill(self, title: str, value: str, icon: str, 
+                                    bg_color: str, text_color: str, border_color: str) -> QFrame:
         pill = QFrame()
+        pill.setFixedHeight(28)
         pill.setStyleSheet(f"""
             QFrame {{
                 background-color: {bg_color};
                 border: 1px solid {border_color};
-                border-radius: 8px;
-                padding: 4px 10px;
+                border-radius: 6px;
             }}
         """)
         p_layout = QHBoxLayout(pill)
-        p_layout.setContentsMargins(8, 4, 8, 4)
-        p_layout.setSpacing(8)
+        p_layout.setContentsMargins(8, 2, 8, 2)
+        p_layout.setSpacing(5)
 
         lbl_icon = QLabel(icon)
-        lbl_icon.setStyleSheet("font-size: 15px; border: none; background: transparent;")
-
-        text_layout = QVBoxLayout()
-        text_layout.setSpacing(0)
+        lbl_icon.setStyleSheet("font-size: 12px; border: none; background: transparent;")
 
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("font-size: 9px; font-weight: 700; color: #64748b; border: none; background: transparent;")
+        lbl_title.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748b; border: none; background: transparent;")
 
         lbl_val = QLabel(value)
-        lbl_val.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {text_color}; border: none; background: transparent;")
+        lbl_val.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {text_color}; border: none; background: transparent;")
         lbl_val.setObjectName("val_label")
 
-        text_layout.addWidget(lbl_title)
-        text_layout.addWidget(lbl_val)
-
         p_layout.addWidget(lbl_icon)
-        p_layout.addLayout(text_layout)
+        p_layout.addWidget(lbl_title)
+        p_layout.addWidget(lbl_val)
 
         return pill
 
@@ -592,16 +582,11 @@ class ChartsSection(QWidget):
             prefix = "+" if net_val > 0 else ""
             lbl_net.setText(f"{prefix}{format_money(net_val, 'DA').replace(',', ' ')}")
             if net_val > 0:
-                lbl_net.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {self.COLOR_IN_BORDER}; border: none; background: transparent;")
+                lbl_net.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {self.COLOR_IN_BORDER}; border: none; background: transparent;")
             elif net_val < 0:
-                lbl_net.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {self.COLOR_OUT_BORDER}; border: none; background: transparent;")
+                lbl_net.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {self.COLOR_OUT_BORDER}; border: none; background: transparent;")
             else:
-                lbl_net.setStyleSheet(f"font-size: 12px; font-weight: 800; color: {self.COLOR_TEXT_MAIN}; border: none; background: transparent;")
-
-        lbl_cnt = self.badge_count.findChild(QLabel, "val_label")
-        if lbl_cnt:
-            unit = "Jour(s)" if self._granularity == self.GRANULARITY_DAY else ("Semaine(s)" if self._granularity == self.GRANULARITY_WEEK else "Mois")
-            lbl_cnt.setText(f"{period_count} {unit}")
+                lbl_net.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {self.COLOR_TEXT_MAIN}; border: none; background: transparent;")
 
     # =========================================================================
     # 5. GESTION DES DATES ET AGRÉGATION TEMPORELLE

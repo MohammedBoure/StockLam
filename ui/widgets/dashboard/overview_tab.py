@@ -13,8 +13,8 @@ class OverviewTab(QWidget):
     def init_ui(self):
         # تخطيط عمودي: البطاقات فوق، المبيان تحت
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
         # 1. قسم البطاقات (KPIs)
         self.kpi_section = KPICardsSection()
