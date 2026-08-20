@@ -41,8 +41,8 @@ from database.base import Database, get_external_path
 from database import LabDataManager
 from ui.main_window import MainWindow
 from ui.login_dialog import LoginDialog 
-from tools.inventory_mobile_api import build_server as build_inventory_mobile_server
-from tools.inventory_mobile_api import build_discovery_server as build_inventory_discovery_server
+from api import build_server as build_inventory_mobile_server
+from api import build_discovery_server as build_inventory_discovery_server
 from tools.mobile_barcode_bridge import MobileBarcodeBridge
 
 # =========================================================================
