@@ -33,4 +33,6 @@ dist-ssr
 *.sw?
 
 *.zip
+*.rar
+*.apk
 *.png
