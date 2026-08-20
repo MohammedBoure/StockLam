@@ -4,7 +4,8 @@ Android platform configuration and Gradle project files for the Flutter companio
 
 ## Files & Directories
 
-- pp/: Android application module containing AndroidManifest.xml, build configuration, Kotlin sources, and mipmap resources.
+- pp/: Android application module containing AndroidManifest.xml, build configuration, Kotlin sources, Proguard rules, and mipmap resources.
+- pp/proguard-rules.pro: R8/ProGuard shrinking and obfuscation rules for release builds.
 - gradle/: Gradle wrapper binaries and properties.
 - uild.gradle.kts: Root Gradle build script configuring repository sources and Kotlin DSL plugin resolution.
 - gradle.properties: Gradle JVM daemon and memory settings.
