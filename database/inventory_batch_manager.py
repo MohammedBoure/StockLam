@@ -928,6 +928,15 @@ class InventoryBatchManager:
                         B.PO_ID,
                         B.BR_ID,
                         B.Status,
+                        (
+                            SELECT COALESCE(SUM(ABS(SML.Qty_Change)), 0)
+                            FROM Stock_Movement_Log SML
+                            WHERE SML.Batch_ID = B.Batch_ID AND SML.Movement_Type = 'Waste'
+                        ) AS Quantity_Wasted,
+                        EXISTS(
+                            SELECT 1 FROM Stock_Movement_Log SML_W
+                            WHERE SML_W.Batch_ID = B.Batch_ID AND SML_W.Movement_Type = 'Waste'
+                        ) AS Has_Waste,
                         B.Created_At AS Date_Received,
                         B.Reception_Note
                     FROM 

@@ -109,9 +109,10 @@ class BatchesTab(QWidget):
         self.combo_status = QComboBox()
         self.combo_status.addItems([
             "📋 Tous (>0)", "✅ En Stock", "⚠️ Faible (Seuil)", 
-            "❌ Périmés", "🕒 Bientôt Exp.", "⭕ Épuisé (Qté=0)"
+            "❌ Périmés", "🕒 Bientôt Exp.", "⭕ Épuisé (Qté=0)",
+            "🗑️ Rebuts / Pertes"
         ])
-        self.combo_status.setFixedWidth(130)
+        self.combo_status.setFixedWidth(135)
         self.combo_status.setCurrentIndex(1) 
         self.combo_status.currentIndexChanged.connect(self.load_data)
 
@@ -1032,7 +1033,7 @@ class BatchesTab(QWidget):
         try:
             status_idx = self.combo_status.currentIndex()
             search_text = self.search_input.text().strip()
-            fetch_zero = (status_idx == 5) or (len(search_text) > 0)
+            fetch_zero = (status_idx in [5, 6]) or (len(search_text) > 0)
             
             selected_batch_id = None
             if self.table.currentRow() >= 0:
@@ -1079,10 +1080,12 @@ class BatchesTab(QWidget):
             # 2. حلقة الفلترة
             for row in self.all_data:
                 qty = float(row.get('Quantity_Current', 0))
+                has_waste = bool(row.get('Has_Waste')) or (float(row.get('Quantity_Wasted', 0) or 0) > 0)
                 
                 # الحالة
                 if status_idx in [0, 1, 2, 3, 4] and qty <= 0: continue 
                 elif status_idx == 5 and qty > 0: continue
+                elif status_idx == 6 and not has_waste: continue
 
                 # النص
                 bc_internal = str(row.get('Internal_Barcode', '')).lower()
