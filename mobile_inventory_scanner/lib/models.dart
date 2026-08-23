@@ -246,22 +246,38 @@ class BulkDispatchItem {
     this.notes,
     this.isRecommended = false,
     this.allowFefoOverride = false,
+    this.availableBatches = const [],
   });
 
-  final int batchId;
+  int batchId;
   final int productId;
   final String productName;
-  final String lotNumber;
-  final String expiryDate;
-  final double currentQty;
+  String lotNumber;
+  String expiryDate;
+  double currentQty;
   int qty;
-  final int? locationId;
-  final String locationName;
+  int? locationId;
+  String locationName;
   int? targetLocationId;
   String? targetLocationName;
   String? notes;
   bool isRecommended;
   bool allowFefoOverride;
+  List<BatchDetails> availableBatches;
+
+  void updateBatch(BatchDetails newBatch, {bool allowOverride = false}) {
+    batchId = newBatch.batchId;
+    lotNumber = newBatch.lotNumber;
+    expiryDate = newBatch.expiryDate;
+    currentQty = newBatch.quantityCurrent;
+    locationId = newBatch.locationId;
+    locationName = newBatch.locationName;
+    isRecommended = newBatch.isRecommended;
+    allowFefoOverride = allowOverride;
+    if (qty > currentQty.toInt()) {
+      qty = currentQty.toInt().clamp(1, 9999);
+    }
+  }
 
   Map<String, dynamic> toJson() => {
         'batch_id': batchId,
