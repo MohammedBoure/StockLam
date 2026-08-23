@@ -8,5 +8,5 @@ Ce sous-dossier regroupe les services métier utilisés par le serveur API pour 
 - **`barcode_service.py`** : Résolution et recherche des codes-barres internes (`Internal_Barcode`) et fabricants (`Barcode`), agrégation des lots disponibles et marquage du lot recommandé.
 - **`dispatch_service.py`** : Logique d'exécution de la consommation directe (`safe_consume`) avec détection d'infraction FEFO et des transferts d'emplacement (`safe_transfer`).
 - **`fefo_service.py`** : Moteur de calcul de conformité FEFO (First Expired, First Out) et FIFO (First In, First Out) garantissant l'utilisation prioritaire des réactifs les plus anciens.
-- **`inventory_count_service.py`** : Gestion des sessions de comptage d'inventaire physique mobile (listage, résumé, consultation et scan de ligne).
+- **`inventory_count_service.py`** : Gestion complète des sessions de comptage d'inventaire physique mobile (création avec snapshot, listage, résumé chiffré/financier, consultation, scan individuel et groupé, modification de ligne, revue, annulation, suppression et application sécurisée des écarts au stock réel).
 - **`location_service.py`** : Récupération de la liste aplatie des emplacements de stockage avec leur arborescence hiérarchique.

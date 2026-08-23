@@ -12,6 +12,7 @@ import 'models.dart';
 import 'views/auth_dialog.dart';
 import 'views/direct_inventory_view.dart';
 import 'views/fast_dispatch_view.dart';
+import 'views/physical_inventory_view.dart';
 import 'views/remote_scanner_view.dart';
 
 void main() {
@@ -423,6 +424,11 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
                         connected: connected,
                         currentUser: currentUser,
                       ),
+                      PhysicalInventoryView(
+                        api: api,
+                        connected: connected,
+                        currentUser: currentUser,
+                      ),
                       RemoteScannerView(
                         api: api,
                         connected: connected,
@@ -464,6 +470,11 @@ class _ScannerHomePageState extends State<ScannerHomePage> {
             icon: Icon(Icons.flash_on_outlined),
             selectedIcon: Icon(Icons.flash_on, color: Color(0xFF007572)),
             label: 'Saisie Rapide',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.checklist_rtl_outlined),
+            selectedIcon: Icon(Icons.checklist_rtl, color: Color(0xFF007572)),
+            label: 'Inventaire',
           ),
           NavigationDestination(
             icon: Icon(Icons.phone_android_outlined),

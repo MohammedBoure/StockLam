@@ -272,3 +272,234 @@ class BulkDispatchItem {
         'allow_fefo_override': allowFefoOverride,
       };
 }
+
+class InventorySessionItem {
+  const InventorySessionItem({
+    required this.sessionId,
+    required this.sessionName,
+    required this.scopeType,
+    this.scopeId,
+    required this.status,
+    this.createdBy,
+    this.notes,
+    this.startedAt,
+    this.completedAt,
+    this.appliedAt,
+    this.totalLines = 0,
+    this.okCount = 0,
+    this.shortCount = 0,
+    this.excessCount = 0,
+    this.notCountedCount = 0,
+    this.unknownCount = 0,
+    this.locationName,
+    this.familyName,
+    this.productName,
+    this.summary,
+  });
+
+  factory InventorySessionItem.fromJson(Map<String, dynamic> json) {
+    final rawSummary = json['summary'] as Map<String, dynamic>?;
+    return InventorySessionItem(
+      sessionId: json['Session_ID'] as int? ?? 0,
+      sessionName: json['Session_Name'] as String? ?? 'Session',
+      scopeType: json['Scope_Type'] as String? ?? 'ALL',
+      scopeId: json['Scope_ID'] as int?,
+      status: json['Status'] as String? ?? 'Draft',
+      createdBy: json['Created_By'] as int?,
+      notes: json['Notes'] as String?,
+      startedAt: json['Started_At'] as String?,
+      completedAt: json['Completed_At'] as String?,
+      appliedAt: json['Applied_At'] as String?,
+      totalLines: json['Total_Lines'] as int? ?? 0,
+      okCount: json['OK_Count'] as int? ?? 0,
+      shortCount: json['Short_Count'] as int? ?? 0,
+      excessCount: json['Excess_Count'] as int? ?? 0,
+      notCountedCount: json['Not_Counted_Count'] as int? ?? 0,
+      unknownCount: json['Unknown_Count'] as int? ?? 0,
+      locationName: json['Location_Name'] as String?,
+      familyName: json['Family_Name'] as String?,
+      productName: json['Product_Name'] as String?,
+      summary: rawSummary != null ? InventorySummaryData.fromJson(rawSummary) : null,
+    );
+  }
+
+  final int sessionId;
+  final String sessionName;
+  final String scopeType;
+  final int? scopeId;
+  final String status;
+  final int? createdBy;
+  final String? notes;
+  final String? startedAt;
+  final String? completedAt;
+  final String? appliedAt;
+  final int totalLines;
+  final int okCount;
+  final int shortCount;
+  final int excessCount;
+  final int notCountedCount;
+  final int unknownCount;
+  final String? locationName;
+  final String? familyName;
+  final String? productName;
+  final InventorySummaryData? summary;
+
+  int get countedLines => okCount + shortCount + excessCount;
+  double get progressPercentage =>
+      totalLines > 0 ? (countedLines / totalLines).clamp(0.0, 1.0) : 0.0;
+}
+
+class InventorySummaryData {
+  const InventorySummaryData({
+    this.totalLines = 0,
+    this.ok = 0,
+    this.short = 0,
+    this.excess = 0,
+    this.notCounted = 0,
+    this.unknown = 0,
+    this.estimatedVarianceValue = 0.0,
+  });
+
+  factory InventorySummaryData.fromJson(Map<String, dynamic> json) {
+    return InventorySummaryData(
+      totalLines: json['Total_Lines'] as int? ?? 0,
+      ok: json['OK'] as int? ?? 0,
+      short: json['SHORT'] as int? ?? 0,
+      excess: json['EXCESS'] as int? ?? 0,
+      notCounted: json['NOT_COUNTED'] as int? ?? 0,
+      unknown: json['UNKNOWN'] as int? ?? 0,
+      estimatedVarianceValue:
+          (json['Estimated_Variance_Value'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  final int totalLines;
+  final int ok;
+  final int short;
+  final int excess;
+  final int notCounted;
+  final int unknown;
+  final double estimatedVarianceValue;
+}
+
+class InventoryLineItem {
+  const InventoryLineItem({
+    required this.lineId,
+    required this.sessionId,
+    this.batchId,
+    this.productId,
+    required this.internalBarcode,
+    this.productBarcode,
+    required this.productName,
+    this.manufCatNo,
+    this.familyName,
+    this.lotNumber,
+    this.expiryDate,
+    this.locationName,
+    this.programQtySnapshot = 0.0,
+    this.countedQty = 0.0,
+    this.differenceQty = 0.0,
+    required this.lineStatus,
+    this.stockUnit = 'Unité',
+    this.lastScannedAt,
+  });
+
+  factory InventoryLineItem.fromJson(Map<String, dynamic> json) {
+    return InventoryLineItem(
+      lineId: json['Line_ID'] as int? ?? 0,
+      sessionId: json['Session_ID'] as int? ?? 0,
+      batchId: json['Batch_ID'] as int?,
+      productId: json['Product_ID'] as int?,
+      internalBarcode: json['Internal_Barcode'] as String? ?? '',
+      productBarcode: json['Product_Barcode'] as String?,
+      productName: json['Product_Name'] as String? ??
+          (json['Internal_Barcode'] != null
+              ? 'Code ${json['Internal_Barcode']}'
+              : 'Article Inconnu'),
+      manufCatNo: json['Manuf_Cat_No'] as String?,
+      familyName: json['Family_Name'] as String?,
+      lotNumber: json['Lot_Number'] as String? ?? '---',
+      expiryDate: json['Expiry_Date'] as String?,
+      locationName: json['Location_Name'] as String? ?? '---',
+      programQtySnapshot:
+          (json['Program_Qty_Snapshot'] as num?)?.toDouble() ?? 0.0,
+      countedQty: (json['Counted_Qty'] as num?)?.toDouble() ?? 0.0,
+      differenceQty: (json['Difference_Qty'] as num?)?.toDouble() ?? 0.0,
+      lineStatus: json['Line_Status'] as String? ?? 'NOT_COUNTED',
+      stockUnit: json['Stock_Unit'] as String? ?? 'Unité',
+      lastScannedAt: json['Last_Scanned_At'] as String?,
+    );
+  }
+
+  final int lineId;
+  final int sessionId;
+  final int? batchId;
+  final int? productId;
+  final String internalBarcode;
+  final String? productBarcode;
+  final String productName;
+  final String? manufCatNo;
+  final String? familyName;
+  final String? lotNumber;
+  final String? expiryDate;
+  final String? locationName;
+  final double programQtySnapshot;
+  final double countedQty;
+  final double differenceQty;
+  final String lineStatus;
+  final String stockUnit;
+  final String? lastScannedAt;
+}
+
+class InventoryScanResultData {
+  const InventoryScanResultData({
+    required this.success,
+    required this.status,
+    required this.message,
+    this.line,
+  });
+
+  factory InventoryScanResultData.fromJson(Map<String, dynamic> json) {
+    final rawLine = json['line'] as Map<String, dynamic>?;
+    return InventoryScanResultData(
+      success: json['success'] as bool? ?? false,
+      status: json['status'] as String? ?? 'UNKNOWN',
+      message: json['message'] as String? ?? '',
+      line: rawLine != null ? InventoryLineItem.fromJson(rawLine) : null,
+    );
+  }
+
+  final bool success;
+  final String status;
+  final String message;
+  final InventoryLineItem? line;
+}
+
+class InventoryScopeData {
+  const InventoryScopeData({
+    required this.locations,
+    required this.families,
+  });
+
+  factory InventoryScopeData.fromJson(Map<String, dynamic> json) {
+    final scopes = json['scopes'] as Map<String, dynamic>? ?? {};
+    final rawLocs = scopes['locations'] as List<dynamic>? ?? [];
+    final rawFams = scopes['families'] as List<dynamic>? ?? [];
+
+    return InventoryScopeData(
+      locations: rawLocs
+          .map((i) => LocationItem.fromJson(i as Map<String, dynamic>))
+          .toList(),
+      families: rawFams
+          .map((i) => {
+                'Family_ID': i['Family_ID'] as int? ?? 0,
+                'Family_Name': i['Family_Name'] as String? ?? 'Famille',
+              })
+          .toList(),
+    );
+  }
+
+  final List<LocationItem> locations;
+  final List<Map<String, dynamic>> families;
+}
+

@@ -19,10 +19,20 @@ from .services.barcode_service import resolve_barcode
 from .services.dispatch_service import bulk_dispatch, safe_consume, safe_transfer
 from .services.fefo_service import evaluate_fefo_compliance
 from .services.inventory_count_service import (
+    apply_session,
+    bulk_scan_session,
+    cancel_session,
+    create_session,
+    delete_session,
+    get_inventory_scopes,
+    get_session_by_id,
     get_session_line,
+    get_session_lines,
     get_session_summary,
     get_sessions,
+    mark_session_review,
     scan_session_barcode,
+    update_session_line_quantity,
 )
 from .services.location_service import get_locations
 
@@ -61,7 +71,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Key, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
@@ -82,14 +92,22 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
 
     def _parse_session_route(self, path: str):
         parts = [part for part in path.split("/") if part]
-        if len(parts) < 3 or parts[0] != "api" or parts[1] != "inventory-sessions":
-            return None, None
+        if len(parts) < 2 or parts[0] != "api" or parts[1] != "inventory-sessions":
+            return None, None, None
+        if len(parts) == 2:
+            return None, None, None
         try:
             session_id = int(parts[2])
         except (TypeError, ValueError):
-            return None, None
+            return None, None, None
         action = parts[3] if len(parts) > 3 else None
-        return session_id, action
+        sub_id = None
+        if len(parts) > 4:
+            try:
+                sub_id = int(parts[4])
+            except (TypeError, ValueError):
+                sub_id = parts[4]
+        return session_id, action, sub_id
 
     def do_OPTIONS(self):
         self._send_json(HTTPStatus.OK, {"success": True})
@@ -142,7 +160,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {"success": True, "users": users})
                 return
 
-            # 3. Barcode Lookup (Résolution de produit / lots / FEFO)
+            # 3. Barcode Lookup (Recherche et Détection de produit / lots)
             if path == "/api/barcode/lookup":
                 barcode = (query.get("barcode", [""])[0] or "").strip()
                 if not barcode:
@@ -152,41 +170,27 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, result)
                 return
 
-            # 4. FEFO Check Endpoint
+            # 4. FEFO Compliance Check (Contrôle de conformité FEFO/FIFO)
             if path == "/api/stock/fefo-check":
-                batch_id_str = query.get("batch_id", [""])[0]
-                if not batch_id_str:
-                    self._send_error(HTTPStatus.BAD_REQUEST, "Le paramètre 'batch_id' est obligatoire.")
+                batch_id_str = (query.get("batch_id", [""])[0] or "").strip()
+                if not batch_id_str.isdigit():
+                    self._send_error(HTTPStatus.BAD_REQUEST, "Le paramètre 'batch_id' numérique est obligatoire.")
                     return
-                try:
-                    batch_id = int(batch_id_str)
-                except ValueError:
-                    self._send_error(HTTPStatus.BAD_REQUEST, "Le paramètre 'batch_id' doit être un entier.")
-                    return
-
-                all_batches = self.data_manager.batches.get_all_batches_with_details(include_zero_stock=False)
-                current = next((b for b in all_batches if b.get("Batch_ID") == batch_id), None)
-                if not current:
-                    self._send_error(HTTPStatus.NOT_FOUND, f"Lot {batch_id} introuvable en stock.")
-                    return
-
-                prod_id = current.get("Product_ID")
-                prod_batches = [b for b in all_batches if str(b.get("Product_ID")) == str(prod_id)]
-                is_comp, rec_batch, is_viol = evaluate_fefo_compliance(prod_batches, current)
+                batch_id = int(batch_id_str)
+                compliance = evaluate_fefo_compliance(self.data_manager, batch_id)
+                rec_batch = compliance.get("recommended_batch")
                 self._send_json(HTTPStatus.OK, {
                     "success": True,
-                    "is_compliant": is_comp,
-                    "is_violation": is_viol,
-                    "current_batch": {
-                        "Batch_ID": current.get("Batch_ID"),
-                        "Lot_Number": current.get("Lot_Number"),
-                        "Expiry_Date": str(current.get("Expiry_Date") or "")[:10],
-                        "Quantity_Current": float(current.get("Quantity_Current") or 0),
-                    },
+                    "is_compliant": compliance.get("is_compliant", False),
+                    "is_oldest": compliance.get("is_oldest", False),
+                    "is_recommended": compliance.get("is_recommended", False),
+                    "reason": compliance.get("reason", ""),
+                    "recommended_batch_id": compliance.get("recommended_batch_id"),
                     "recommended_batch": {
-                        "Batch_ID": rec_batch.get("Batch_ID") if rec_batch else None,
-                        "Lot_Number": rec_batch.get("Lot_Number") if rec_batch else None,
-                        "Expiry_Date": str(rec_batch.get("Expiry_Date") or "")[:10] if rec_batch else None,
+                        "Batch_ID": rec_batch.get("Batch_ID"),
+                        "Lot_Number": rec_batch.get("Lot_Number", "---"),
+                        "Expiry_Date": str(rec_batch.get("Expiry_Date") or ""),
+                        "Location_Name": rec_batch.get("Location_Name", "---"),
                         "Quantity_Current": float(rec_batch.get("Quantity_Current") or 0) if rec_batch else 0,
                     } if rec_batch else None,
                 })
@@ -198,28 +202,52 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {"success": True, "locations": locations})
                 return
 
-            # 6. Inventory Sessions
+            # 6. Inventory Scopes (Locations, Families)
+            if path == "/api/inventory-scopes":
+                scopes = get_inventory_scopes(self.data_manager)
+                self._send_json(HTTPStatus.OK, scopes)
+                return
+
+            # 7. Inventory Sessions List
             if path == "/api/inventory-sessions":
-                status = query.get("status", ["Counting"])[0] or None
+                status = query.get("status", [None])[0]
+                year = query.get("year", [None])[0]
                 limit = int(query.get("limit", ["50"])[0] or 50)
-                sessions = get_sessions(self.data_manager, status=status, limit=limit)
+                sessions = get_sessions(self.data_manager, status=status, limit=limit, year=year)
                 self._send_json(HTTPStatus.OK, {"success": True, "sessions": sessions})
                 return
 
-            session_id, action = self._parse_session_route(path)
-            if session_id and action == "summary":
-                summary = get_session_summary(self.data_manager, session_id)
-                self._send_json(HTTPStatus.OK, {"success": True, "summary": summary})
-                return
-
-            if session_id and action == "lookup":
-                barcode = (query.get("barcode", [""])[0] or "").strip()
-                if not barcode:
-                    self._send_error(HTTPStatus.BAD_REQUEST, "Le code-barres est obligatoire.")
+            # 8. Single Inventory Session & Actions
+            session_id, action, sub_id = self._parse_session_route(path)
+            if session_id:
+                if action is None:
+                    session = get_session_by_id(self.data_manager, session_id)
+                    if session:
+                        self._send_json(HTTPStatus.OK, {"success": True, "session": session})
+                    else:
+                        self._send_error(HTTPStatus.NOT_FOUND, f"Session #{session_id} introuvable.")
                     return
-                line = get_session_line(self.data_manager, session_id, barcode)
-                self._send_json(HTTPStatus.OK, {"success": True, "line": line})
-                return
+
+                if action == "summary":
+                    summary = get_session_summary(self.data_manager, session_id)
+                    self._send_json(HTTPStatus.OK, {"success": True, "summary": summary})
+                    return
+
+                if action == "lookup":
+                    barcode = (query.get("barcode", [""])[0] or "").strip()
+                    if not barcode:
+                        self._send_error(HTTPStatus.BAD_REQUEST, "Le code-barres est obligatoire.")
+                        return
+                    line = get_session_line(self.data_manager, session_id, barcode)
+                    self._send_json(HTTPStatus.OK, {"success": True, "line": line})
+                    return
+
+                if action == "lines":
+                    line_status = query.get("status", [None])[0]
+                    search = query.get("search", [None])[0]
+                    lines = get_session_lines(self.data_manager, session_id, status=line_status, search=search)
+                    self._send_json(HTTPStatus.OK, {"success": True, "lines": lines})
+                    return
 
             self._send_error(HTTPStatus.NOT_FOUND, "Point d'accès API introuvable.")
 
@@ -394,32 +422,205 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                 self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
             return
 
-        # 6. Inventory Sessions Scan (Comptage d'inventaire)
-        session_id, action = self._parse_session_route(path)
-        if session_id and action == "scan":
+        # 6. Création de Session d'Inventaire
+        if path == "/api/inventory-sessions":
             try:
                 data = self._read_body()
-                barcode = str(data.get("barcode") or "").strip()
-                qty = float(data.get("qty", 1) or 1)
+                name = str(data.get("name") or data.get("session_name") or "").strip()
+                scope_type = str(data.get("scope_type") or "ALL").upper()
+                scope_id = data.get("scope_id")
                 user_id = data.get("user_id")
-                replace_counted = bool(data.get("replace_counted", True))
+                notes = data.get("notes")
 
-                result = scan_session_barcode(
+                if not name:
+                    self._send_error(HTTPStatus.BAD_REQUEST, "Le nom de la session est obligatoire.")
+                    return
+
+                result = create_session(
                     data_manager=self.data_manager,
-                    session_id=session_id,
-                    barcode=barcode,
-                    qty=qty,
-                    user_id=user_id,
-                    replace_counted=replace_counted,
+                    name=name,
+                    scope_type=scope_type,
+                    scope_id=int(scope_id) if scope_id is not None else None,
+                    created_by=user_id,
+                    notes=notes,
                 )
-                http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                http_status = HTTPStatus.CREATED if result.get("success") else HTTPStatus.BAD_REQUEST
                 self._send_json(http_status, result)
             except json.JSONDecodeError:
                 self._send_error(HTTPStatus.BAD_REQUEST, "Corps JSON invalide.")
             except Exception as exc:
-                logging.exception("Erreur lors du scan d'inventaire API")
+                logging.exception("Erreur lors de la création de session d'inventaire")
                 self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
             return
+
+        # 7. Actions sur Sessions d'Inventaire
+        session_id, action, sub_id = self._parse_session_route(path)
+        if session_id:
+            try:
+                data = self._read_body()
+
+                # Scan individuel
+                if action == "scan":
+                    barcode = str(data.get("barcode") or "").strip()
+                    qty = float(data.get("qty", 1) or 1)
+                    user_id = data.get("user_id")
+                    replace_counted = bool(data.get("replace_counted", True))
+
+                    result = scan_session_barcode(
+                        data_manager=self.data_manager,
+                        session_id=session_id,
+                        barcode=barcode,
+                        qty=qty,
+                        user_id=user_id,
+                        replace_counted=replace_counted,
+                    )
+                    http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                    self._send_json(http_status, result)
+                    return
+
+                # Scan groupé (synchronisation hors-ligne)
+                if action == "bulk-scan":
+                    scans = data.get("scans") or []
+                    user_id = data.get("user_id")
+                    replace_counted = bool(data.get("replace_counted", False))
+
+                    result = bulk_scan_session(
+                        data_manager=self.data_manager,
+                        session_id=session_id,
+                        scans=scans,
+                        user_id=user_id,
+                        replace_counted=replace_counted,
+                    )
+                    self._send_json(HTTPStatus.OK, result)
+                    return
+
+                # Modification manuelle de quantité de ligne
+                if action == "lines" and sub_id:
+                    counted_qty = float(data.get("counted_qty", 0))
+                    result = update_session_line_quantity(
+                        data_manager=self.data_manager,
+                        session_id=session_id,
+                        line_id=int(sub_id),
+                        counted_qty=counted_qty,
+                    )
+                    http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                    self._send_json(http_status, result)
+                    return
+
+                # Passage en revue
+                if action == "review":
+                    result = mark_session_review(self.data_manager, session_id)
+                    http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                    self._send_json(http_status, result)
+                    return
+
+                # Application des écarts au stock réel
+                if action == "apply":
+                    user_id = data.get("user_id")
+                    allow_unknown = bool(data.get("allow_unknown", False))
+                    uncounted_action = str(data.get("uncounted_action") or "ignore")
+
+                    result = apply_session(
+                        data_manager=self.data_manager,
+                        session_id=session_id,
+                        user_id=user_id,
+                        allow_unknown=allow_unknown,
+                        uncounted_action=uncounted_action,
+                    )
+                    http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                    self._send_json(http_status, result)
+                    return
+
+                # Annulation de session
+                if action == "cancel":
+                    user_id = data.get("user_id")
+                    result = cancel_session(self.data_manager, session_id, user_id=user_id)
+                    http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                    self._send_json(http_status, result)
+                    return
+
+                # Suppression de session
+                if action == "delete":
+                    result = delete_session(self.data_manager, session_id)
+                    http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                    self._send_json(http_status, result)
+                    return
+
+            except json.JSONDecodeError:
+                self._send_error(HTTPStatus.BAD_REQUEST, "Corps JSON invalide.")
+                return
+            except Exception as exc:
+                logging.exception("Erreur lors du traitement de l'action d'inventaire")
+                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+                return
+
+        self._send_error(HTTPStatus.NOT_FOUND, "Point d'accès API introuvable.")
+
+    # =========================================================================
+    # PUT Endpoints
+    # =========================================================================
+    def do_PUT(self):
+        if not self._is_authorized():
+            self._send_error(HTTPStatus.UNAUTHORIZED, "Clé API non autorisée (X-API-Key invalide).")
+            return
+
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+
+        if not self.data_manager:
+            self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Gestionnaire de données StockLam indisponible.")
+            return
+
+        session_id, action, sub_id = self._parse_session_route(path)
+        if session_id and action == "lines" and sub_id:
+            try:
+                data = self._read_body()
+                counted_qty = float(data.get("counted_qty", 0))
+                result = update_session_line_quantity(
+                    data_manager=self.data_manager,
+                    session_id=session_id,
+                    line_id=int(sub_id),
+                    counted_qty=counted_qty,
+                )
+                http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                self._send_json(http_status, result)
+                return
+            except json.JSONDecodeError:
+                self._send_error(HTTPStatus.BAD_REQUEST, "Corps JSON invalide.")
+                return
+            except Exception as exc:
+                logging.exception("Erreur lors de la mise à jour de ligne")
+                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+                return
+
+        self._send_error(HTTPStatus.NOT_FOUND, "Point d'accès API introuvable.")
+
+    # =========================================================================
+    # DELETE Endpoints
+    # =========================================================================
+    def do_DELETE(self):
+        if not self._is_authorized():
+            self._send_error(HTTPStatus.UNAUTHORIZED, "Clé API non autorisée (X-API-Key invalide).")
+            return
+
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+
+        if not self.data_manager:
+            self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Gestionnaire de données StockLam indisponible.")
+            return
+
+        session_id, action, sub_id = self._parse_session_route(path)
+        if session_id and action is None:
+            try:
+                result = delete_session(self.data_manager, session_id)
+                http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
+                self._send_json(http_status, result)
+                return
+            except Exception as exc:
+                logging.exception("Erreur lors de la suppression de la session d'inventaire")
+                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+                return
 
         self._send_error(HTTPStatus.NOT_FOUND, "Point d'accès API introuvable.")
 

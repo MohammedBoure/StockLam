@@ -4,14 +4,23 @@ Application mobile Flutter compagne pour StockLam / MODERNSTOCK permettant d'eff
 
 ## Modes de Fonctionnement
 
-### 1. 📦 Mode Stock Direct (Inventaire & Dispatch sur site)
+### 1. 📦 Mode Stock Direct (Dispatch sur site)
 - **Recherche par Code-Barres ou Saisie Manuelle** : Scan caméra ou saisie directe du numéro de code-barres / numéro de lot.
 - **Fiche Produit et Consultation des Lots** : Affichage du nom, famille, fabricant, unité et de tous les lots actifs avec leurs emplacements respectifs et dates de péremption.
 - **Priorité FEFO Intelligente** : Surlignage du lot prioritaire (**⭐ RECOMMANDÉ**) selon la règle First Expired First Out.
 - **Consommation Directe Sécurisée** : Sortie de stock avec alerte interactive et protection contre les infractions FEFO.
 - **Transfert d'Emplacement Direct** : Changement d'emplacement avec sélection dans la liste des zones de stockage.
 
-### 2. 📱 Mode Pont Bureau (Scanner sans fil)
+### 2. 📋 Mode Inventaire Physique (Comptage & Audit sur site)
+- **Gestion des Sessions d'Inventaire** : Création de session avec périmètre (Tout le stock, par emplacement/frigo, ou par famille), sélection de session active et suivi d'avancement chiffré en temps réel.
+- **Comptage par Code-Barres en Continu** : Scan caméra ultra-rapide avec comparaison instantanée au stock attendu (Snapshot), détection des codes inconnus, retour haptique et modes remplacement / accumulation (+1, +5, +10).
+- **Contrôle & Revue des Écarts** : Filtres rapides par statut (Manquants, Excédents, Non comptés, Inconnus, Conformes), recherche instantanée et édition manuelle directe de chaque ligne.
+- **Clôture & Application au Stock Réel** : Passage en revue, choix de gestion des non-comptés (garder ou mettre à zéro) et application sécurisée des ajustements en base.
+
+### 3. ⚡ Mode Saisie Rapide (Multi-Produits)
+- Saisie groupée de multiples références avec basculement Consommation / Transfert et validation en un clic.
+
+### 4. 📱 Mode Pont Bureau (Scanner sans fil)
 - Scannez les codes-barres avec la caméra du téléphone pour les transmettre instantanément dans le champ actif du logiciel bureau.
 
 ## Connexion Réseau et Découverte

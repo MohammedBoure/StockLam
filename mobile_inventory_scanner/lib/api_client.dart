@@ -162,6 +162,213 @@ class ApiClient {
     return _decode(response);
   }
 
+  // =========================================================================
+  // Inventaire Physique (Physical Inventory Count Sessions)
+  // =========================================================================
+
+  Future<List<InventorySessionItem>> getInventorySessions({
+    String? status,
+    int limit = 50,
+    String? year,
+  }) async {
+    final queryParams = <String, String>{
+      'limit': limit.toString(),
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (year != null && year.isNotEmpty) 'year': year,
+    };
+    final queryString = Uri(queryParameters: queryParams).query;
+    final path = '/api/inventory-sessions${queryString.isNotEmpty ? '?$queryString' : ''}';
+    final response = await http.get(uri(path), headers: headers).timeout(const Duration(seconds: 10));
+    final data = _decode(response);
+    final list = data['sessions'] as List<dynamic>? ?? [];
+    return list.map((item) => InventorySessionItem.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<InventorySessionItem> getInventorySession(int sessionId) async {
+    final response =
+        await http.get(uri('/api/inventory-sessions/$sessionId'), headers: headers).timeout(const Duration(seconds: 8));
+    final data = _decode(response);
+    final sessionMap = data['session'] as Map<String, dynamic>? ?? {};
+    return InventorySessionItem.fromJson(sessionMap);
+  }
+
+  Future<Map<String, dynamic>> createInventorySession({
+    required String name,
+    String scopeType = 'ALL',
+    int? scopeId,
+    int? userId,
+    String? notes,
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/inventory-sessions'),
+          headers: headers,
+          body: jsonEncode({
+            'name': name,
+            'scope_type': scopeType,
+            if (scopeId != null) 'scope_id': scopeId,
+            if (userId != null) 'user_id': userId,
+            if (notes != null && notes.isNotEmpty) 'notes': notes,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+    return _decode(response);
+  }
+
+  Future<InventoryScopeData> getInventoryScopes() async {
+    final response =
+        await http.get(uri('/api/inventory-scopes'), headers: headers).timeout(const Duration(seconds: 8));
+    final data = _decode(response);
+    return InventoryScopeData.fromJson(data);
+  }
+
+  Future<List<InventoryLineItem>> getInventorySessionLines(
+    int sessionId, {
+    String? status,
+    String? search,
+  }) async {
+    final queryParams = <String, String>{
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (search != null && search.isNotEmpty) 'search': search,
+    };
+    final queryString = Uri(queryParameters: queryParams).query;
+    final path =
+        '/api/inventory-sessions/$sessionId/lines${queryString.isNotEmpty ? '?$queryString' : ''}';
+    final response = await http.get(uri(path), headers: headers).timeout(const Duration(seconds: 12));
+    final data = _decode(response);
+    final list = data['lines'] as List<dynamic>? ?? [];
+    return list.map((item) => InventoryLineItem.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<InventorySummaryData> getInventorySessionSummary(int sessionId) async {
+    final response = await http
+        .get(uri('/api/inventory-sessions/$sessionId/summary'), headers: headers)
+        .timeout(const Duration(seconds: 8));
+    final data = _decode(response);
+    final summaryMap = data['summary'] as Map<String, dynamic>? ?? {};
+    return InventorySummaryData.fromJson(summaryMap);
+  }
+
+  Future<InventoryLineItem?> lookupInventoryLine(int sessionId, String barcode) async {
+    final encoded = Uri.encodeQueryComponent(barcode.trim());
+    final response = await http
+        .get(uri('/api/inventory-sessions/$sessionId/lookup?barcode=$encoded'), headers: headers)
+        .timeout(const Duration(seconds: 8));
+    final data = _decode(response);
+    final lineMap = data['line'] as Map<String, dynamic>?;
+    return lineMap != null ? InventoryLineItem.fromJson(lineMap) : null;
+  }
+
+  Future<InventoryScanResultData> scanInventoryBarcode(
+    int sessionId,
+    String barcode, {
+    double qty = 1.0,
+    int? userId,
+    bool replaceCounted = true,
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/inventory-sessions/$sessionId/scan'),
+          headers: headers,
+          body: jsonEncode({
+            'barcode': barcode.trim(),
+            'qty': qty,
+            if (userId != null) 'user_id': userId,
+            'replace_counted': replaceCounted,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+    final data = _decode(response);
+    return InventoryScanResultData.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> bulkScanInventory(
+    int sessionId,
+    List<Map<String, dynamic>> scans, {
+    int? userId,
+    bool replaceCounted = false,
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/inventory-sessions/$sessionId/bulk-scan'),
+          headers: headers,
+          body: jsonEncode({
+            'scans': scans,
+            if (userId != null) 'user_id': userId,
+            'replace_counted': replaceCounted,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> updateInventoryLineQuantity(
+    int sessionId,
+    int lineId,
+    double countedQty,
+  ) async {
+    final response = await http
+        .put(
+          uri('/api/inventory-sessions/$sessionId/lines/$lineId'),
+          headers: headers,
+          body: jsonEncode({
+            'counted_qty': countedQty,
+          }),
+        )
+        .timeout(const Duration(seconds: 8));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> markInventoryReview(int sessionId) async {
+    final response = await http
+        .post(uri('/api/inventory-sessions/$sessionId/review'), headers: headers)
+        .timeout(const Duration(seconds: 8));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> applyInventorySession(
+    int sessionId, {
+    int? userId,
+    bool allowUnknown = false,
+    String uncountedAction = 'ignore',
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/inventory-sessions/$sessionId/apply'),
+          headers: headers,
+          body: jsonEncode({
+            if (userId != null) 'user_id': userId,
+            'allow_unknown': allowUnknown,
+            'uncounted_action': uncountedAction,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> cancelInventorySession(
+    int sessionId, {
+    int? userId,
+  }) async {
+    final response = await http
+        .post(
+          uri('/api/inventory-sessions/$sessionId/cancel'),
+          headers: headers,
+          body: jsonEncode({
+            if (userId != null) 'user_id': userId,
+          }),
+        )
+        .timeout(const Duration(seconds: 8));
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> deleteInventorySession(int sessionId) async {
+    final response = await http
+        .delete(uri('/api/inventory-sessions/$sessionId'), headers: headers)
+        .timeout(const Duration(seconds: 8));
+    return _decode(response);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final decoded =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;

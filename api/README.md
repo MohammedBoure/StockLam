@@ -31,5 +31,17 @@ Le serveur API s'exécute sur le réseau local (LAN/WiFi).
 | `POST` | `/api/stock/transfer` | Transfert de lot vers un nouvel emplacement avec traçabilité utilisateur |
 | `POST` | `/api/stock/bulk-dispatch` | Saisie groupée multi-produits (sorties ou transferts groupés avec emplacements dédiés) |
 | `POST` | `/api/remote-scans` | Pont de saisie distante directe vers le champ actif de l'application bureau |
-| `GET` | `/api/inventory-sessions` | Liste des sessions de comptage d'inventaire physique |
-| `POST` | `/api/inventory-sessions/<id>/scan` | Enregistrement d'un comptage de code-barres en session d'inventaire |
+| `GET` | `/api/inventory-scopes` | Liste des périmètres (emplacements, familles) pour la création de session |
+| `GET` | `/api/inventory-sessions` | Liste des sessions de comptage d'inventaire physique (avec filtres status/year/limit) |
+| `POST` | `/api/inventory-sessions` | Création d'une nouvelle session d'inventaire avec snapshot |
+| `GET` | `/api/inventory-sessions/<id>` | Détails complets et résumé d'une session d'inventaire |
+| `GET` | `/api/inventory-sessions/<id>/summary` | Résumé chiffré et financier d'une session d'inventaire |
+| `GET` | `/api/inventory-sessions/<id>/lookup?barcode=...` | Recherche de ligne par code-barres dans la session |
+| `GET` | `/api/inventory-sessions/<id>/lines?status=...&search=...` | Liste des lignes d'audit avec filtres par statut et recherche |
+| `POST` | `/api/inventory-sessions/<id>/scan` | Enregistrement d'un comptage individuel de code-barres |
+| `POST` | `/api/inventory-sessions/<id>/bulk-scan` | Synchronisation de scans groupés hors-ligne |
+| `PUT` / `POST` | `/api/inventory-sessions/<id>/lines/<line_id>` | Correction manuelle de la quantité comptée d'une ligne |
+| `POST` | `/api/inventory-sessions/<id>/review` | Passage de la session en revue (fin de comptage) |
+| `POST` | `/api/inventory-sessions/<id>/apply` | Application des écarts constatés sur le stock réel |
+| `POST` | `/api/inventory-sessions/<id>/cancel` | Annulation de la session sans appliquer les écarts |
+| `DELETE` / `POST` | `/api/inventory-sessions/<id>` (`/delete`) | Suppression complète d'une session d'inventaire |
