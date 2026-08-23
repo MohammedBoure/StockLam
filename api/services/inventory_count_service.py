@@ -33,7 +33,22 @@ def clean_line(line: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         "Stock_Unit",
         "Last_Scanned_At",
     ]
-    return {key: line.get(key) for key in wanted if key in line}
+    res = {key: line.get(key) for key in wanted if key in line}
+    int_keys = ["Line_ID", "Session_ID", "Batch_ID", "Product_ID"]
+    for k in int_keys:
+        if res.get(k) is not None:
+            try:
+                res[k] = int(res[k])
+            except (ValueError, TypeError):
+                pass
+    float_keys = ["Program_Qty_Snapshot", "Counted_Qty", "Difference_Qty", "Quantity_Current", "Quantity_Initial"]
+    for k in float_keys:
+        if res.get(k) is not None:
+            try:
+                res[k] = float(res[k])
+            except (ValueError, TypeError):
+                pass
+    return res
 
 
 def clean_session(session: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -62,7 +77,26 @@ def clean_session(session: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
         "Family_Name",
         "Product_Name",
     ]
-    return {key: session.get(key) for key in wanted if key in session}
+    res = {key: session.get(key) for key in wanted if key in session}
+    int_keys = [
+        "Session_ID",
+        "Scope_ID",
+        "Created_By",
+        "Applied_By",
+        "Total_Lines",
+        "OK_Count",
+        "Short_Count",
+        "Excess_Count",
+        "Not_Counted_Count",
+        "Unknown_Count",
+    ]
+    for k in int_keys:
+        if res.get(k) is not None:
+            try:
+                res[k] = int(res[k])
+            except (ValueError, TypeError):
+                pass
+    return res
 
 
 def get_sessions(

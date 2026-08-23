@@ -34,7 +34,7 @@ class AuthUser {
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
-      userId: json['user_id'] as int? ?? 0,
+      userId: (json['user_id'] as num?)?.toInt() ?? 0,
       username: json['username'] as String? ?? '',
       fullName: json['full_name'] as String? ?? json['username'] as String? ?? 'Utilisateur',
       role: json['role'] as String? ?? 'Technician',
@@ -74,7 +74,7 @@ class SavedAccount {
       serverName: json['server_name'] as String? ?? 'StockLam PC',
       username: json['username'] as String? ?? '',
       password: json['password'] as String? ?? '',
-      userId: json['user_id'] as int? ?? 0,
+      userId: (json['user_id'] as num?)?.toInt() ?? 0,
       fullName: json['full_name'] as String? ?? '',
       role: json['role'] as String? ?? 'Technician',
       savedAt: DateTime.tryParse(json['saved_at'] as String? ?? '') ?? DateTime.now(),
@@ -117,7 +117,7 @@ class ProductDetails {
 
   factory ProductDetails.fromJson(Map<String, dynamic> json) {
     return ProductDetails(
-      productId: json['Product_ID'] as int? ?? 0,
+      productId: (json['Product_ID'] as num?)?.toInt() ?? 0,
       productName: json['Product_Name'] as String? ?? 'Produit sans nom',
       barcode: json['Barcode'] as String? ?? '',
       familyName: json['Family_Name'] as String? ?? 'Général',
@@ -153,13 +153,13 @@ class BatchDetails {
 
   factory BatchDetails.fromJson(Map<String, dynamic> json) {
     return BatchDetails(
-      batchId: json['Batch_ID'] as int? ?? 0,
-      productId: json['Product_ID'] as int? ?? 0,
+      batchId: (json['Batch_ID'] as num?)?.toInt() ?? 0,
+      productId: (json['Product_ID'] as num?)?.toInt() ?? 0,
       internalBarcode: json['Internal_Barcode'] as String? ?? '',
       lotNumber: json['Lot_Number'] as String? ?? '---',
       expiryDate: json['Expiry_Date'] as String? ?? '',
       quantityCurrent: (json['Quantity_Current'] as num?)?.toDouble() ?? 0.0,
-      locationId: json['Location_ID'] as int?,
+      locationId: (json['Location_ID'] as num?)?.toInt(),
       locationName: json['Location_Name'] as String? ?? 'Emplacement non défini',
       dateReceived: json['Date_Received'] as String? ?? '',
       isRecommended: json['is_recommended'] as bool? ?? false,
@@ -191,9 +191,9 @@ class LocationItem {
 
   factory LocationItem.fromJson(Map<String, dynamic> json) {
     return LocationItem(
-      locationId: json['Location_ID'] as int? ?? 0,
+      locationId: (json['Location_ID'] as num?)?.toInt() ?? 0,
       locationName: json['Location_Name'] as String? ?? 'Emplacement',
-      parentId: json['Parent_ID'] as int?,
+      parentId: (json['Parent_ID'] as num?)?.toInt(),
       typeName: json['Type_Name'] as String? ?? '',
       fullPath: json['Full_Path'] as String? ?? json['Location_Name'] as String? ?? '',
     );
@@ -300,22 +300,22 @@ class InventorySessionItem {
   factory InventorySessionItem.fromJson(Map<String, dynamic> json) {
     final rawSummary = json['summary'] as Map<String, dynamic>?;
     return InventorySessionItem(
-      sessionId: json['Session_ID'] as int? ?? 0,
+      sessionId: (json['Session_ID'] as num?)?.toInt() ?? 0,
       sessionName: json['Session_Name'] as String? ?? 'Session',
       scopeType: json['Scope_Type'] as String? ?? 'ALL',
-      scopeId: json['Scope_ID'] as int?,
+      scopeId: (json['Scope_ID'] as num?)?.toInt(),
       status: json['Status'] as String? ?? 'Draft',
-      createdBy: json['Created_By'] as int?,
+      createdBy: (json['Created_By'] as num?)?.toInt(),
       notes: json['Notes'] as String?,
       startedAt: json['Started_At'] as String?,
       completedAt: json['Completed_At'] as String?,
       appliedAt: json['Applied_At'] as String?,
-      totalLines: json['Total_Lines'] as int? ?? 0,
-      okCount: json['OK_Count'] as int? ?? 0,
-      shortCount: json['Short_Count'] as int? ?? 0,
-      excessCount: json['Excess_Count'] as int? ?? 0,
-      notCountedCount: json['Not_Counted_Count'] as int? ?? 0,
-      unknownCount: json['Unknown_Count'] as int? ?? 0,
+      totalLines: (json['Total_Lines'] as num?)?.toInt() ?? 0,
+      okCount: (json['OK_Count'] as num?)?.toInt() ?? 0,
+      shortCount: (json['Short_Count'] as num?)?.toInt() ?? 0,
+      excessCount: (json['Excess_Count'] as num?)?.toInt() ?? 0,
+      notCountedCount: (json['Not_Counted_Count'] as num?)?.toInt() ?? 0,
+      unknownCount: (json['Unknown_Count'] as num?)?.toInt() ?? 0,
       locationName: json['Location_Name'] as String?,
       familyName: json['Family_Name'] as String?,
       productName: json['Product_Name'] as String?,
@@ -362,12 +362,12 @@ class InventorySummaryData {
 
   factory InventorySummaryData.fromJson(Map<String, dynamic> json) {
     return InventorySummaryData(
-      totalLines: json['Total_Lines'] as int? ?? 0,
-      ok: json['OK'] as int? ?? 0,
-      short: json['SHORT'] as int? ?? 0,
-      excess: json['EXCESS'] as int? ?? 0,
-      notCounted: json['NOT_COUNTED'] as int? ?? 0,
-      unknown: json['UNKNOWN'] as int? ?? 0,
+      totalLines: (json['Total_Lines'] as num?)?.toInt() ?? 0,
+      ok: (json['OK'] as num?)?.toInt() ?? 0,
+      short: (json['SHORT'] as num?)?.toInt() ?? 0,
+      excess: (json['EXCESS'] as num?)?.toInt() ?? 0,
+      notCounted: (json['NOT_COUNTED'] as num?)?.toInt() ?? 0,
+      unknown: (json['UNKNOWN'] as num?)?.toInt() ?? 0,
       estimatedVarianceValue:
           (json['Estimated_Variance_Value'] as num?)?.toDouble() ?? 0.0,
     );
@@ -406,10 +406,10 @@ class InventoryLineItem {
 
   factory InventoryLineItem.fromJson(Map<String, dynamic> json) {
     return InventoryLineItem(
-      lineId: json['Line_ID'] as int? ?? 0,
-      sessionId: json['Session_ID'] as int? ?? 0,
-      batchId: json['Batch_ID'] as int?,
-      productId: json['Product_ID'] as int?,
+      lineId: (json['Line_ID'] as num?)?.toInt() ?? 0,
+      sessionId: (json['Session_ID'] as num?)?.toInt() ?? 0,
+      batchId: (json['Batch_ID'] as num?)?.toInt(),
+      productId: (json['Product_ID'] as num?)?.toInt(),
       internalBarcode: json['Internal_Barcode'] as String? ?? '',
       productBarcode: json['Product_Barcode'] as String?,
       productName: json['Product_Name'] as String? ??
@@ -492,7 +492,7 @@ class InventoryScopeData {
           .toList(),
       families: rawFams
           .map((i) => {
-                'Family_ID': i['Family_ID'] as int? ?? 0,
+                'Family_ID': (i['Family_ID'] as num?)?.toInt() ?? 0,
                 'Family_Name': i['Family_Name'] as String? ?? 'Famille',
               })
           .toList(),
