@@ -67,7 +67,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
     if (!widget.connected) return;
     setState(() => _loading = true);
     try {
-      // Charger uniquement les sessions ouvertes / en cours (Counting)
+      // Charger uniquement les sessions ouvertes / en cours (Counting) créées depuis le bureau
       final allSessions = await widget.api.getInventorySessions(limit: 30);
       if (!mounted) return;
 
@@ -92,7 +92,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
         await _loadCountedLines(_selectedSession!.sessionId);
       }
     } catch (e) {
-      if (mounted) _showMessage('Erreur sessions : $e', isSuccess: false);
+      if (mounted) _showMessage('Erreur chargement sessions : $e', isSuccess: false);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -107,7 +107,6 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
       );
       if (!mounted) return;
 
-      // Afficher en priorité les articles comptés ou récemment modifiés
       setState(() {
         _countedLines = lines;
       });
@@ -127,7 +126,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
     if (barcode.isEmpty) return;
 
     if (_selectedSession == null) {
-      _showMessage('Veuillez sélectionner ou créer une session d\'inventaire d\'abord.', isSuccess: false);
+      _showMessage('Aucune session ouverte sélectionnée.', isSuccess: false);
       _barcodeController.clear();
       _scannerKey.currentState?.resume();
       return;
@@ -135,7 +134,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
 
     _barcodeController.clear();
 
-    // Récupérer les infos existantes de la ligne dans la session si disponible
+    // Récupérer les infos existantes de la ligne dans la session
     InventoryLineItem? existingLine;
     try {
       existingLine = await widget.api.lookupInventoryLine(_selectedSession!.sessionId, barcode);
@@ -143,27 +142,27 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
 
     if (!mounted) return;
 
-    // Ouvrir directement la boîte de saisie de quantité
+    // Ouvrir directement la boîte de saisie de quantité entière (strict integer)
     await _promptQuantityForBarcode(barcode, existingLine);
   }
 
-  /// Boîte de dialogue simple et rapide pour saisir la quantité existante
+  /// Boîte de dialogue simple et rapide pour saisir la quantité existante (Entiers purs uniquement)
   Future<void> _promptQuantityForBarcode(String barcode, InventoryLineItem? existingLine) async {
     final qtyController = TextEditingController();
     final qtyFocusNode = FocusNode();
 
-    // Suggestion : stock actuel ou 1 si déjà compté
-    final initialSuggestion = existingLine != null && existingLine.countedQty > 0
-        ? existingLine.countedQty.toStringAsFixed(existingLine.countedQty.truncateToDouble() == existingLine.countedQty ? 0 : 2)
+    // Suggestion : entier existant ou vide
+    final initialInt = existingLine != null && existingLine.countedQty > 0
+        ? existingLine.countedQty.toInt().toString()
         : '';
-    qtyController.text = initialSuggestion;
+    qtyController.text = initialInt;
 
     final productName = existingLine?.productName ?? 'Code: $barcode';
     final lot = existingLine?.lotNumber;
     final lotInfo = (lot != null && lot.isNotEmpty && lot != '---') ? 'Lot: $lot' : '';
     final loc = existingLine?.locationName;
     final locInfo = (loc != null && loc.isNotEmpty && loc != '---') ? 'Empl: $loc' : '';
-    final snapshotQty = existingLine?.programQtySnapshot ?? 0.0;
+    final snapshotQty = (existingLine?.programQtySnapshot ?? 0.0).toInt();
     final unit = existingLine?.stockUnit ?? 'Unité';
 
     final confirmed = await showDialog<bool>(
@@ -212,25 +211,26 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Stock attendu (Snapshot) :', style: TextStyle(fontSize: 12, color: Color(0xFF007572))),
+                        const Text('Stock attendu :', style: TextStyle(fontSize: 12, color: Color(0xFF007572))),
                         Text('$snapshotQty $unit', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF007572))),
                       ],
                     ),
                   ),
                 const Text(
-                  'Quantité réelle en rayon *',
+                  'Quantité réelle comptée (Entier) *',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 const SizedBox(height: 6),
                 TextField(
                   controller: qtyController,
                   focusNode: qtyFocusNode,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly], // STRICT INTEGER - AUCUNE VIRGULE
                   autofocus: true,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF007572)),
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF007572)),
                   decoration: InputDecoration(
-                    hintText: 'Saisir quantité...',
+                    hintText: 'Ex: 12',
                     hintStyle: TextStyle(fontSize: 16, color: Colors.grey.shade400),
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -238,7 +238,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                   onSubmitted: (_) => Navigator.pop(ctx, true),
                 ),
                 const SizedBox(height: 10),
-                // Boutons d'aide rapide pour minimiser les clics
+                // Boutons d'aide rapide pour saisie directe en un clic
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -248,8 +248,8 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                     if (snapshotQty > 0)
                       _quickQtyButton('$snapshotQty', () => qtyController.text = snapshotQty.toString()),
                     _quickQtyButton('+1', () {
-                      final cur = double.tryParse(qtyController.text) ?? 0.0;
-                      qtyController.text = (cur + 1).toStringAsFixed(cur + 1 == (cur + 1).truncateToDouble() ? 0 : 2);
+                      final cur = int.tryParse(qtyController.text) ?? 0;
+                      qtyController.text = (cur + 1).toString();
                     }),
                   ],
                 ),
@@ -272,27 +272,34 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
       },
     );
 
-    // Si l'utilisateur a annulé ou n'a pas validé -> Ne rien faire, ne pas inclure
+    // Si l'utilisateur a annulé ou fermé -> Ne rien faire, ne pas inclure
     if (confirmed != true) {
       _showMessage('Scan ignoré (quantité non saisie).', isSuccess: false);
       _rearmScanner();
       return;
     }
 
-    final enteredQty = double.tryParse(qtyController.text.trim());
-    if (enteredQty == null) {
-      _showMessage('Quantité invalide. Article non inclus.', isSuccess: false);
+    final rawText = qtyController.text.trim();
+    if (rawText.isEmpty) {
+      _showMessage('Aucune quantité saisie. Article non inclus.', isSuccess: false);
       _rearmScanner();
       return;
     }
 
-    // Enregistrer la quantité comptée dans la session
+    final enteredQty = int.tryParse(rawText);
+    if (enteredQty == null) {
+      _showMessage('Nombre invalide. Article non inclus.', isSuccess: false);
+      _rearmScanner();
+      return;
+    }
+
+    // Enregistrer la quantité entière comptée dans la session
     setState(() => _loading = true);
     try {
       final res = await widget.api.scanInventoryBarcode(
         _selectedSession!.sessionId,
         barcode,
-        qty: enteredQty,
+        qty: enteredQty.toDouble(),
         userId: widget.currentUser?.userId,
         replaceCounted: true,
       );
@@ -321,7 +328,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
           color: Colors.grey.shade200,
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
       ),
     );
   }
@@ -332,113 +339,23 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
     _barcodeFocus.requestFocus();
   }
 
-  Future<void> _showQuickNewSessionDialog() async {
-    final nameCtrl = TextEditingController(text: 'Inventaire ${DateTime.now().day}/${DateTime.now().month}');
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Démarrer une session', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Nom de la session *'),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF007572)),
-              onPressed: () async {
-                final name = nameCtrl.text.trim();
-                if (name.isEmpty) return;
-                Navigator.pop(ctx);
-                setState(() => _loading = true);
-                try {
-                  final res = await widget.api.createInventorySession(
-                    name: name,
-                    scopeType: 'ALL',
-                    userId: widget.currentUser?.userId,
-                  );
-                  if (res['success'] == true) {
-                    final newId = res['session_id'] as int?;
-                    await _loadOpenSessions(autoSelectId: newId);
-                    _showMessage('Session #$newId démarrée !', isSuccess: true);
-                  }
-                } catch (e) {
-                  _showMessage('Erreur création : $e', isSuccess: false);
-                } finally {
-                  if (mounted) setState(() => _loading = false);
-                }
-              },
-              child: const Text('Démarrer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showApplyConfirmationDialog() async {
-    if (_selectedSession == null) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Appliquer l\'inventaire', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('Voulez-vous appliquer les comptages de la session #${_selectedSession!.sessionId} au stock réel ?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Annuler')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF007572)),
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('Oui, Appliquer'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() => _loading = true);
-      try {
-        final res = await widget.api.applyInventorySession(
-          _selectedSession!.sessionId,
-          userId: widget.currentUser?.userId,
-          allowUnknown: true,
-          uncountedAction: 'ignore',
-        );
-        if (res['success'] == true) {
-          _showMessage('Inventaire appliqué avec succès !', isSuccess: true);
-          await _loadOpenSessions();
-        } else {
-          _showMessage(res['message'] ?? 'Échec application', isSuccess: false);
-        }
-      } catch (e) {
-        _showMessage('Erreur : $e', isSuccess: false);
-      } finally {
-        if (mounted) setState(() => _loading = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         if (_loading) const LinearProgressIndicator(color: Color(0xFF007572)),
 
-        // 1. En-tête compact de session ouverte
+        // 1. En-tête compact de sélection de session ouverte
         _buildSessionSelectorBar(),
 
-        // 2. Zone de message / feedback de scan
+        // 2. Zone de message / feedback
         if (_statusMessage != null) _buildFeedbackBanner(),
 
-        // 3. Zone principale de saisie et de scan
+        // 3. Zone principale de scan code-barres
         _buildScanInputCard(),
 
-        // 4. Liste simple des articles comptés
+        // 4. Liste simple des articles de la session
         Expanded(child: _buildCountedList()),
-
-        // 5. Bouton de finalisation en bas
-        if (_selectedSession != null) _buildBottomActionBar(),
       ],
     );
   }
@@ -453,7 +370,10 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
           const SizedBox(width: 8),
           Expanded(
             child: _openSessions.isEmpty
-                ? const Text('Aucune session ouverte', style: TextStyle(color: Colors.grey, fontSize: 13))
+                ? const Text(
+                    'Aucune session ouverte sur le bureau',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                  )
                 : DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
                       isExpanded: true,
@@ -485,11 +405,6 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
             tooltip: 'Actualiser sessions',
             icon: const Icon(Icons.refresh, size: 20),
             onPressed: () => _loadOpenSessions(),
-          ),
-          IconButton.filledTonal(
-            tooltip: 'Nouvelle Session',
-            icon: const Icon(Icons.add, size: 20),
-            onPressed: _showQuickNewSessionDialog,
           ),
         ],
       ),
@@ -596,7 +511,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Articles en session (${displayed.length})',
+                'Articles (${displayed.length})',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF556677)),
               ),
               SizedBox(
@@ -622,8 +537,8 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
               ? Center(
                   child: Text(
                     _selectedSession == null
-                        ? 'Sélectionnez une session pour commencer le comptage.'
-                        : 'Aucun article trouvé. Scannez un produit pour le compter.',
+                        ? 'Sélectionnez une session ouverte pour commencer le comptage.'
+                        : 'Aucun article. Scannez un code-barres pour enregistrer la quantité.',
                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
@@ -640,6 +555,9 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                         : (line.lineStatus == 'SHORT'
                             ? Colors.red
                             : (line.lineStatus == 'EXCESS' ? Colors.blue : Colors.grey));
+
+                    final countedInt = line.countedQty.toInt();
+                    final snapshotInt = line.programQtySnapshot.toInt();
 
                     return Card(
                       margin: EdgeInsets.zero,
@@ -664,7 +582,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  isCounted ? 'Compté: ${line.countedQty}' : 'Non compté',
+                                  isCounted ? 'Compté: $countedInt' : 'Non compté',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 12,
@@ -672,7 +590,7 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                                   ),
                                 ),
                                 Text(
-                                  'Attendu: ${line.programQtySnapshot}',
+                                  'Attendu: $snapshotInt',
                                   style: const TextStyle(fontSize: 10, color: Colors.grey),
                                 ),
                               ],
@@ -690,23 +608,6 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
                 ),
         ),
       ],
-    );
-  }
-
-  Widget _buildBottomActionBar() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.all(8),
-      child: SizedBox(
-        width: double.infinity,
-        height: 44,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF007572)),
-          onPressed: _showApplyConfirmationDialog,
-          icon: const Icon(Icons.inventory),
-          label: const Text('Appliquer l\'inventaire au stock réel', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-      ),
     );
   }
 }
