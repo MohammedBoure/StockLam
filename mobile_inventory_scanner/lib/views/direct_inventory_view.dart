@@ -282,12 +282,15 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
   ) async {
     final recLot = violation.recommendedBatch['Lot_Number'] ?? '---';
     final recExp = violation.recommendedBatch['Expiry_Date'] ?? '---';
+    final recBarcode = violation.recommendedBatch['Internal_Barcode'] ?? '';
+    final recLoc = violation.recommendedBatch['Location_Name'] ?? 'Emplacement';
 
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFFFF9E6),
+        backgroundColor: const Color(0xFFFFFDF5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
@@ -295,52 +298,68 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
             Expanded(
               child: Text(
                 'Respect du FEFO',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF856404)),
+                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF856404), fontSize: 16),
               ),
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              '⚠️ Vous tentez de consommer un lot plus récent alors qu’un lot plus ancien est disponible :',
-              style: TextStyle(color: Color(0xFF856404), fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFD4EDDA),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFC3E6CB)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '⚠️ Vous tentez de consommer un lot plus récent alors qu’un lot plus ancien est disponible :',
+                style: TextStyle(color: Color(0xFF856404), fontSize: 13, fontWeight: FontWeight.w500),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('⭐ Lot Recommandé (Plus ancien) :', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF155724))),
-                  Text('Lot : $recLot  |  Exp : $recExp', style: const TextStyle(color: Color(0xFF155724))),
-                ],
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD4EDDA),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFC3E6CB), width: 1.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('⭐ Lot Recommandé (Plus ancien) :', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF155724), fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Text('Lot : $recLot', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF155724), fontSize: 14), softWrap: true),
+                    if (recBarcode.toString().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text('🏷️ Code-barres : $recBarcode', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF155724)), softWrap: true),
+                      ),
+                    Text('Exp : $recExp  |  📍 $recLoc', style: const TextStyle(color: Color(0xFF155724), fontSize: 12)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8D7DA),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFF5C6CB)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0ED),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFF5C6CB), width: 1.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('✋ Lot Sélectionné (Scanné) :', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF721C24), fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Text('Lot : ${currentBatch.lotNumber}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF721C24), fontSize: 14), softWrap: true),
+                    if (currentBatch.internalBarcode.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text('🏷️ Code-barres : ${currentBatch.internalBarcode}', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF721C24)), softWrap: true),
+                      ),
+                    Text('Exp : ${currentBatch.expiryDate}  |  📍 ${currentBatch.locationName}', style: const TextStyle(color: Color(0xFF721C24), fontSize: 12)),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('✋ Lot Sélectionné :', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF721C24))),
-                  Text('Lot : ${currentBatch.lotNumber}  |  Exp : ${currentBatch.expiryDate}', style: const TextStyle(color: Color(0xFF721C24))),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -720,14 +739,15 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
               ],
             ),
             const SizedBox(height: 6),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
               children: [
-                const Icon(Icons.qr_code, size: 16, color: Colors.black54),
-                const SizedBox(width: 6),
-                Text('Lot : ${batch.lotNumber}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 14),
-                const Icon(Icons.event, size: 16, color: Colors.black54),
-                const SizedBox(width: 4),
+                Text(
+                  'Lot : ${batch.lotNumber}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  softWrap: true,
+                ),
                 Text(
                   'Exp : ${batch.expiryDate}',
                   style: TextStyle(
@@ -737,7 +757,16 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            if (batch.internalBarcode.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  '🏷️ Code-barres : ${batch.internalBarcode}',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black87),
+                  softWrap: true,
+                ),
+              ),
+            const SizedBox(height: 2),
             Row(
               children: [
                 const Icon(Icons.location_on, size: 16, color: Colors.black54),
@@ -745,13 +774,13 @@ class _DirectInventoryViewState extends State<DirectInventoryView> {
                 Expanded(
                   child: Text(
                     batch.locationName,
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
+                    style: const TextStyle(color: Colors.black54, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
-            const Divider(height: 18),
+            const Divider(height: 16),
             Row(
               children: [
                 Expanded(

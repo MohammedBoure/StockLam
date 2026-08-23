@@ -179,7 +179,7 @@ class _FastDispatchViewState extends State<FastDispatchView> {
         setState(() {
           existing.qty += 1;
           existing.allowFefoOverride = existing.allowFefoOverride || allowOverride;
-          _successMessage = 'Quantité augmentée pour ${existing.productName} (Lot ${existing.lotNumber}) : ${existing.qty}';
+          _successMessage = 'Quantité augmentée pour ${existing.productName} (Lot: ${existing.lotNumber}) : ${existing.qty}';
         });
       } else {
         setState(() {
@@ -220,11 +220,12 @@ class _FastDispatchViewState extends State<FastDispatchView> {
 
     setState(() {
       _items.add(newItem);
-      _successMessage = 'Ajouté : ${newItem.productName} (Lot ${newItem.lotNumber})';
+      _successMessage = 'Ajouté : ${newItem.productName} (Lot: ${newItem.lotNumber})';
     });
   }
 
   /// Boîte de dialogue FEFO conforme à celle du logiciel bureau (FEFOSelectionDialog)
+  /// Affiche le Numéro de Lot COMPLET et le Code-barres associé
   Future<BatchDetails?> _showFefoSelectionDialog({
     required String productName,
     required List<BatchDetails> allBatches,
@@ -322,28 +323,36 @@ class _FastDispatchViewState extends State<FastDispatchView> {
                               border: Border.all(color: borderCol, width: isChosen ? 2 : 1),
                             ),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Radio<int>(
-                                  value: b.batchId,
-                                  groupValue: currentlySelected.batchId,
-                                  activeColor: isRec ? const Color(0xFF27AE60) : const Color(0xFFE74C3C),
-                                  onChanged: (val) {
-                                    setDialogState(() {
-                                      currentlySelected = b;
-                                    });
-                                  },
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Radio<int>(
+                                    value: b.batchId,
+                                    groupValue: currentlySelected.batchId,
+                                    activeColor: isRec ? const Color(0xFF27AE60) : const Color(0xFFE74C3C),
+                                    onChanged: (val) {
+                                      setDialogState(() {
+                                        currentlySelected = b;
+                                      });
+                                    },
+                                  ),
                                 ),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Row(
+                                      // 1. Numéro de lot complet & Badge
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        crossAxisAlignment: WrapCrossAlignment.center,
                                         children: [
                                           Text(
                                             'Lot : ${b.lotNumber}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87),
+                                            softWrap: true,
                                           ),
-                                          const SizedBox(width: 6),
                                           if (isRec)
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -364,23 +373,46 @@ class _FastDispatchViewState extends State<FastDispatchView> {
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: const Text(
-                                                '✋ SÉLECTIONNÉ',
+                                                '✋ SCANNÉ',
                                                 style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                                               ),
                                             ),
                                         ],
                                       ),
-                                      const SizedBox(height: 2),
+                                      const SizedBox(height: 4),
+
+                                      // 2. Code-barres complet et visible
+                                      if (b.internalBarcode.isNotEmpty)
+                                        Container(
+                                          margin: const EdgeInsets.only(bottom: 4),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(0.06),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            '🏷️ Code-barres : ${b.internalBarcode}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontFamily: 'monospace',
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black87,
+                                            ),
+                                            softWrap: true,
+                                          ),
+                                        ),
+
+                                      // 3. Date Exp, Qté, Emplacement
                                       Text(
                                         'Date Exp : ${b.expiryDate}  •  Stock dispo : ${b.quantityCurrent.toInt()}',
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 12,
                                           fontWeight: isRec ? FontWeight.bold : FontWeight.normal,
                                           color: isRec ? const Color(0xFF155724) : Colors.black87,
                                         ),
                                       ),
                                       Text(
-                                        '📍 ${b.locationName}${b.dateReceived.isNotEmpty ? " • Reçu le : ${b.dateReceived}" : ""}',
+                                        '📍 Empl : ${b.locationName}${b.dateReceived.isNotEmpty ? " • Reçu le : ${b.dateReceived}" : ""}',
                                         style: const TextStyle(fontSize: 11, color: Colors.black54),
                                       ),
                                     ],
@@ -417,46 +449,80 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     );
   }
 
+  /// Boîte de sélection de lot générale affichant le Lot COMPLET et le Code-barres
   Future<BatchDetails?> _showBatchPickerDialog(String productName, List<BatchDetails> batches) async {
     return showDialog<BatchDetails>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('Sélectionner un lot - $productName', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: batches.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) => const Divider(height: 8),
             itemBuilder: (ctx, i) {
               final b = batches[i];
-              return ListTile(
-                dense: true,
-                leading: Icon(
-                  b.isRecommended ? Icons.star : Icons.inventory_2_outlined,
-                  color: b.isRecommended ? const Color(0xFF27AE60) : Colors.grey,
-                ),
-                title: Row(
-                  children: [
-                    Text(
-                      'Lot: ${b.lotNumber}',
-                      style: TextStyle(fontWeight: b.isRecommended ? FontWeight.bold : FontWeight.normal),
-                    ),
-                    if (b.isRecommended) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF27AE60),
-                          borderRadius: BorderRadius.circular(4),
+              return InkWell(
+                onTap: () => Navigator.pop(ctx, b),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: b.isRecommended ? const Color(0xFFE8F8F0) : Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: b.isRecommended ? const Color(0xFF27AE60) : Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'Lot : ${b.lotNumber}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: b.isRecommended ? const Color(0xFF155724) : Colors.black87,
+                            ),
+                            softWrap: true,
+                          ),
+                          if (b.isRecommended)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF27AE60),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text('⭐ RECOMMANDÉ', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                            ),
+                        ],
+                      ),
+                      if (b.internalBarcode.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3, bottom: 3),
+                          child: Text(
+                            '🏷️ Code-barres : ${b.internalBarcode}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                            softWrap: true,
+                          ),
                         ),
-                        child: const Text('RECOMMANDÉ', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                      Text(
+                        'Exp : ${b.expiryDate}  •  Dispo : ${b.quantityCurrent.toInt()}  |  📍 Empl : ${b.locationName}',
+                        style: const TextStyle(fontSize: 11, color: Colors.black54),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-                subtitle: Text('Exp: ${b.expiryDate}  •  Dispo: ${b.quantityCurrent.toInt()}  |  📍 ${b.locationName}'),
-                onTap: () => Navigator.pop(ctx, b),
               );
             },
           ),
@@ -507,7 +573,7 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     if (selected != null && mounted) {
       setState(() {
         item.updateBatch(selected, allowOverride: selected.batchId != recommended.batchId);
-        _successMessage = 'Lot mis à jour : ${item.productName} -> Lot ${item.lotNumber} (Exp: ${item.expiryDate})';
+        _successMessage = 'Lot mis à jour : ${item.productName} -> Lot: ${item.lotNumber} (Exp: ${item.expiryDate})';
       });
     }
   }
@@ -975,12 +1041,21 @@ class _FastDispatchViewState extends State<FastDispatchView> {
             ),
             const SizedBox(height: 4),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Lot : ${item.lotNumber}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(width: 12),
-                Text('Exp : ${item.expiryDate}', style: const TextStyle(color: Colors.black54)),
-                const Spacer(),
-                // Bouton interactif pour changer / remplacer le lot
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Lot : ${item.lotNumber}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        softWrap: true,
+                      ),
+                      Text('Exp : ${item.expiryDate}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                    ],
+                  ),
+                ),
                 TextButton.icon(
                   style: TextButton.styleFrom(
                     visualDensity: VisualDensity.compact,
@@ -994,7 +1069,7 @@ class _FastDispatchViewState extends State<FastDispatchView> {
             ),
             if (hasFefoWarning)
               Container(
-                margin: const EdgeInsets.only(bottom: 6),
+                margin: const EdgeInsets.symmetric(vertical: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF3CD),
@@ -1020,11 +1095,17 @@ class _FastDispatchViewState extends State<FastDispatchView> {
                   ],
                 ),
               ),
+            const SizedBox(height: 2),
             Row(
               children: [
                 const Icon(Icons.warehouse, size: 16, color: Colors.black54),
                 const SizedBox(width: 4),
-                Text('Source : ${item.locationName} (Dispo: $maxQty)', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                Expanded(
+                  child: Text(
+                    'Source : ${item.locationName} (Dispo : $maxQty)',
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ),
               ],
             ),
             const Divider(height: 16),

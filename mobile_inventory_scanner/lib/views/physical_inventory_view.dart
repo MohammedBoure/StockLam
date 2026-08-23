@@ -192,14 +192,23 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (lotInfo.isNotEmpty || locInfo.isNotEmpty)
+                if (lotInfo.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      [lotInfo, locInfo].where((s) => s.isNotEmpty).join(' • '),
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF556677), fontWeight: FontWeight.w500),
+                      lotInfo,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+                      softWrap: true,
                     ),
                   ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '🏷️ Code : $barcode${locInfo.isNotEmpty ? " • $locInfo" : ""}',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF556677), fontWeight: FontWeight.w500),
+                    softWrap: true,
+                  ),
+                ),
                 if (snapshotQty > 0)
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
