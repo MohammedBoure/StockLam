@@ -40,35 +40,6 @@ QWidget#sidebar_header {
     border-bottom: 2px solid #f0f0f0; /* فاصل خفيف جداً */
 }
 
-/* أزرار التنقل */
-QPushButton.nav_button {
-    background-color: transparent;
-    color: #607d8b; /* لون رمادي مزرق هادئ */
-    border: none;
-    padding: 14px 24px;
-    text-align: left;
-    font-size: 15px;
-    font-weight: 600;
-    margin: 4px 12px;
-    border-radius: 8px; /* حواف ناعمة */
-}
-
-QPushButton.nav_button:hover {
-    background-color: transparent;
-    color: #007572;
-}
-
-QPushButton.nav_button:pressed {
-    background-color: transparent;
-    color: #004d40;
-}
-
-QPushButton.nav_button:checked {
-    background-color: transparent;
-    color: #007572;
-    font-weight: 800;
-    qproperty-iconSize: 20px 20px; 
-}
 
 /* ============================================================
    3. TABLES (الجداول - النسخة المصححة والمحسنة)
@@ -379,29 +350,6 @@ QCalendarWidget QTableView {
     alternate-background-color: #ffffff;
 }
 
-/* تنسيق أزرار القائمة الجانبية */
-.nav_button {
-    text-align: left;
-    padding: 12px 20px;
-    border: none;
-    border-radius: 8px;
-    background-color: transparent;
-    color: #607d8b;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.nav_button:hover {
-    background-color: transparent;
-    color: #007572;
-}
-
-/* عند اختيار الزر */
-.nav_button:checked {
-    background-color: transparent;
-    color: #007572;
-    font-weight: 800;
-}
 
 
 /* --- تخصيص زر القائمة المنسدلة --- */
@@ -549,51 +497,50 @@ QFrame[state="compact"] QWidget#header_container {
     /* لا شيء خاص هنا لأننا قمنا بضبط الهوامش في بايثون */
 }
 
-/* --- أزرار التنقل (النمط العام) --- */
+/* --- أزرار التنقل (النمط العام المستوحى من الثيم المصور) --- */
 QPushButton[class="nav_button"] {
-    background-color: transparent;
-    color: #607d8b;            /* رمادي هادئ */
-    border: none;              /* لا حدود أبداً */
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;          /* خط عادي */
+    background-color: #f8fafc;
+    color: #334155;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     text-align: left;
-    padding: 0px;
+    padding: 10px 14px;
+    margin: 3px 12px;
 }
 
 /* --- التفاعل عند التمرير (Hover) --- */
 QPushButton[class="nav_button"]:hover {
-    color: #007572;            /* يتغير لون النص للـ Teal */
-    background-color: transparent;
+    color: #0f172a;
+    background-color: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    font-weight: 700;
 }
 
 /* ==========================================================
-   الحالة النشطة (Selected) - التعديل المطلوب
+   الحالة النشطة (Selected / Checked) - ثيم الآيقونات المزدوجة
    ========================================================== */
 QPushButton[class="nav_button"]:checked {
-    /* 1. لا شريط جانبي */
-    border: none;
-    
-    /* 2. لا خلفية (أو شفافة تماماً) */
-    background-color: transparent; 
-    
-    /* 3. النص يصبح أغمق وأغلظ */
-    color: #007572;      /* لون الـ Teal الغامق */
-    font-weight: 800;    /* خط سميك جداً (Extra Bold) */
+    background-color: #ffffff;
+    border: 1.5px solid #2d3748;
+    border-left: 4.5px solid #007572;
+    color: #007572;
+    font-weight: 800;
 }
 
 /* ==========================================================
    الوضع الكبير (Expanded)
    ========================================================== */
 QFrame[state="expanded"] QPushButton[class="nav_button"] {
-    padding: 12px 20px;
-    margin: 4px 15px;
+    padding: 10px 14px;
+    margin: 3px 12px;
     text-align: left;
 }
 
-/* في الوضع الكبير: فقط النص يتغير */
 QFrame[state="expanded"] QPushButton[class="nav_button"]:checked {
-    padding: 12px 20px; /* الحفاظ على نفس المسافة */
+    padding: 10px 14px;
 }
 
 /* ==========================================================
@@ -601,47 +548,68 @@ QFrame[state="expanded"] QPushButton[class="nav_button"]:checked {
    ========================================================== */
 QFrame[state="compact"] QPushButton[class="nav_button"] {
     padding: 0px;
-    margin: 8px 10px;
+    margin: 4px 10px;
     text-align: center;
-    height: 40px;
-    border-radius: 8px;
+    height: 44px;
+    width: 44px;
+    border-radius: 10px;
 }
 
 QFrame[state="compact"] QPushButton[class="nav_button"]:hover {
-    background-color: transparent;
+    background-color: #ffffff;
+    border: 1.5px solid #cbd5e1;
 }
 
 QFrame[state="compact"] QPushButton[class="nav_button"]:checked {
-    background-color: transparent;
+    background-color: #f0fdf9;
+    border: 2px solid #007572;
 }
-
 
 /* ==========================================================
-   بقية الأزرار
+   بقية الأزرار (Déconnexion & Réduire)
    ========================================================== */
 QPushButton[class="logout_button"] {
-    color: #e74c3c;
-    border: none;
-    font-weight: 600;
+    color: #e53e3e;
+    background-color: #fff5f5;
+    border: 1.5px solid #fed7d7;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 700;
+    font-family: 'Segoe UI', system-ui, sans-serif;
 }
+
 QFrame[state="expanded"] QPushButton[class="logout_button"] {
     text-align: left;
-    padding: 12px 20px;
-    margin-top: 20px;
+    padding: 10px 14px;
+    margin: 8px 12px;
 }
+
 QFrame[state="compact"] QPushButton[class="logout_button"] {
     text-align: center;
     padding: 0px;
-    margin: 10px;
-    height: 40px;
+    margin: 4px 10px;
+    height: 44px;
+    width: 44px;
+    border-radius: 10px;
 }
+
 QPushButton[class="logout_button"]:hover {
-    background-color: #fdf2f2;
+    background-color: #fee2e2;
+    border: 1.5px solid #fca5a5;
+    color: #991b1b;
 }
 
 QPushButton[class="hide_button"] {
-    background-color: #f8f9fa;
-    border-top: 1px solid #ebf0f5;
-    border-radius: 0px;
-    padding: 12px;
+    background-color: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    margin: 6px 12px 10px 12px;
+    padding: 8px;
+    color: #64748b;
+}
+
+QPushButton[class="hide_button"]:hover {
+    background-color: #e2e8f0;
+    border-color: #cbd5e1;
+    color: #1e293b;
 }

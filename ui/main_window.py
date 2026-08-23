@@ -279,23 +279,23 @@ class MainWindow(QMainWindow):
         self.nav_group.idClicked.connect(self.switch_page)
 
         buttons_info = [
-            (0, "Tableau de Bord", "fa5s.chart-pie",          "#2563eb"),  # Royal Blue
-            (1, "Données de Base", "fa5s.layer-group",         "#7c3aed"),  # Deep Violet
-            (2, "Achats & Entrées", "fa5s.shopping-cart",      "#059669"),  # Emerald Green
-            (3, "Stock & Magasin",  "fa5s.boxes",              "#d97706"),  # Amber / Warm Orange
-            (6, "Sous-Traitants",   "fa5s.file-invoice-dollar","#0d9488"),  # Teal
-            (8, "Réclamations",    "fa5s.exclamation-circle",  "#dc2626"),  # Crimson Red
-            (9, "Inventaire",       "fa5s.clipboard-list",     "#0284c7"),  # Sky Blue
-            (7, "Traçabilité",      "fa5s.history",            "#9333ea"),  # Vibrant Purple
-            (5, "Utilisateurs",    "fa5s.users",              "#4f46e5"),  # Indigo
-            (4, "Paramètres",      "fa5s.sliders-h",          "#64748b"),  # Slate Gray
+            (0, "Tableau de Bord", "fa5s.chart-pie",          "#0284c7"),  # Sky Blue / Analytics
+            (1, "Données de Base", "fa5s.folder-open",         "#f59e0b"),  # Warm Amber / Folders
+            (2, "Achats & Entrées", "fa5s.paper-plane",        "#10b981"),  # Emerald / Delivery plane
+            (3, "Stock & Magasin",  "fa5s.boxes",              "#ef4444"),  # Coral Red / Packages
+            (6, "Sous-Traitants",   "fa5s.handshake",          "#0d9488"),  # Teal / Partnership
+            (8, "Réclamations",    "fa5s.exclamation-circle",  "#dc2626"),  # Crimson Red / Alerts
+            (9, "Inventaire",       "fa5s.clipboard-check",     "#007572"),  # ModernStock Teal / Checklist
+            (7, "Traçabilité",      "fa5s.route",              "#8b5cf6"),  # Vibrant Purple / Pin Route
+            (5, "Utilisateurs",    "fa5s.sitemap",            "#6366f1"),  # Indigo / Team Tree
+            (4, "Paramètres",      "fa5s.sliders-h",          "#64748b"),  # Slate / Settings
         ]
 
         for btn_id, text, icon_name, icon_color in buttons_info:
             icon = qta.icon(icon_name, color=icon_color)
             btn = QPushButton(text)
             btn.setIcon(icon)
-            btn.setIconSize(QSize(20, 20))
+            btn.setIconSize(QSize(22, 22))
             btn.setCheckable(True)
             btn.setProperty("class", "nav_button")
             btn.setCursor(Qt.PointingHandCursor)
