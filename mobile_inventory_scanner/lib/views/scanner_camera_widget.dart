@@ -15,15 +15,23 @@ class ScannerCameraWidget extends StatefulWidget {
   final VoidCallback onClose;
 
   @override
-  State<ScannerCameraWidget> createState() => _ScannerCameraWidgetState();
+  State<ScannerCameraWidget> createState() => ScannerCameraWidgetState();
 }
 
-class _ScannerCameraWidgetState extends State<ScannerCameraWidget>
+class ScannerCameraWidgetState extends State<ScannerCameraWidget>
     with WidgetsBindingObserver {
   late final MobileScannerController _controller;
   CameraFacing _cameraFacing = CameraFacing.back;
   bool _starting = false;
   bool _hasDetected = false;
+
+  void resume() {
+    if (mounted) {
+      setState(() {
+        _hasDetected = false;
+      });
+    }
+  }
 
   @override
   void initState() {
