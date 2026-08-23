@@ -497,35 +497,30 @@ QFrame[state="compact"] QWidget#header_container {
     /* لا شيء خاص هنا لأننا قمنا بضبط الهوامش في بايثون */
 }
 
-/* --- أزرار التنقل (النمط العام المستوحى من الثيم المصور) --- */
+/* --- أزرار التنقل (النمط الأصلي النظيف بدون إطارات) --- */
 QPushButton[class="nav_button"] {
-    background-color: #f8fafc;
-    color: #334155;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 10px;
-    font-size: 13.5px;
-    font-weight: 600;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: transparent;
+    color: #607d8b;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
     text-align: left;
-    padding: 10px 14px;
-    margin: 3px 12px;
+    padding: 0px;
 }
 
 /* --- التفاعل عند التمرير (Hover) --- */
 QPushButton[class="nav_button"]:hover {
-    color: #0f172a;
-    background-color: #ffffff;
-    border: 1.5px solid #cbd5e1;
-    font-weight: 700;
+    color: #007572;
+    background-color: transparent;
 }
 
 /* ==========================================================
-   الحالة النشطة (Selected / Checked) - ثيم الآيقونات المزدوجة
+   الحالة النشطة (Selected / Checked)
    ========================================================== */
 QPushButton[class="nav_button"]:checked {
-    background-color: #ffffff;
-    border: 1.5px solid #2d3748;
-    border-left: 4.5px solid #007572;
+    border: none;
+    background-color: transparent;
     color: #007572;
     font-weight: 800;
 }
@@ -534,13 +529,13 @@ QPushButton[class="nav_button"]:checked {
    الوضع الكبير (Expanded)
    ========================================================== */
 QFrame[state="expanded"] QPushButton[class="nav_button"] {
-    padding: 10px 14px;
-    margin: 3px 12px;
+    padding: 12px 20px;
+    margin: 4px 15px;
     text-align: left;
 }
 
 QFrame[state="expanded"] QPushButton[class="nav_button"]:checked {
-    padding: 10px 14px;
+    padding: 12px 20px;
 }
 
 /* ==========================================================
@@ -548,68 +543,51 @@ QFrame[state="expanded"] QPushButton[class="nav_button"]:checked {
    ========================================================== */
 QFrame[state="compact"] QPushButton[class="nav_button"] {
     padding: 0px;
-    margin: 4px 10px;
+    margin: 8px 10px;
     text-align: center;
-    height: 44px;
-    width: 44px;
-    border-radius: 10px;
+    height: 40px;
+    border-radius: 8px;
 }
 
 QFrame[state="compact"] QPushButton[class="nav_button"]:hover {
-    background-color: #ffffff;
-    border: 1.5px solid #cbd5e1;
+    background-color: transparent;
 }
 
 QFrame[state="compact"] QPushButton[class="nav_button"]:checked {
-    background-color: #f0fdf9;
-    border: 2px solid #007572;
+    background-color: transparent;
 }
 
 /* ==========================================================
-   بقية الأزرار (Déconnexion & Réduire)
+   بقية الأزرار
    ========================================================== */
 QPushButton[class="logout_button"] {
-    color: #e53e3e;
-    background-color: #fff5f5;
-    border: 1.5px solid #fed7d7;
-    border-radius: 10px;
-    font-size: 13.5px;
-    font-weight: 700;
-    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e74c3c;
+    border: none;
+    font-weight: 600;
+    background-color: transparent;
 }
 
 QFrame[state="expanded"] QPushButton[class="logout_button"] {
     text-align: left;
-    padding: 10px 14px;
-    margin: 8px 12px;
+    padding: 12px 20px;
+    margin-top: 20px;
 }
 
 QFrame[state="compact"] QPushButton[class="logout_button"] {
     text-align: center;
     padding: 0px;
-    margin: 4px 10px;
-    height: 44px;
-    width: 44px;
-    border-radius: 10px;
+    margin: 10px;
+    height: 40px;
 }
 
 QPushButton[class="logout_button"]:hover {
-    background-color: #fee2e2;
-    border: 1.5px solid #fca5a5;
-    color: #991b1b;
+    background-color: #fdf2f2;
 }
 
 QPushButton[class="hide_button"] {
-    background-color: #f8fafc;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 8px;
-    margin: 6px 12px 10px 12px;
-    padding: 8px;
-    color: #64748b;
-}
-
-QPushButton[class="hide_button"]:hover {
-    background-color: #e2e8f0;
-    border-color: #cbd5e1;
-    color: #1e293b;
+    background-color: #f8f9fa;
+    border-top: 1px solid #ebf0f5;
+    border: none;
+    border-radius: 0px;
+    padding: 12px;
 }
