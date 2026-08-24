@@ -726,6 +726,127 @@ class PurchaseOrderDialog(BaseDialog):
         self.update_action_buttons_state()
         self.recalculate_dialog_totals()
 
+    def edit_selected_line(self):
+        row = self.lines_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Information", "Veuillez sélectionner un article.")
+            return
+        self.edit_line(row)
+
+    def delete_selected_line(self):
+        row = self.lines_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Information", "Veuillez sélectionner un article.")
+            return
+
+        reply = QMessageBox.question(self, "Confirmation", "Supprimer cet article ?")
+        if reply == QMessageBox.Yes:
+            product_item = self.lines_table.item(row, 0)
+            detail_id = product_item.data(Qt.UserRole + 1) if product_item else None
+            
+            if hasattr(self.parent(), 'manager') and detail_id:
+                if not self.parent().manager.po.delete_po_line(detail_id):
+                    QMessageBox.critical(self, "Erreur", "Erreur lors de la suppression.")
+                    return
+                self.reload_details_from_db()
+            else:
+                self.lines_table.removeRow(row)
+                
+            self.update_action_buttons_state()
+            self.recalculate_dialog_totals()
+            if self.editing_row == row:
+                self.reset_input_fields()
+
+    def edit_line(self, row):
+        product_item = self.lines_table.item(row, 0)
+        if not product_item:
+            return
+
+        product_id = product_item.data(Qt.UserRole)
+        product_data = next((p for p in self.products if p['Product_ID'] == product_id), None)
+        if not product_data:
+            return
+
+        brand = product_data.get('Manuf_Name') or "---"
+        self.product_search.setText(f"{product_data['Product_Name']} ({brand})")
+
+        self.unit_combo.clear()
+        raw_units = [product_data.get('Ordering_Unit'), product_data.get('Stock_Unit'), product_data.get('Usage_Unit')]
+        units = sorted(list(set([u for u in raw_units if u])))
+        if not units: units = ['U']
+        self.unit_combo.addItems(units)
+        
+        # استرجاع الوحدة الحالية من الجدول
+        current_unit = self.lines_table.item(row, 2).text()
+        if current_unit:
+            if self.unit_combo.findText(current_unit) == -1:
+                self.unit_combo.addItem(current_unit)
+            self.unit_combo.setCurrentText(current_unit)
+            
+        self.unit_combo.setEnabled(True)
+
+        self.qty_spin.setValue(int(self.lines_table.item(row, 3).text() or 1))
+        self.item_note_input.setText(self.lines_table.item(row, 6).text() or "")
+
+        self.add_or_save_btn.setText("💾 Enregistrer")
+        self.editing_row = row
+
+    def update_line(self, row, qty, unit, note):
+        product_item = self.lines_table.item(row, 0)
+        detail_id = product_item.data(Qt.UserRole + 1) if product_item else None
+        
+        if hasattr(self.parent(), 'manager') and detail_id:
+            po_manager = self.parent().manager.po
+            item_data = {
+                'Qty_Ordered': qty,
+                'Ordering_Unit': unit,
+                'Item_Note': note
+            }
+            if not po_manager.update_po_line(detail_id, item_data):
+                QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour.")
+                return
+            self.reload_details_from_db()
+        else:
+            product_id = product_item.data(Qt.UserRole)
+            product_data = next((p for p in self.products if p['Product_ID'] == product_id), {})
+
+            self.lines_table.item(row, 2).setText(str(unit).strip())
+            self.lines_table.item(row, 3).setText(str(qty))
+            
+            price_info = self.latest_prices_map.get(product_id)
+            has_price = False
+            line_total_ttc = 0.0
+            
+            if price_info and price_info.get('Unit_Price_TTC', 0) > 0:
+                base_pu_ttc = price_info['Unit_Price_TTC']
+                from database.purchase_order_manager import PurchaseOrderManager
+                factor = PurchaseOrderManager.calculate_unit_conversion_factor(
+                    line_unit=unit,
+                    ordering_unit=product_data.get('Ordering_Unit'),
+                    stock_unit=product_data.get('Stock_Unit'),
+                    stock_qty_per_order_unit=product_data.get('Stock_Qty_Per_Order_Unit'),
+                    usage_unit=product_data.get('Usage_Unit'),
+                    usage_qty_per_stock_unit=product_data.get('Usage_Qty_Per_Stock_Unit')
+                )
+                effective_pu_ttc = base_pu_ttc * factor
+                line_total_ttc = float(qty) * effective_pu_ttc
+                has_price = True
+                
+                self.lines_table.item(row, 4).setText(f"{effective_pu_ttc:,.2f} DA")
+                self.lines_table.item(row, 5).setText(f"{line_total_ttc:,.2f} DA")
+                self.lines_table.item(row, 4).setForeground(QColor("#27ae60"))
+                self.lines_table.item(row, 5).setForeground(QColor("#27ae60"))
+            else:
+                self.lines_table.item(row, 4).setText("---")
+                self.lines_table.item(row, 5).setText("---")
+                self.lines_table.item(row, 4).setForeground(QColor("#7f8c8d"))
+                self.lines_table.item(row, 5).setForeground(QColor("#7f8c8d"))
+                
+            product_item.setData(Qt.UserRole + 2, has_price)
+            product_item.setData(Qt.UserRole + 3, line_total_ttc)
+            self.lines_table.item(row, 6).setText(note)
+            self.recalculate_dialog_totals()
+
     def update_action_buttons_state(self):
         has_selection = self.lines_table.currentRow() >= 0
         self.btn_edit_line.setEnabled(has_selection)

@@ -225,7 +225,7 @@ class PurchaseOrderManager:
                         COALESCE(ib.Discount_Percent, 0) AS Discount_Percent,
                         COALESCE(ib.Tax_Rate_Percent, 0) AS Tax_Rate_Percent,
                         ib.Batch_ID,
-                        ib.Date_Received
+                        ib.Created_At AS Date_Received
                     FROM Inventory_Batches ib
                     INNER JOIN (
                         SELECT Product_ID, MAX(Batch_ID) AS max_batch_id
