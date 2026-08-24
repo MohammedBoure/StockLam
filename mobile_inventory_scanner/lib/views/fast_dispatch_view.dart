@@ -27,12 +27,18 @@ class FastDispatchView extends StatefulWidget {
 class _FastDispatchViewState extends State<FastDispatchView> {
   final TextEditingController _barcodeController = TextEditingController();
   final FocusNode _barcodeFocus = FocusNode();
+  final GlobalKey<ScannerCameraWidgetState> _scannerKey = GlobalKey<ScannerCameraWidgetState>();
 
   String _mode = 'consume'; // 'consume' or 'transfer'
   bool _loading = false;
   bool _cameraOpen = false;
   String? _errorMessage;
   String? _successMessage;
+
+  // Suivi de l'état du panier et des retours sonores/visuels
+  int? _highlightedBatchId;
+  String? _lastAction; // 'new', 'duplicate', 'max_reached', 'error'
+  Timer? _highlightTimer;
 
   final List<BulkDispatchItem> _items = [];
   List<LocationItem> _locations = [];
@@ -56,9 +62,44 @@ class _FastDispatchViewState extends State<FastDispatchView> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
     _barcodeController.dispose();
     _barcodeFocus.dispose();
     super.dispose();
+  }
+
+  // --- Gestion du retour sonore (SystemSound) & haptique ---
+  void _playPositiveSound() {
+    unawaited(SystemSound.play(SystemSoundType.click));
+  }
+
+  void _playDuplicateSound() {
+    // Double impulsion sonore distincte pour signaler que le produit est DÉJÀ dans le panier
+    unawaited(SystemSound.play(SystemSoundType.click));
+    Future.delayed(const Duration(milliseconds: 110), () {
+      unawaited(SystemSound.play(SystemSoundType.click));
+    });
+  }
+
+  void _playAlertSound() {
+    unawaited(SystemSound.play(SystemSoundType.alert));
+  }
+
+  void _setHighlight(int batchId, String action) {
+    _highlightTimer?.cancel();
+    setState(() {
+      _highlightedBatchId = batchId;
+      _lastAction = action;
+    });
+    _highlightTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() {
+          if (_highlightedBatchId == batchId) {
+            _highlightedBatchId = null;
+          }
+        });
+      }
+    });
   }
 
   Future<void> _loadLocations() async {
@@ -80,7 +121,13 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     if (barcode.isEmpty) return;
 
     if (!widget.connected) {
-      setState(() => _errorMessage = 'Connectez d’abord un ordinateur ModernStock.');
+      _playAlertSound();
+      HapticFeedback.vibrate();
+      setState(() {
+        _errorMessage = 'Connectez d’abord un ordinateur ModernStock.';
+        _successMessage = null;
+        _lastAction = 'error';
+      });
       return;
     }
 
@@ -95,10 +142,13 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       if (!mounted) return;
 
       if (result['found'] == false) {
+        _playAlertSound();
+        HapticFeedback.vibrate();
         setState(() {
           _errorMessage = result['message'] ?? 'Aucun produit ou lot trouvé pour "$barcode".';
+          _successMessage = null;
+          _lastAction = 'error';
         });
-        HapticFeedback.vibrate();
         return;
       }
 
@@ -111,8 +161,12 @@ class _FastDispatchViewState extends State<FastDispatchView> {
           .toList();
 
       if (batches.isEmpty) {
+        _playAlertSound();
+        HapticFeedback.vibrate();
         setState(() {
           _errorMessage = 'Aucun lot en stock pour ${prod?.productName ?? barcode}.';
+          _successMessage = null;
+          _lastAction = 'error';
         });
         return;
       }
@@ -157,11 +211,24 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       _addItemToDispatch(prod, selectedBatch, batches, allowOverride: allowOverride);
       _barcodeController.clear();
       _barcodeFocus.requestFocus();
-      HapticFeedback.lightImpact();
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = 'Erreur lors du scan : $e');
+      _playAlertSound();
+      HapticFeedback.vibrate();
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Erreur lors du scan : $e';
+          _successMessage = null;
+          _lastAction = 'error';
+        });
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
+      // Réarmement automatique de la caméra pour scan en continu
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (mounted && _cameraOpen) {
+          _scannerKey.currentState?.resume();
+        }
+      });
     }
   }
 
@@ -176,15 +243,23 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       final existing = _items[existingIndex];
       final maxQty = existing.currentQty.toInt();
       if (existing.qty < maxQty) {
+        _playDuplicateSound();
+        HapticFeedback.mediumImpact();
         setState(() {
           existing.qty += 1;
           existing.allowFefoOverride = existing.allowFefoOverride || allowOverride;
-          _successMessage = 'Quantité augmentée pour ${existing.productName} (Lot: ${existing.lotNumber}) : ${existing.qty}';
+          _successMessage = '🔄 Produit déjà dans le panier : ${existing.productName} (Lot: ${existing.lotNumber}) ➔ Quantité augmentée à ${existing.qty} / $maxQty';
+          _errorMessage = null;
         });
+        _setHighlight(existing.batchId, 'duplicate');
       } else {
+        _playAlertSound();
+        HapticFeedback.vibrate();
         setState(() {
-          _errorMessage = 'Quantité maximale disponible atteinte pour ce lot ($maxQty).';
+          _errorMessage = '⚠️ Produit déjà dans le panier : Stock maximal disponible atteint pour ce lot ($maxQty unités).';
+          _successMessage = null;
         });
+        _setHighlight(existing.batchId, 'max_reached');
       }
       return;
     }
@@ -218,10 +293,14 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       availableBatches: allBatches,
     );
 
+    _playPositiveSound();
+    HapticFeedback.lightImpact();
     setState(() {
       _items.add(newItem);
-      _successMessage = 'Ajouté : ${newItem.productName} (Lot: ${newItem.lotNumber})';
+      _successMessage = '✅ Produit ajouté au panier : ${newItem.productName} (Lot: ${newItem.lotNumber})';
+      _errorMessage = null;
     });
+    _setHighlight(newItem.batchId, 'new');
   }
 
   /// Boîte de dialogue FEFO conforme à celle du logiciel bureau (FEFOSelectionDialog)
@@ -832,6 +911,7 @@ class _FastDispatchViewState extends State<FastDispatchView> {
         // 3. Caméra
         if (_cameraOpen) ...[
           ScannerCameraWidget(
+            key: _scannerKey,
             onCodeDetected: (code) {
               _barcodeController.text = code;
               unawaited(_processBarcodeScan(code));
@@ -841,20 +921,34 @@ class _FastDispatchViewState extends State<FastDispatchView> {
           const SizedBox(height: 10),
         ],
 
-        // 4. Messages d'état
+        // 4. Messages d'état & de retour interactif
         if (_errorMessage != null) ...[
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFDEEED),
+              color: _lastAction == 'max_reached' ? const Color(0xFFFFF3CD) : const Color(0xFFFDEEED),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFF5C6CB)),
+              border: Border.all(
+                color: _lastAction == 'max_reached' ? const Color(0xFFFFEEBA) : const Color(0xFFF5C6CB),
+                width: 1.5,
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.error_outline, color: Colors.red),
+                Icon(
+                  _lastAction == 'max_reached' ? Icons.warning_amber_rounded : Icons.error_outline,
+                  color: _lastAction == 'max_reached' ? const Color(0xFFD35400) : Colors.red,
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red))),
+                Expanded(
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: _lastAction == 'max_reached' ? const Color(0xFF856404) : Colors.red,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -865,15 +959,29 @@ class _FastDispatchViewState extends State<FastDispatchView> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F8F0),
+              color: _lastAction == 'duplicate' ? const Color(0xFFEBF5FB) : const Color(0xFFE8F8F0),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFC3E6CB)),
+              border: Border.all(
+                color: _lastAction == 'duplicate' ? const Color(0xFFAED6F1) : const Color(0xFFC3E6CB),
+                width: 1.5,
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.check_circle_outline, color: Color(0xFF27AE60)),
+                Icon(
+                  _lastAction == 'duplicate' ? Icons.sync : Icons.check_circle_outline,
+                  color: _lastAction == 'duplicate' ? const Color(0xFF2980B9) : const Color(0xFF27AE60),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: Text(_successMessage!, style: const TextStyle(color: Color(0xFF155724)))),
+                Expanded(
+                  child: Text(
+                    _successMessage!,
+                    style: TextStyle(
+                      color: _lastAction == 'duplicate' ? const Color(0xFF1B4F72) : const Color(0xFF155724),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1007,14 +1115,31 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     final maxQty = item.currentQty.toInt();
     final isConsumeMode = _mode == 'consume';
     final hasFefoWarning = isConsumeMode && !item.isRecommended;
+    final isHighlighted = item.batchId == _highlightedBatchId;
+
+    Color borderColor = hasFefoWarning ? Colors.orange.shade300 : Colors.grey.shade200;
+    double borderWidth = hasFefoWarning ? 1.5 : 1.0;
+
+    if (isHighlighted) {
+      if (_lastAction == 'duplicate') {
+        borderColor = const Color(0xFF2980B9);
+        borderWidth = 2.0;
+      } else if (_lastAction == 'new') {
+        borderColor = const Color(0xFF27AE60);
+        borderWidth = 2.0;
+      } else if (_lastAction == 'max_reached') {
+        borderColor = const Color(0xFFE67E22);
+        borderWidth = 2.0;
+      }
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: hasFefoWarning ? Colors.orange.shade300 : Colors.grey.shade200,
-          width: hasFefoWarning ? 1.5 : 1,
+          color: borderColor,
+          width: borderWidth,
         ),
       ),
       child: Padding(
@@ -1022,6 +1147,87 @@ class _FastDispatchViewState extends State<FastDispatchView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Badge contextuel de confirmation d'action (Nouveau / Déjà dans panier / Max atteint)
+            if (isHighlighted) ...[
+              if (_lastAction == 'duplicate')
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEBF5FB),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF2980B9), width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sync, color: Color(0xFF2980B9), size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '🔄 DÉJÀ DANS LE PANIER (+1) • Quantité : ${item.qty} / $maxQty',
+                          style: const TextStyle(
+                            color: Color(0xFF1B4F72),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_lastAction == 'new')
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F8F0),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF27AE60), width: 1.2),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.add_shopping_cart, color: Color(0xFF27AE60), size: 16),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '✨ NOUVEL ARTICLE AJOUTÉ AU PANIER',
+                          style: TextStyle(
+                            color: Color(0xFF155724),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_lastAction == 'max_reached')
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3CD),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFF39C12), width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Color(0xFFD35400), size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '⚠️ STOCK MAXIMAL ATTEINT ($maxQty unités disponibles)',
+                          style: const TextStyle(
+                            color: Color(0xFF856404),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
             Row(
               children: [
                 Expanded(

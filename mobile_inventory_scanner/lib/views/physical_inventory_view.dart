@@ -114,6 +114,12 @@ class _PhysicalInventoryViewState extends State<PhysicalInventoryView> {
   }
 
   void _showMessage(String msg, {bool isSuccess = true}) {
+    if (isSuccess) {
+      unawaited(SystemSound.play(SystemSoundType.click));
+    } else {
+      unawaited(SystemSound.play(SystemSoundType.alert));
+      HapticFeedback.vibrate();
+    }
     setState(() {
       _statusMessage = msg;
       _isSuccessMessage = isSuccess;
