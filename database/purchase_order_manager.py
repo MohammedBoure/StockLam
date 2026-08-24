@@ -182,11 +182,98 @@ class PurchaseOrderManager:
             logging.error(f"Erreur DB: {err}")
             return None
 
+    @staticmethod
+    def calculate_unit_conversion_factor(line_unit: Optional[str], ordering_unit: Optional[str], 
+                                         stock_unit: Optional[str], stock_qty_per_order_unit: Any = 1, 
+                                         usage_unit: Optional[str] = None, 
+                                         usage_qty_per_stock_unit: Any = 1) -> float:
+        """
+        Calcule le facteur de conversion pour convertir la quantité commandée en unités de stock.
+        """
+        l_unit = str(line_unit or '').strip().lower()
+        o_unit = str(ordering_unit or '').strip().lower()
+        s_unit = str(stock_unit or '').strip().lower()
+        u_unit = str(usage_unit or '').strip().lower()
+
+        if l_unit and o_unit and l_unit == o_unit and o_unit != s_unit:
+            try:
+                factor = float(stock_qty_per_order_unit or 1.0)
+                return factor if factor > 0 else 1.0
+            except (ValueError, TypeError):
+                return 1.0
+        elif l_unit and u_unit and l_unit == u_unit and u_unit != s_unit:
+            try:
+                u_factor = float(usage_qty_per_stock_unit or 1.0)
+                return (1.0 / u_factor) if u_factor > 0 else 1.0
+            except (ValueError, TypeError):
+                return 1.0
+        return 1.0
+
+    def get_products_latest_stock_prices(self, product_ids: Optional[List[int]] = None) -> Dict[int, Dict]:
+        """
+        Récupère le dernier prix d'achat enregistré dans le stock (Inventory_Batches) pour chaque produit.
+        Calcule le prix unitaire TTC en tenant compte des remises et de la TVA.
+        """
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                query = """
+                    SELECT 
+                        ib.Product_ID,
+                        ib.Unit_Price_Received AS Unit_Price_HT,
+                        COALESCE(ib.Discount_Percent, 0) AS Discount_Percent,
+                        COALESCE(ib.Tax_Rate_Percent, 0) AS Tax_Rate_Percent,
+                        ib.Batch_ID,
+                        ib.Date_Received
+                    FROM Inventory_Batches ib
+                    INNER JOIN (
+                        SELECT Product_ID, MAX(Batch_ID) AS max_batch_id
+                        FROM Inventory_Batches
+                        WHERE Unit_Price_Received > 0
+                """
+                params = []
+                if product_ids:
+                    placeholders = ', '.join(['%s'] * len(product_ids))
+                    query += f" AND Product_ID IN ({placeholders})"
+                    params.extend(product_ids)
+                    
+                query += """
+                        GROUP BY Product_ID
+                    ) latest ON ib.Batch_ID = latest.max_batch_id
+                """
+                
+                cursor.execute(query, tuple(params))
+                rows = cursor.fetchall()
+                
+                result = {}
+                for r in rows:
+                    p_id = r['Product_ID']
+                    p_ht = float(r['Unit_Price_HT'] or 0)
+                    d = float(r['Discount_Percent'] or 0) / 100.0
+                    t = float(r['Tax_Rate_Percent'] or 0) / 100.0
+                    p_ttc = p_ht * (1.0 - d) * (1.0 + t)
+                    
+                    result[p_id] = {
+                        'Product_ID': p_id,
+                        'Unit_Price_HT': p_ht,
+                        'Discount_Percent': float(r['Discount_Percent'] or 0),
+                        'Tax_Rate_Percent': float(r['Tax_Rate_Percent'] or 0),
+                        'Unit_Price_TTC': p_ttc,
+                        'Batch_ID': r['Batch_ID'],
+                        'Date_Received': r['Date_Received']
+                    }
+                return result
+        except Exception as e:
+            logging.error(f"Error fetching latest stock prices: {e}")
+            return {}
+
     def get_all_purchase_orders(self, months: int = 6, start_date=None, end_date=None) -> List[Dict]:
         """
-        جلب أوامر الشراء.
-        - يدعم الفلترة بنطاق تاريخ محدد (start_date, end_date).
-        - يدعم الفلترة بعدد الأشهر (months) للتوافق مع الكود القديم.
+        جلب أوامر الشراء مع حساب المبلغ الإجمالي المتوقع بناءً على آخر سعر مسجل في المخزون (TTC).
+        - إذا كانت جميع المنتجات معروفة السعر: يعرض المبلغ كاملاً (مثال: 1,500.00 DA).
+        - إذا كان بعضها معروفاً والبعض يطلب لأول مرة: يعرض المبلغ مسبوقاً بإشارة أكبر (مثال: > 1,250.00 DA).
+        - إذا كانت كل المنتجات جديدة ولا يوجد لها سعر: يعرض '---'.
         """
         try:
             with self.db.get_db_connection() as conn:
@@ -195,16 +282,12 @@ class PurchaseOrderManager:
                 query = """
                     SELECT 
                         po.PO_ID, 
+                        po.Supplier_ID,
                         po.Order_Date, 
                         po.Expected_Delivery_Date, 
                         po.Status, 
                         po.Notes,
-                        s.Supplier_Name,
-                        COALESCE((
-                            SELECT SUM(Line_Total_TTC) 
-                            FROM PO_Details 
-                            WHERE PO_ID = po.PO_ID
-                        ), 0) as Total_Amount_TTC
+                        s.Supplier_Name
                     FROM Purchase_Orders po
                     LEFT JOIN Suppliers s ON po.Supplier_ID = s.Supplier_ID
                     WHERE po.Deleted_At IS NULL
@@ -223,7 +306,100 @@ class PurchaseOrderManager:
                 query += " ORDER BY po.PO_ID DESC"
                 
                 cursor.execute(query, tuple(params))
-                return cursor.fetchall()
+                po_list = cursor.fetchall()
+                if not po_list:
+                    return []
+
+                po_ids = [p['PO_ID'] for p in po_list]
+                po_estimates = {p['PO_ID']: {'total_items': 0, 'known_items': 0, 'total_amount_ttc': 0.0} for p in po_list}
+
+                placeholders = ', '.join(['%s'] * len(po_ids))
+                query_details = f"""
+                    SELECT 
+                        pd.PO_ID,
+                        pd.Product_ID,
+                        pd.Qty_Ordered,
+                        COALESCE(pd.Ordering_Unit, pm.Ordering_Unit) AS Line_Unit,
+                        pm.Ordering_Unit AS Prod_Ordering_Unit,
+                        pm.Stock_Unit AS Prod_Stock_Unit,
+                        COALESCE(pm.Stock_Qty_Per_Order_Unit, 1) AS Stock_Qty_Per_Order_Unit,
+                        pm.Usage_Unit AS Prod_Usage_Unit,
+                        COALESCE(pm.Usage_Qty_Per_Stock_Unit, 1) AS Usage_Qty_Per_Stock_Unit,
+                        latest.Unit_Price_Received,
+                        latest.Discount_Percent,
+                        latest.Tax_Rate_Percent
+                    FROM PO_Details pd
+                    JOIN Products_Master pm ON pd.Product_ID = pm.Product_ID
+                    LEFT JOIN (
+                        SELECT ib.Product_ID, ib.Unit_Price_Received, ib.Discount_Percent, ib.Tax_Rate_Percent
+                        FROM Inventory_Batches ib
+                        INNER JOIN (
+                            SELECT Product_ID, MAX(Batch_ID) AS max_batch_id
+                            FROM Inventory_Batches
+                            WHERE Unit_Price_Received > 0
+                            GROUP BY Product_ID
+                        ) m ON ib.Batch_ID = m.max_batch_id
+                    ) latest ON pd.Product_ID = latest.Product_ID
+                    WHERE pd.PO_ID IN ({placeholders})
+                """
+                cursor.execute(query_details, tuple(po_ids))
+                detail_rows = cursor.fetchall()
+
+                for row in detail_rows:
+                    p_id_po = row['PO_ID']
+                    if p_id_po not in po_estimates:
+                        po_estimates[p_id_po] = {'total_items': 0, 'known_items': 0, 'total_amount_ttc': 0.0}
+                    
+                    po_estimates[p_id_po]['total_items'] += 1
+                    p_ht = row.get('Unit_Price_Received')
+                    if p_ht is not None and float(p_ht) > 0:
+                        po_estimates[p_id_po]['known_items'] += 1
+                        p = float(p_ht)
+                        d = float(row.get('Discount_Percent') or 0) / 100.0
+                        t = float(row.get('Tax_Rate_Percent') or 0) / 100.0
+                        p_ttc = p * (1.0 - d) * (1.0 + t)
+
+                        factor = self.calculate_unit_conversion_factor(
+                            line_unit=row.get('Line_Unit'),
+                            ordering_unit=row.get('Prod_Ordering_Unit'),
+                            stock_unit=row.get('Prod_Stock_Unit'),
+                            stock_qty_per_order_unit=row.get('Stock_Qty_Per_Order_Unit'),
+                            usage_unit=row.get('Prod_Usage_Unit'),
+                            usage_qty_per_stock_unit=row.get('Usage_Qty_Per_Stock_Unit')
+                        )
+                        qty = float(row.get('Qty_Ordered') or 0)
+                        po_estimates[p_id_po]['total_amount_ttc'] += qty * factor * p_ttc
+
+                for po in po_list:
+                    po_id = po['PO_ID']
+                    est = po_estimates.get(po_id, {'total_items': 0, 'known_items': 0, 'total_amount_ttc': 0.0})
+                    total_items = est['total_items']
+                    known_items = est['known_items']
+                    amt_ttc = est['total_amount_ttc']
+
+                    if total_items == 0 or known_items == 0:
+                        po['Total_Amount_TTC'] = 0.0
+                        po['Estimated_Amount_TTC'] = 0.0
+                        po['Estimated_Amount_Display'] = "---"
+                        po['Total_Amount_Display'] = "---"
+                        po['Has_Estimated_Price'] = False
+                        po['Is_Partial_Estimate'] = False
+                    elif known_items < total_items:
+                        po['Total_Amount_TTC'] = amt_ttc
+                        po['Estimated_Amount_TTC'] = amt_ttc
+                        po['Estimated_Amount_Display'] = f"> {amt_ttc:,.2f} DA"
+                        po['Total_Amount_Display'] = f"> {amt_ttc:,.2f} DA"
+                        po['Has_Estimated_Price'] = True
+                        po['Is_Partial_Estimate'] = True
+                    else:
+                        po['Total_Amount_TTC'] = amt_ttc
+                        po['Estimated_Amount_TTC'] = amt_ttc
+                        po['Estimated_Amount_Display'] = f"{amt_ttc:,.2f} DA"
+                        po['Total_Amount_Display'] = f"{amt_ttc:,.2f} DA"
+                        po['Has_Estimated_Price'] = True
+                        po['Is_Partial_Estimate'] = False
+
+                return po_list
                 
         except Exception as e:
             logging.error(f"Error fetching POs: {e}")
@@ -231,7 +407,7 @@ class PurchaseOrderManager:
         
         
     def get_full_order_details(self, po_id: int) -> Optional[Dict]:
-        """جلب بيانات الطلب والمنتجات والماركات والملاحظات (تم التعديل لجلب الوحدة المحفوظة)."""
+        """جلب بيانات الطلب والمنتجات والماركات والأسعار المقدرة من المخزون."""
         try:
             with self.db.get_db_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -247,9 +423,7 @@ class PurchaseOrderManager:
                 header = cursor.fetchone()
                 if not header: return None
 
-                # 2. جلب التفاصيل مع دمج الماركة (Brand) وملاحظة السطر (Item_Note)
-                # [FIX] نستخدم COALESCE لإعطاء الأولوية للوحدة المحفوظة في السطر (pd.Ordering_Unit)
-                # فإذا كانت NULL (للطلبات القديمة) نعود للوحدة الافتراضية للمنتج (p.Ordering_Unit)
+                # 2. جلب التفاصيل مع دمج الماركة والوحدات وآخر سعر مسجل في المخزون
                 query_details = """
                     SELECT 
                         pd.ID, pd.PO_ID, pd.Product_ID, pd.Qty_Ordered, 
@@ -259,14 +433,88 @@ class PurchaseOrderManager:
                         COALESCE(pd.Ordering_Unit, p.Ordering_Unit) as Ordering_Unit,
                         
                         p.Product_Name, 
-                        m.Manuf_Name
+                        m.Manuf_Name,
+                        p.Ordering_Unit as Master_Ordering_Unit,
+                        p.Stock_Unit,
+                        COALESCE(p.Stock_Qty_Per_Order_Unit, 1) as Stock_Qty_Per_Order_Unit,
+                        p.Usage_Unit,
+                        COALESCE(p.Usage_Qty_Per_Stock_Unit, 1) as Usage_Qty_Per_Stock_Unit,
+                        latest.Unit_Price_Received as Latest_Unit_Price_HT,
+                        COALESCE(latest.Discount_Percent, 0) as Latest_Discount_Percent,
+                        COALESCE(latest.Tax_Rate_Percent, 0) as Latest_Tax_Rate_Percent
                     FROM PO_Details pd
                     JOIN Products_Master p ON pd.Product_ID = p.Product_ID
                     LEFT JOIN Manufacturers m ON p.Manuf_ID = m.Manuf_ID
+                    LEFT JOIN (
+                        SELECT ib.Product_ID, ib.Unit_Price_Received, ib.Discount_Percent, ib.Tax_Rate_Percent
+                        FROM Inventory_Batches ib
+                        INNER JOIN (
+                            SELECT Product_ID, MAX(Batch_ID) AS max_batch_id
+                            FROM Inventory_Batches
+                            WHERE Unit_Price_Received > 0
+                            GROUP BY Product_ID
+                        ) m_batch ON ib.Batch_ID = m_batch.max_batch_id
+                    ) latest ON pd.Product_ID = latest.Product_ID
                     WHERE pd.PO_ID = %s
                 """
                 cursor.execute(query_details, (po_id,))
-                header['Details'] = cursor.fetchall() or []
+                details = cursor.fetchall() or []
+
+                total_items = len(details)
+                known_items = 0
+                total_estimated_ttc = 0.0
+
+                for line in details:
+                    p_ht = line.get('Latest_Unit_Price_HT')
+                    if p_ht is not None and float(p_ht) > 0:
+                        known_items += 1
+                        p = float(p_ht)
+                        d = float(line.get('Latest_Discount_Percent') or 0) / 100.0
+                        t = float(line.get('Latest_Tax_Rate_Percent') or 0) / 100.0
+                        p_ttc = p * (1.0 - d) * (1.0 + t)
+
+                        factor = self.calculate_unit_conversion_factor(
+                            line_unit=line.get('Ordering_Unit'),
+                            ordering_unit=line.get('Master_Ordering_Unit'),
+                            stock_unit=line.get('Stock_Unit'),
+                            stock_qty_per_order_unit=line.get('Stock_Qty_Per_Order_Unit'),
+                            usage_unit=line.get('Usage_Unit'),
+                            usage_qty_per_stock_unit=line.get('Usage_Qty_Per_Stock_Unit')
+                        )
+                        qty = float(line.get('Qty_Ordered') or 0)
+                        line_total_ttc = qty * factor * p_ttc
+                        
+                        line['Estimated_Unit_Price_TTC'] = p_ttc * factor
+                        line['Estimated_Line_Total_TTC'] = line_total_ttc
+                        line['Has_Estimated_Price'] = True
+                        total_estimated_ttc += line_total_ttc
+                    else:
+                        line['Estimated_Unit_Price_TTC'] = None
+                        line['Estimated_Line_Total_TTC'] = None
+                        line['Has_Estimated_Price'] = False
+
+                header['Details'] = details
+                header['Total_Items_Count'] = total_items
+                header['Known_Items_Count'] = known_items
+
+                if total_items == 0 or known_items == 0:
+                    header['Estimated_Amount_TTC'] = 0.0
+                    header['Estimated_Amount_Display'] = "---"
+                    header['Total_Amount_Display'] = "---"
+                    header['Has_Estimated_Price'] = False
+                    header['Is_Partial_Estimate'] = False
+                elif known_items < total_items:
+                    header['Estimated_Amount_TTC'] = total_estimated_ttc
+                    header['Estimated_Amount_Display'] = f"> {total_estimated_ttc:,.2f} DA"
+                    header['Total_Amount_Display'] = f"> {total_estimated_ttc:,.2f} DA"
+                    header['Has_Estimated_Price'] = True
+                    header['Is_Partial_Estimate'] = True
+                else:
+                    header['Estimated_Amount_TTC'] = total_estimated_ttc
+                    header['Estimated_Amount_Display'] = f"{total_estimated_ttc:,.2f} DA"
+                    header['Total_Amount_Display'] = f"{total_estimated_ttc:,.2f} DA"
+                    header['Has_Estimated_Price'] = True
+                    header['Is_Partial_Estimate'] = False
                 
                 return header
         except Exception as e:

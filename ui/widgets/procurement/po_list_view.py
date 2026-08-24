@@ -11,6 +11,19 @@ from PySide6.QtCore import Qt, Signal # [إضافة Signal]
 from ui.widgets.procurement.dialogs import PurchaseOrderDialog
 from ui.widgets.procurement.reception_dialog import ReceptionDialog
 
+class NumericTableWidgetItem(QTableWidgetItem):
+    def __lt__(self, other):
+        if other is None:
+            return False
+        v1 = self.data(Qt.UserRole)
+        v2 = other.data(Qt.UserRole)
+        if v1 is not None and v2 is not None:
+            try:
+                return float(v1) < float(v2)
+            except (ValueError, TypeError):
+                pass
+        return super().__lt__(other)
+
 class PurchaseOrderListView(QWidget):
     view_receptions_requested = Signal(int)
 
@@ -254,6 +267,12 @@ class PurchaseOrderListView(QWidget):
                     item.setTextAlignment(Qt.AlignCenter)
                     return item
 
+                def create_numeric_item(text, numeric_val):
+                    item = NumericTableWidgetItem(str(text))
+                    item.setTextAlignment(Qt.AlignCenter)
+                    item.setData(Qt.UserRole, numeric_val)
+                    return item
+
                 id_item = create_centered_item(po.get('PO_ID'))
                 id_item.setData(Qt.UserRole, po)
                 self.table.setItem(row, 0, id_item)
@@ -271,8 +290,23 @@ class PurchaseOrderListView(QWidget):
                 status_item.setForeground(QColor(colors_map.get(raw_status, 'black')))
                 self.table.setItem(row, 4, status_item)
                 
-                amt = float(po.get('Total_Amount_TTC') or 0)
-                self.table.setItem(row, 5, create_centered_item(f"{amt:,.2f} DA"))
+                amt_display = po.get('Estimated_Amount_Display') or po.get('Total_Amount_Display')
+                amt_val = float(po.get('Estimated_Amount_TTC') or po.get('Total_Amount_TTC') or 0)
+                if not amt_display:
+                    amt_display = f"{amt_val:,.2f} DA" if amt_val > 0 else "---"
+
+                amt_item = create_numeric_item(amt_display, amt_val)
+                if po.get('Is_Partial_Estimate'):
+                    amt_item.setForeground(QColor("#d35400"))
+                    amt_item.setToolTip("Estimation partielle : certains produits n'ont pas encore d'historique de prix en stock.")
+                elif po.get('Has_Estimated_Price'):
+                    amt_item.setForeground(QColor("#27ae60"))
+                    amt_item.setToolTip("Montant estimé calculé d'après les derniers prix d'achat enregistrés dans le stock.")
+                else:
+                    amt_item.setForeground(QColor("#7f8c8d"))
+                    amt_item.setToolTip("Aucun prix d'achat enregistré dans le stock pour ces articles.")
+
+                self.table.setItem(row, 5, amt_item)
 
             self.table.setSortingEnabled(True)
 
