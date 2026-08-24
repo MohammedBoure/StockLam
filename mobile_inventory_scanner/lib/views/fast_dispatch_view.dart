@@ -36,7 +36,7 @@ class _FastDispatchViewState extends State<FastDispatchView> {
   String? _successMessage;
 
   // Suivi de l'état du panier et des retours sonores/visuels
-  int? _highlightedBatchId;
+  String? _highlightedLineId;
   String? _lastAction; // 'new', 'duplicate', 'max_reached', 'error'
   Timer? _highlightTimer;
 
@@ -74,7 +74,7 @@ class _FastDispatchViewState extends State<FastDispatchView> {
   }
 
   void _playDuplicateSound() {
-    // Double impulsion sonore distincte pour signaler que le produit est DÉJÀ dans le panier
+    // Double impulsion sonore distincte pour signaler l'ajout
     unawaited(SystemSound.play(SystemSoundType.click));
     Future.delayed(const Duration(milliseconds: 110), () {
       unawaited(SystemSound.play(SystemSoundType.click));
@@ -85,17 +85,17 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     unawaited(SystemSound.play(SystemSoundType.alert));
   }
 
-  void _setHighlight(int batchId, String action) {
+  void _setHighlight(String lineId, String action) {
     _highlightTimer?.cancel();
     setState(() {
-      _highlightedBatchId = batchId;
+      _highlightedLineId = lineId;
       _lastAction = action;
     });
     _highlightTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) {
         setState(() {
-          if (_highlightedBatchId == batchId) {
-            _highlightedBatchId = null;
+          if (_highlightedLineId == lineId) {
+            _highlightedLineId = null;
           }
         });
       }
@@ -175,40 +175,10 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       final recommendedBatch = batches.firstWhere((b) => b.isRecommended, orElse: () => batches.first);
       final matchedBatches = batches.where((b) => b.isScannedMatch).toList();
 
-      BatchDetails selectedBatch;
-      bool allowOverride = false;
+      final selectedBatch = matchedBatches.isNotEmpty ? matchedBatches.first : recommendedBatch;
+      final allowOverride = (selectedBatch.batchId != recommendedBatch.batchId);
 
-      if (matchedBatches.isNotEmpty) {
-        selectedBatch = matchedBatches.first;
-        // Si le lot scanné n'est pas le lot recommandé (FEFO violation) en mode consommation :
-        if (_mode == 'consume' && selectedBatch.batchId != recommendedBatch.batchId) {
-          final chosen = await _showFefoSelectionDialog(
-            productName: productName,
-            allBatches: batches,
-            recommendedBatch: recommendedBatch,
-            scannedBatch: selectedBatch,
-          );
-          if (chosen == null) {
-            _barcodeController.clear();
-            _barcodeFocus.requestFocus();
-            return; // Annuler
-          }
-          selectedBatch = chosen;
-          allowOverride = (selectedBatch.batchId != recommendedBatch.batchId);
-        }
-      } else {
-        // Scan du code-barres général du produit -> boîte de dialogue de choix de lot
-        final chosen = await _showBatchPickerDialog(productName, batches);
-        if (chosen == null) {
-          _barcodeController.clear();
-          _barcodeFocus.requestFocus();
-          return;
-        }
-        selectedBatch = chosen;
-        allowOverride = (selectedBatch.batchId != recommendedBatch.batchId);
-      }
-
-      _addItemToDispatch(prod, selectedBatch, batches, allowOverride: allowOverride);
+      _addItemToDispatch(prod, selectedBatch, batches, productName: productName, allowOverride: allowOverride);
       _barcodeController.clear();
       _barcodeFocus.requestFocus();
     } catch (e) {
@@ -236,34 +206,9 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     ProductDetails? prod,
     BatchDetails batch,
     List<BatchDetails> allBatches, {
+    String? productName,
     bool allowOverride = false,
   }) {
-    final existingIndex = _items.indexWhere((i) => i.batchId == batch.batchId);
-    if (existingIndex >= 0) {
-      final existing = _items[existingIndex];
-      final maxQty = existing.currentQty.toInt();
-      if (existing.qty < maxQty) {
-        _playDuplicateSound();
-        HapticFeedback.mediumImpact();
-        setState(() {
-          existing.qty += 1;
-          existing.allowFefoOverride = existing.allowFefoOverride || allowOverride;
-          _successMessage = '🔄 Produit déjà dans le panier : ${existing.productName} (Lot: ${existing.lotNumber}) ➔ Quantité augmentée à ${existing.qty} / $maxQty';
-          _errorMessage = null;
-        });
-        _setHighlight(existing.batchId, 'duplicate');
-      } else {
-        _playAlertSound();
-        HapticFeedback.vibrate();
-        setState(() {
-          _errorMessage = '⚠️ Produit déjà dans le panier : Stock maximal disponible atteint pour ce lot ($maxQty unités).';
-          _successMessage = null;
-        });
-        _setHighlight(existing.batchId, 'max_reached');
-      }
-      return;
-    }
-
     int? initialTargetLocation;
     String? initialTargetName;
     if (_mode == 'transfer' && _locations.isNotEmpty) {
@@ -276,10 +221,11 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       }
     }
 
+    final resolvedName = productName ?? prod?.productName ?? 'Produit #${batch.productId}';
     final newItem = BulkDispatchItem(
       batchId: batch.batchId,
       productId: batch.productId,
-      productName: prod?.productName ?? 'Produit #${batch.productId}',
+      productName: resolvedName,
       lotNumber: batch.lotNumber,
       expiryDate: batch.expiryDate,
       currentQty: batch.quantityCurrent,
@@ -293,14 +239,24 @@ class _FastDispatchViewState extends State<FastDispatchView> {
       availableBatches: allBatches,
     );
 
-    _playPositiveSound();
-    HapticFeedback.lightImpact();
+    final isDuplicate = _items.any((i) => i.productId == batch.productId);
+    if (isDuplicate) {
+      _playDuplicateSound();
+      HapticFeedback.mediumImpact();
+    } else {
+      _playPositiveSound();
+      HapticFeedback.lightImpact();
+    }
+
     setState(() {
       _items.add(newItem);
-      _successMessage = '✅ Produit ajouté au panier : ${newItem.productName} (Lot: ${newItem.lotNumber})';
+      _successMessage = isDuplicate
+          ? '🔄 Nouvelle ligne ajoutée pour $resolvedName (Total : ${_items.where((i) => i.productId == batch.productId).length} lignes)'
+          : '✅ Article #${_items.length} ajouté : $resolvedName (📍 ${newItem.locationName})';
       _errorMessage = null;
+      _lastAction = isDuplicate ? 'duplicate' : 'new';
     });
-    _setHighlight(newItem.batchId, 'new');
+    _setHighlight(newItem.lineId, isDuplicate ? 'duplicate' : 'new');
   }
 
   /// Boîte de dialogue FEFO conforme à celle du logiciel bureau (FEFOSelectionDialog)
@@ -525,94 +481,6 @@ class _FastDispatchViewState extends State<FastDispatchView> {
           },
         );
       },
-    );
-  }
-
-  /// Boîte de sélection de lot générale affichant le Lot COMPLET et le Code-barres
-  Future<BatchDetails?> _showBatchPickerDialog(String productName, List<BatchDetails> batches) async {
-    return showDialog<BatchDetails>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Sélectionner un lot - $productName', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: batches.length,
-            separatorBuilder: (_, __) => const Divider(height: 8),
-            itemBuilder: (ctx, i) {
-              final b = batches[i];
-              return InkWell(
-                onTap: () => Navigator.pop(ctx, b),
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: b.isRecommended ? const Color(0xFFE8F8F0) : Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: b.isRecommended ? const Color(0xFF27AE60) : Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            'Lot : ${b.lotNumber}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: b.isRecommended ? const Color(0xFF155724) : Colors.black87,
-                            ),
-                            softWrap: true,
-                          ),
-                          if (b.isRecommended)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF27AE60),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text('⭐ RECOMMANDÉ', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                            ),
-                        ],
-                      ),
-                      if (b.internalBarcode.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3, bottom: 3),
-                          child: Text(
-                            '🏷️ Code-barres : ${b.internalBarcode}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                            softWrap: true,
-                          ),
-                        ),
-                      Text(
-                        'Exp : ${b.expiryDate}  •  Dispo : ${b.quantityCurrent.toInt()}  |  📍 Empl : ${b.locationName}',
-                        style: const TextStyle(fontSize: 11, color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Annuler'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1115,26 +983,19 @@ class _FastDispatchViewState extends State<FastDispatchView> {
     final maxQty = item.currentQty.toInt();
     final isConsumeMode = _mode == 'consume';
     final hasFefoWarning = isConsumeMode && !item.isRecommended;
-    final isHighlighted = item.batchId == _highlightedBatchId;
+    final isHighlighted = item.lineId == _highlightedLineId;
 
-    Color borderColor = hasFefoWarning ? Colors.orange.shade300 : Colors.grey.shade200;
+    Color borderColor = hasFefoWarning ? Colors.orange.shade300 : Colors.grey.shade300;
     double borderWidth = hasFefoWarning ? 1.5 : 1.0;
 
     if (isHighlighted) {
-      if (_lastAction == 'duplicate') {
-        borderColor = const Color(0xFF2980B9);
-        borderWidth = 2.0;
-      } else if (_lastAction == 'new') {
-        borderColor = const Color(0xFF27AE60);
-        borderWidth = 2.0;
-      } else if (_lastAction == 'max_reached') {
-        borderColor = const Color(0xFFE67E22);
-        borderWidth = 2.0;
-      }
+      borderColor = const Color(0xFF27AE60);
+      borderWidth = 2.0;
     }
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
@@ -1147,143 +1008,102 @@ class _FastDispatchViewState extends State<FastDispatchView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Badge contextuel de confirmation d'action (Nouveau / Déjà dans panier / Max atteint)
-            if (isHighlighted) ...[
-              if (_lastAction == 'duplicate')
+            // 1. En-tête : Numéro de ligne (#) + Nom du produit + Bouton Supprimer
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
                 Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEBF5FB),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF2980B9), width: 1.2),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.sync, color: Color(0xFF2980B9), size: 16),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '🔄 DÉJÀ DANS LE PANIER (+1) • Quantité : ${item.qty} / $maxQty',
-                          style: const TextStyle(
-                            color: Color(0xFF1B4F72),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else if (_lastAction == 'new')
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8F8F0),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF27AE60), width: 1.2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFC3E6CB)),
                   ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.add_shopping_cart, color: Color(0xFF27AE60), size: 16),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '✨ NOUVEL ARTICLE AJOUTÉ AU PANIER',
-                          style: TextStyle(
-                            color: Color(0xFF155724),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else if (_lastAction == 'max_reached')
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF3CD),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFF39C12), width: 1.2),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning_amber_rounded, color: Color(0xFFD35400), size: 16),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '⚠️ STOCK MAXIMAL ATTEINT ($maxQty unités disponibles)',
-                          style: const TextStyle(
-                            color: Color(0xFF856404),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    '#${index + 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: Color(0xFF007572),
+                    ),
                   ),
                 ),
-            ],
-            Row(
-              children: [
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     item.productName,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                  tooltip: 'Retirer cet article du panier',
+                  icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                   onPressed: () {
-                    setState(() => _items.removeAt(index));
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _items.removeAt(index);
+                    });
                   },
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Lot : ${item.lotNumber}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        softWrap: true,
-                      ),
-                      Text('Exp : ${item.expiryDate}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                    ],
+            const SizedBox(height: 8),
+
+            // 2. Sélecteur Source (Emplacement & Lot) - Identique au QComboBox de tabs_dispatch.py
+            DropdownButtonFormField<int>(
+              isExpanded: true,
+              value: item.availableBatches.any((b) => b.batchId == item.batchId) ? item.batchId : null,
+              decoration: InputDecoration(
+                labelText: '📍 Source (Emplacement & Lot)',
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF2C3E50)),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                filled: true,
+                fillColor: const Color(0xFFF8F9FA),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFBDC3C7))),
+              ),
+              items: item.availableBatches.map((b) {
+                final qty = b.quantityCurrent.toInt();
+                final fefoTag = b.isRecommended ? ' ⭐ [FEFO]' : '';
+                return DropdownMenuItem<int>(
+                  value: b.batchId,
+                  child: Text(
+                    '📍 ${b.locationName} | Lot: ${b.lotNumber} (Dispo: $qty)$fefoTag',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: b.batchId == item.batchId ? FontWeight.bold : FontWeight.normal,
+                      color: b.isRecommended ? const Color(0xFF155724) : Colors.black87,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  onPressed: () => _changeItemBatch(item),
-                  icon: const Icon(Icons.swap_horiz, size: 16),
-                  label: const Text('Changer lot', style: TextStyle(fontSize: 12)),
-                ),
-              ],
+                );
+              }).toList(),
+              onChanged: (newBatchId) {
+                if (newBatchId == null) return;
+                final selectedBatch = item.availableBatches.firstWhere((b) => b.batchId == newBatchId);
+                setState(() {
+                  item.updateBatch(selectedBatch, allowOverride: !selectedBatch.isRecommended);
+                });
+              },
             ),
-            if (hasFefoWarning)
+            const SizedBox(height: 8),
+
+            // 3. Avertissement FEFO contextuel
+            if (hasFefoWarning) ...[
               Container(
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF3CD),
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFFFEEBA)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
+                    const Icon(Icons.warning_amber_rounded, color: Color(0xFFD35400), size: 16),
                     const SizedBox(width: 6),
                     const Expanded(
                       child: Text(
@@ -1291,39 +1111,56 @@ class _FastDispatchViewState extends State<FastDispatchView> {
                         style: TextStyle(color: Color(0xFF856404), fontSize: 11, fontWeight: FontWeight.w600),
                       ),
                     ),
-                    InkWell(
-                      onTap: () => _changeItemBatch(item),
-                      child: const Text(
-                        'Remplacer',
-                        style: TextStyle(color: Color(0xFF007572), fontSize: 11, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
+                    if (item.availableBatches.any((b) => b.isRecommended))
+                      InkWell(
+                        onTap: () {
+                          final rec = item.availableBatches.firstWhere((b) => b.isRecommended);
+                          setState(() => item.updateBatch(rec, allowOverride: false));
+                        },
+                        child: const Text(
+                          'Choisir FEFO ⭐',
+                          style: TextStyle(
+                            color: Color(0xFF007572),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
-            const SizedBox(height: 2),
+            ],
+
+            // 4. Détails Lot et Date d'expiration
             Row(
               children: [
-                const Icon(Icons.warehouse, size: 16, color: Colors.black54),
-                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    'Source : ${item.locationName} (Dispo : $maxQty)',
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    'Lot : ${item.lotNumber}  •  Exp : ${item.expiryDate.isNotEmpty ? item.expiryDate : '---'}',
+                    style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                Text(
+                  'Dispo : $maxQty',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: maxQty < 5 ? const Color(0xFFC0392B) : const Color(0xFF27AE60),
                   ),
                 ),
               ],
             ),
             const Divider(height: 16),
+
+            // 5. Quantité à consommer ou transférer
             Row(
               children: [
-                const Text('Quantité :', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Quantité :', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const Spacer(),
                 IconButton.filledTonal(
                   visualDensity: VisualDensity.compact,
-                  onPressed: item.qty > 1
-                      ? () => setState(() => item.qty--)
-                      : null,
+                  onPressed: item.qty > 1 ? () => setState(() => item.qty--) : null,
                   icon: const Icon(Icons.remove, size: 16),
                 ),
                 Padding(
@@ -1335,27 +1172,32 @@ class _FastDispatchViewState extends State<FastDispatchView> {
                 ),
                 IconButton.filledTonal(
                   visualDensity: VisualDensity.compact,
-                  onPressed: item.qty < maxQty
-                      ? () => setState(() => item.qty++)
-                      : null,
+                  onPressed: item.qty < maxQty ? () => setState(() => item.qty++) : null,
                   icon: const Icon(Icons.add, size: 16),
                 ),
               ],
             ),
+
+            // 6. Destination pour le mode Transfert
             if (_mode == 'transfer') ...[
               const SizedBox(height: 10),
               DropdownButtonFormField<int>(
                 isExpanded: true,
                 initialValue: item.targetLocationId,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: '📍 Destination pour cet article',
+                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  filled: true,
+                  fillColor: const Color(0xFFF0F9FF),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFAED6F1))),
                 ),
                 items: _locations
                     .where((loc) => loc.locationId != item.locationId)
                     .map((loc) => DropdownMenuItem<int>(
                           value: loc.locationId,
-                          child: Text(loc.fullPath, overflow: TextOverflow.ellipsis),
+                          child: Text(loc.fullPath, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
                         ))
                     .toList(),
                 onChanged: (val) {

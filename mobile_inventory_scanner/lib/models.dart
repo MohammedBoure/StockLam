@@ -232,6 +232,7 @@ class FefoViolationData {
 
 class BulkDispatchItem {
   BulkDispatchItem({
+    String? lineId,
     required this.batchId,
     required this.productId,
     required this.productName,
@@ -247,8 +248,9 @@ class BulkDispatchItem {
     this.isRecommended = false,
     this.allowFefoOverride = false,
     this.availableBatches = const [],
-  });
+  }) : lineId = lineId ?? DateTime.now().microsecondsSinceEpoch.toString();
 
+  final String lineId;
   int batchId;
   final int productId;
   final String productName;
