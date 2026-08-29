@@ -11,9 +11,12 @@ def _to_decimal(value):
     if not text or text in {"<NULL>", "None", "nan", "NaN"}:
         return Decimal("0")
 
-    normalized = text.replace(" ", "")
+    normalized = text.replace(" ", "").replace("DA", "").replace("DZD", "").replace("€", "").replace("$", "").strip()
     if "," in normalized and "." in normalized:
-        normalized = normalized.replace(",", "")
+        if normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", "")
     elif "," in normalized:
         normalized = normalized.replace(",", ".")
 
@@ -39,7 +42,9 @@ def format_quantity(value, suffix=None, dash_zero=False):
 
 def format_money(value, currency=None):
     amount = _to_decimal(value)
-    text = f"{amount:,.2f}"
+    formatted = f"{amount:,.2f}"
+    int_part, dec_part = formatted.split(".")
+    text = f"{int_part.replace(',', ' ')},{dec_part}"
     if currency:
         return f"{text} {currency}"
     return text

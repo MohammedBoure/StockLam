@@ -118,7 +118,7 @@ class ReceptionDialogUIMixin:
         self.chk_tva = QCheckBox("TVA 19%")
         self.chk_tva.setChecked(True)
         self.inp_observation = AutoSelectLineEdit()
-        self.lbl_item_ttc = QLabel("TTC : 0.00 DA")
+        self.lbl_item_ttc = QLabel("TTC : 0,00 DA")
         self.lbl_conversion_logic = QLabel("")
 
         self.btn_add    = QPushButton(qta.icon('fa5s.plus',      color='white'), " Ajouter")
@@ -153,10 +153,10 @@ class ReceptionDialogUIMixin:
         
         self.table_items.setColumnHidden(13, True) # إخفاء عمود Meta
 
-        self.lbl_total_ht     = QLabel("0.00 DA")
-        self.lbl_total_remise = QLabel("0.00 DA")
-        self.lbl_total_tva    = QLabel("0.00 DA")
-        self.lbl_total_ttc    = QLabel("0.00 DA")
+        self.lbl_total_ht     = QLabel("0,00 DA")
+        self.lbl_total_remise = QLabel("0,00 DA")
+        self.lbl_total_tva    = QLabel("0,00 DA")
+        self.lbl_total_ttc    = QLabel("0,00 DA")
         self.lbl_conversion_logic.setStyleSheet(
             "color: #7f8c8d; font-style: italic; font-size: 12px;"
         )

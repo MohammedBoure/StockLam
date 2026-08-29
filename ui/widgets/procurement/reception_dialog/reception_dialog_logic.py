@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor
 
 from ..bulk_barcode_selection_dialog import BulkBarcodeSelectionDialog
-from ui.formatting import format_quantity, quantity_to_int
+from ui.formatting import format_money, format_quantity, quantity_to_int
 
 
 class ReceptionDialogLogicMixin:
@@ -99,7 +99,7 @@ class ReceptionDialogLogicMixin:
             tax     = net_ht * 0.19 if self.chk_tva.isChecked() else 0
             ttc     = net_ht + tax
 
-            self.lbl_item_ttc.setText(f"TTC : {ttc:,.2f} DA")
+            self.lbl_item_ttc.setText(f"TTC : {format_money(ttc, 'DA')}")
 
             if factor > 1:
                 p_data  = self.cb_product.currentData()
@@ -242,10 +242,10 @@ class ReceptionDialogLogicMixin:
             self.total_tva_val    += line_tva
             self.total_ttc_val    += line_ttc
 
-        self.lbl_total_ht.setText(f"{self.total_ht_val:,.2f} DA")
-        self.lbl_total_remise.setText(f"{self.total_remise_val:,.2f} DA")
-        self.lbl_total_tva.setText(f"{self.total_tva_val:,.2f} DA")
-        self.lbl_total_ttc.setText(f"{self.total_ttc_val:,.2f} DA")
+        self.lbl_total_ht.setText(format_money(self.total_ht_val, 'DA'))
+        self.lbl_total_remise.setText(format_money(self.total_remise_val, 'DA'))
+        self.lbl_total_tva.setText(format_money(self.total_tva_val, 'DA'))
+        self.lbl_total_ttc.setText(format_money(self.total_ttc_val, 'DA'))
 
     # ------------------------------------------------------------------ #
     #  تحميل البيانات (وضع التعديل)                                      #
@@ -330,12 +330,12 @@ class ReceptionDialogLogicMixin:
                 meta['Lot_Number'],
                 meta['Expiry_Date'],
                 batch.get('Location_Name', '---'),
-                f"{price:,.2f} DA",
-                f"{disc_amt:,.2f} DA",
-                f"{net_ht:,.2f} DA",
-                f"{tva_amt:,.2f} DA",
-                f"{pu_ttc:,.2f} DA",
-                f"{total_ttc:,.2f} DA"
+                format_money(price, 'DA'),
+                format_money(disc_amt, 'DA'),
+                format_money(net_ht, 'DA'),
+                format_money(tva_amt, 'DA'),
+                format_money(pu_ttc, 'DA'),
+                format_money(total_ttc, 'DA')
             ]
 
             from PySide6.QtWidgets import QTableWidgetItem

@@ -124,11 +124,11 @@ class ChartHoverCard(QFrame):
         self.lbl_period.setText(f"📅 {data.get('detail', '')}")
 
         # 2. Valeurs formatées
-        self.lbl_in_val.setText(f"{format_money(val_in, 'DA').replace(',', ' ')}")
-        self.lbl_out_val.setText(f"{format_money(val_out, 'DA').replace(',', ' ')}")
+        self.lbl_in_val.setText(format_money(val_in, 'DA'))
+        self.lbl_out_val.setText(format_money(val_out, 'DA'))
 
         net_prefix = "+" if net_val > 0 else ""
-        self.lbl_net_val.setText(f"{net_prefix}{format_money(net_val, 'DA').replace(',', ' ')}")
+        self.lbl_net_val.setText(f"{net_prefix}{format_money(net_val, 'DA')}")
         if net_val > 0:
             self.lbl_net_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #1e824c;")
         elif net_val < 0:
@@ -577,16 +577,16 @@ class ChartsSection(QWidget):
 
         lbl_in = self.badge_in.findChild(QLabel, "val_label")
         if lbl_in:
-            lbl_in.setText(f"{format_money(total_in, 'DA').replace(',', ' ')}")
+            lbl_in.setText(format_money(total_in, 'DA'))
 
         lbl_out = self.badge_out.findChild(QLabel, "val_label")
         if lbl_out:
-            lbl_out.setText(f"{format_money(total_out, 'DA').replace(',', ' ')}")
+            lbl_out.setText(format_money(total_out, 'DA'))
 
         lbl_net = self.badge_net.findChild(QLabel, "val_label")
         if lbl_net:
             prefix = "+" if net_val > 0 else ""
-            lbl_net.setText(f"{prefix}{format_money(net_val, 'DA').replace(',', ' ')}")
+            lbl_net.setText(f"{prefix}{format_money(net_val, 'DA')}")
             if net_val > 0:
                 lbl_net.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {self.COLOR_IN_BORDER}; border: none; background: transparent;")
             elif net_val < 0:

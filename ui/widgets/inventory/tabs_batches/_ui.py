@@ -259,7 +259,7 @@ def _build_bottom_bar(self):
     bottom_bar = QHBoxLayout()
     bottom_bar.setContentsMargins(5, 5, 5, 5)
 
-    self.lbl_total_value = QLabel("Valeur Totale : 0.00 DA")
+    self.lbl_total_value = QLabel("Valeur Totale : 0,00 DA")
     self.lbl_total_value.setFont(QFont("Arial", 11, QFont.Bold))
     self.lbl_total_value.setStyleSheet("""
         QLabel {

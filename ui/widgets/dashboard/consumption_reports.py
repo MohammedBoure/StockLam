@@ -165,7 +165,7 @@ class ConsumptionReportSection(QFrame):
 
             # 4. Coût Total (TTC)
             cost_val = r.get('total_cost_ttc', 0)
-            val_item = QTableWidgetItem(format_money(cost_val, "DA").replace(',', ' '))
+            val_item = QTableWidgetItem(format_money(cost_val, "DA"))
             val_item.setTextAlignment(Qt.AlignCenter)
             val_item.setForeground(QColor("#007572"))
             val_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))

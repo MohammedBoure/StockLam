@@ -55,7 +55,7 @@ class StockValuationTab(QWidget):
 
         # Header with Search
         top_layout = QHBoxLayout()
-        self.lbl_summary = QLabel("Valeur Totale: 0.00 DA")
+        self.lbl_summary = QLabel("Valeur Totale: 0,00 DA")
         self.lbl_summary.setStyleSheet("font-size: 16px; font-weight: bold; color: #27ae60;")
         
         self.txt_search = QLineEdit()
@@ -301,7 +301,7 @@ class WasteAnalysisTab(QWidget):
         top_layout.setSpacing(15)
 
         # Mini KPI 1: Perte Totale
-        self.kpi_total_loss = self._create_mini_kpi("PERTE TOTALE (TTC)", "0.00 DA", "🗑️", "#c0392b", "#fef2f2", "#fecaca")
+        self.kpi_total_loss = self._create_mini_kpi("PERTE TOTALE (TTC)", "0,00 DA", "🗑️", "#c0392b", "#fef2f2", "#fecaca")
         # Mini KPI 2: Produits Distincts
         self.kpi_products_count = self._create_mini_kpi("PRODUITS AU REBUT", "0 Produit(s)", "📦", "#2c3e50", "#f8fafc", "#e2e8f0")
         # Mini KPI 3: Événements
@@ -476,7 +476,7 @@ class WasteAnalysisTab(QWidget):
             # Mise à jour des mini-KPIs
             lbl_loss = self.kpi_total_loss.findChild(QLabel, "kpi_val")
             if lbl_loss:
-                lbl_loss.setText(f"{format_money(total_loss, 'DA').replace(',', ' ')}")
+                lbl_loss.setText(format_money(total_loss, 'DA'))
 
             lbl_prods = self.kpi_products_count.findChild(QLabel, "kpi_val")
             if lbl_prods:
@@ -505,7 +505,7 @@ class WasteAnalysisTab(QWidget):
                 it_freq.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table_reasons.setItem(row, 1, it_freq)
 
-                it_val = NumericTableWidgetItem(format_money(loss_val, "DA").replace(',', ' '), loss_val)
+                it_val = NumericTableWidgetItem(format_money(loss_val, "DA"), loss_val)
                 it_val.setForeground(QColor("#c0392b"))
                 it_val.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 it_val.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -579,7 +579,7 @@ class WasteAnalysisTab(QWidget):
                 self.table_products.setItem(row, 4, it_reasons)
 
                 # Colonne 5: Perte Totale TTC
-                it_loss = NumericTableWidgetItem(format_money(loss_ttc, "DA").replace(',', ' '), loss_ttc)
+                it_loss = NumericTableWidgetItem(format_money(loss_ttc, "DA"), loss_ttc)
                 it_loss.setForeground(QColor("#c0392b"))
                 it_loss.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 it_loss.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)

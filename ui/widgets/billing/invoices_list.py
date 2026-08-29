@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QDate, Signal
 import qtawesome as qta
 import json
 from branding import get_banner_path
-from ui.formatting import format_quantity
+from ui.formatting import format_quantity, format_money
 
 # ReportLab Imports
 try:
@@ -636,12 +636,12 @@ class InvoicesListWidget(QWidget):
                 table_data.append([
                     Paragraph(p_info, styles["Normal"]), 
                     format_quantity(qty), 
-                    f"{price:,.2f}", 
+                    format_money(price), 
                     Paragraph(obs_text, styles["Normal"])
                 ])
 
             total_label = settings.get('total_label_rt', 'VALEUR TOTALE DU RETOUR') if is_return else settings.get('total_label_bl', 'MONTANT TOTAL À PAYER')
-            table_data.append([Paragraph(f"<b>{total_label}</b>", styles["Normal"]), "", "", f"{grand_total:,.2f} DA"])
+            table_data.append([Paragraph(f"<b>{total_label}</b>", styles["Normal"]), "", "", format_money(grand_total, 'DA')])
 
             items_table = Table(table_data, colWidths=[9.5*cm, 2.0*cm, 2.5*cm, 4.0*cm])
             items_table.hAlign = 'LEFT'

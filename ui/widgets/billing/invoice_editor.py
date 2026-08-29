@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QDate, QDateTime, Signal, QStringListModel, QTime
 from PySide6.QtGui import QColor, QFont
 import qtawesome as qta
 
-from ui.formatting import quantity_to_int, format_quantity
+from ui.formatting import quantity_to_int, format_quantity, format_money
 
 
 class BarcodeLineEdit(QLineEdit):
@@ -187,7 +187,7 @@ class InvoiceEditorWidget(QWidget):
         footer_frame.setStyleSheet("background-color: #ecf0f1; border-radius: 8px; padding: 10px;")
         footer_layout = QHBoxLayout(footer_frame)
 
-        self.lbl_total = QLabel("0.00 DA")
+        self.lbl_total = QLabel("0,00 DA")
         self.lbl_total.setStyleSheet("font-size: 26px; font-weight: bold; color: #c0392b;")
 
         footer_layout.addWidget(QLabel("<b>MONTANT TOTAL À PAYER :</b>"))
@@ -842,10 +842,10 @@ class InvoiceEditorWidget(QWidget):
 
             if qty_widget and price_widget and total_label:
                 line = qty_widget.value() * price_widget.value()
-                total_label.setText(f"{line:,.2f}")
+                total_label.setText(format_money(line))
                 grand += line
 
-        self.lbl_total.setText(f"{grand:,.2f} DA")
+        self.lbl_total.setText(format_money(grand, 'DA'))
 
     def save_invoice(self):
         """

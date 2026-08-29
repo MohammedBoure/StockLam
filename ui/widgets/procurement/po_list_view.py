@@ -7,9 +7,9 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
 from PySide6.QtGui import QAction, QColor, QFont
 from PySide6.QtCore import Qt, Signal # [إضافة Signal]
 
-# استيراد نوافذ الحوار
 from ui.widgets.procurement.dialogs import PurchaseOrderDialog
 from ui.widgets.procurement.reception_dialog import ReceptionDialog
+from ui.formatting import format_money
 
 class NumericTableWidgetItem(QTableWidgetItem):
     def __lt__(self, other):
@@ -293,7 +293,7 @@ class PurchaseOrderListView(QWidget):
                 amt_display = po.get('Estimated_Amount_Display') or po.get('Total_Amount_Display')
                 amt_val = float(po.get('Estimated_Amount_TTC') or po.get('Total_Amount_TTC') or 0)
                 if not amt_display:
-                    amt_display = f"{amt_val:,.2f} DA" if amt_val > 0 else "---"
+                    amt_display = format_money(amt_val, 'DA') if amt_val > 0 else "---"
 
                 amt_item = create_numeric_item(amt_display, amt_val)
                 if po.get('Is_Partial_Estimate'):

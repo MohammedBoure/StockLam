@@ -21,7 +21,7 @@ class StockValuationTab(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
 
         # ملخص سريع في الأعلى
-        self.lbl_summary = QLabel("Valeur Totale: 0.00 DA")
+        self.lbl_summary = QLabel("Valeur Totale: 0,00 DA")
         self.lbl_summary.setStyleSheet("font-size: 16px; font-weight: bold; color: #27ae60; margin-bottom: 10px;")
         layout.addWidget(self.lbl_summary)
 

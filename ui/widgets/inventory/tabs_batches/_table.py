@@ -155,7 +155,7 @@ def populate_table(self, data):
         self.lbl_total_value.hide()
     else:
         self.lbl_total_value.show()
-        self.lbl_total_value.setText(f"💰 Total Filtré : {format_money(total_value)} DA")
+        self.lbl_total_value.setText(f"💰 Total Filtré : {format_money(total_value, 'DA')}")
 
 
 def _fill_row(table, r, b, hide_fin):

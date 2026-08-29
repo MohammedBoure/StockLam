@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QBrush, QColor
 
 from ui.widgets.master_data.dialogs import BaseDialog
+from ui.formatting import format_money
 
 class StockAlertDialog(QDialog):
     def __init__(self, parent=None, alerts_data=None):
@@ -639,7 +640,7 @@ class PurchaseOrderDialog(BaseDialog):
             """)
             self.lbl_estimated_total.setToolTip("Aucun prix d'achat enregistré dans le stock pour les articles actuels.")
         elif known_count < total_rows:
-            self.lbl_estimated_total.setText(f"💰 Montant Total Estimé (TTC) : > {total_amount:,.2f} DA")
+            self.lbl_estimated_total.setText(f"💰 Montant Total Estimé (TTC) : > {format_money(total_amount, 'DA')}")
             self.lbl_estimated_total.setStyleSheet("""
                 QLabel {
                     font-weight: bold; font-size: 13px; color: #d35400;
@@ -649,7 +650,7 @@ class PurchaseOrderDialog(BaseDialog):
             """)
             self.lbl_estimated_total.setToolTip(f"Estimation partielle ({known_count}/{total_rows} articles ont un prix en stock). Le montant final sera supérieur.")
         else:
-            self.lbl_estimated_total.setText(f"💰 Montant Total Estimé (TTC) : {total_amount:,.2f} DA")
+            self.lbl_estimated_total.setText(f"💰 Montant Total Estimé (TTC) : {format_money(total_amount, 'DA')}")
             self.lbl_estimated_total.setStyleSheet("""
                 QLabel {
                     font-weight: bold; font-size: 13px; color: #27ae60;
@@ -700,8 +701,8 @@ class PurchaseOrderDialog(BaseDialog):
             line_total_ttc = float(qty) * effective_pu_ttc
             has_price = True
             
-            pu_item = QTableWidgetItem(f"{effective_pu_ttc:,.2f} DA")
-            total_item = QTableWidgetItem(f"{line_total_ttc:,.2f} DA")
+            pu_item = QTableWidgetItem(format_money(effective_pu_ttc, 'DA'))
+            total_item = QTableWidgetItem(format_money(line_total_ttc, 'DA'))
             pu_item.setForeground(QColor("#27ae60"))
             total_item.setForeground(QColor("#27ae60"))
         else:
@@ -832,8 +833,8 @@ class PurchaseOrderDialog(BaseDialog):
                 line_total_ttc = float(qty) * effective_pu_ttc
                 has_price = True
                 
-                self.lines_table.item(row, 4).setText(f"{effective_pu_ttc:,.2f} DA")
-                self.lines_table.item(row, 5).setText(f"{line_total_ttc:,.2f} DA")
+                self.lines_table.item(row, 4).setText(format_money(effective_pu_ttc, 'DA'))
+                self.lines_table.item(row, 5).setText(format_money(line_total_ttc, 'DA'))
                 self.lines_table.item(row, 4).setForeground(QColor("#27ae60"))
                 self.lines_table.item(row, 5).setForeground(QColor("#27ae60"))
             else:

@@ -23,6 +23,7 @@ except ImportError:
     HAS_REPORTLAB = False
 
 from .reception_dialog import ReceptionDialog
+from ui.formatting import format_money
 from ui.widgets.settings.pdf.pdf_stamp import fit_stamp_size_cm, get_active_stamp, SignatureFooter
 from ui.widgets.settings.local_settings import get_local_settings_store
 
@@ -350,10 +351,10 @@ class ReceptionHistoryTab(QWidget):
                 self.table.setItem(row, 1, self._create_centered_item(display_ref)) 
                 self.table.setItem(row, 2, self._create_centered_item(reception.get('Supplier_Name', 'N/A')))
                 self.table.setItem(row, 3, self._create_centered_item(display_date))
-                self.table.setItem(row, 4, self._create_centered_item(f"{total_ht:,.2f} DA", is_numeric=True))
-                self.table.setItem(row, 5, self._create_centered_item(f"{total_tva:,.2f} DA", is_numeric=True))
-                self.table.setItem(row, 6, self._create_centered_item(f"{remise:,.2f} DA", is_numeric=True))
-                self.table.setItem(row, 7, self._create_centered_item(f"{total_ttc:,.2f} DA", is_numeric=True))
+                self.table.setItem(row, 4, self._create_centered_item(format_money(total_ht, 'DA'), is_numeric=True))
+                self.table.setItem(row, 5, self._create_centered_item(format_money(total_tva, 'DA'), is_numeric=True))
+                self.table.setItem(row, 6, self._create_centered_item(format_money(remise, 'DA'), is_numeric=True))
+                self.table.setItem(row, 7, self._create_centered_item(format_money(total_ttc, 'DA'), is_numeric=True))
                 self.table.setItem(row, 8, self._create_centered_item(po_id or '---'))
                 
                 self.table.item(row, 0).setData(Qt.UserRole, reception)
@@ -550,8 +551,8 @@ class ReceptionHistoryTab(QWidget):
                     Paragraph(str(b.get('Lot_Number')), cell_style),
                     str(b.get('Expiry_Date')),
                     f"{q}",
-                    f"{p:,.2f}",
-                    f"{line_ttc:,.2f}"
+                    format_money(p),
+                    format_money(line_ttc)
                 ])
 
             col_widths = [7.5*cm, 2.5*cm, 2.5*cm, 1.5*cm, 2.5*cm, 3*cm]
@@ -574,7 +575,7 @@ class ReceptionHistoryTab(QWidget):
 
             # --- التذييل ---
             t_ttc = float(header.get('Invoice_Total_TTC') or 0)
-            elements.append(Paragraph(f"<para align='right'><b>TOTAL TTC : {t_ttc:,.2f} DZD</b></para>", styles["Normal"]))
+            elements.append(Paragraph(f"<para align='right'><b>TOTAL TTC : {format_money(t_ttc, 'DA')}</b></para>", styles["Normal"]))
             elements.append(Spacer(1, 2 * cm))
             local_store = get_local_settings_store(self.manager)
             settings = local_store.load_merged_pdf_settings()

@@ -12,7 +12,7 @@ import qtawesome as qta
 from ui.widgets.inventory.dialogs import BarcodeLineEdit, NumericSpinBox
 from database.system_logger import active_user_id
 from .BatchSelectionDialog import BatchSelectionDialog
-from ui.formatting import format_money, format_quantity, quantity_to_int
+from ui.formatting import format_money, format_quantity, quantity_to_int, _to_decimal
 
 # ==============================================================================
 # 2. نموذج الإدخال والتعديل (Form)
@@ -186,7 +186,7 @@ class CreditNoteForm(QWidget):
         self.btn_cancel_edit.clicked.connect(self.cancel_edit_mode)
         self.btn_cancel_edit.hide()
         
-        self.lbl_total = QLabel("Total TTC: 0.00 DA")
+        self.lbl_total = QLabel("Total TTC: 0,00 DA")
         self.lbl_total.setStyleSheet("font-size: 18px; font-weight: 900; color: #c0392b;")
         
         self.btn_save = QPushButton(" Valider l'Avoir")
@@ -512,9 +512,11 @@ class CreditNoteForm(QWidget):
         total = 0.0
         for r in range(self.table.rowCount()):
             try:
-                total += float(self.table.item(r, 6).text().replace(",", ""))
-            except: pass
-        self.lbl_total.setText(f"Total TTC: {total:,.2f} DA")
+                txt = self.table.item(r, 6).text()
+                total += float(_to_decimal(txt))
+            except Exception:
+                pass
+        self.lbl_total.setText(f"Total TTC: {format_money(total, 'DA')}")
 
     def clear_entry_fields(self, keep_search=False):
         if not keep_search:
@@ -679,7 +681,7 @@ class CreditNoteForm(QWidget):
             QMessageBox.warning(self, "Manquant", "Fournisseur et Reference obligatoires.")
             return None
 
-        total_ttc = float(self.lbl_total.text().replace("Total TTC:", "").replace("DA", "").replace(",", "").strip())
+        total_ttc = float(_to_decimal(self.lbl_total.text()))
         return {
             'Supplier_ID': supplier_id,
             'Credit_Note_Ref': ref,

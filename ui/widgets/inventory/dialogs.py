@@ -333,9 +333,9 @@ class BatchDetailsDialog(BaseDialog):
         tva_amount = price_u * (tva_pct / 100)
         total_val_ttc = (price_u + tva_amount) * qty_curr
 
-        add_row(layout_fin, "Prix Unitaire (HT)", f"{format_money(price_u)} DA")
-        add_row(layout_fin, "TVA", f"{format_money(tva_amount)} DA ({tva_pct}%)")
-        add_row(layout_fin, "Valeur Totale (Stock Actuel)", f"{format_money(total_val_ttc)} DA (TTC)", True, "#2c3e50")
+        add_row(layout_fin, "Prix Unitaire (HT)", format_money(price_u, 'DA'))
+        add_row(layout_fin, "TVA", f"{format_money(tva_amount, 'DA')} ({tva_pct}%)")
+        add_row(layout_fin, "Valeur Totale (Stock Actuel)", f"{format_money(total_val_ttc, 'DA')} (TTC)", True, "#2c3e50")
 
         layout_fin.addRow(QLabel("----------"), QLabel(""))
         add_row(layout_fin, "Réf. Bon de Commande (PO)", self.batch.get('PO_ID', '---'))

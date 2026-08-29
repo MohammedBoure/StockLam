@@ -77,11 +77,11 @@ class KPICardsSection(QWidget):
         
         # --- 1. VALEUR STOCK ---
         val_stock = stats.get('total_stock_value', 0)
-        stock_str = format_money(val_stock, "DA").replace(',', ' ')
+        stock_str = format_money(val_stock, "DA")
         
         # --- 2. CONSOMMATION ---
         val_consumed_money = stats.get('total_consumed_value', total_consumed_value)
-        cons_str = format_money(val_consumed_money, "DA").replace(',', ' ')
+        cons_str = format_money(val_consumed_money, "DA")
         
         # --- 3. SORTIES STOCK ---
         val_consumed_qty = stats.get('total_consumed_units', total_consumed_qty)
@@ -94,7 +94,7 @@ class KPICardsSection(QWidget):
         # الكمية (الرقم الكبير)
         waste_qty_str = format_quantity(waste_qty)
         # القيمة (الرقم الصغير بالأسفل)
-        waste_val_str = format_money(waste_val, "DA").replace(',', ' ')
+        waste_val_str = format_money(waste_val, "DA")
         
         # --- إنشاء البطاقات ---
         # البطاقات العادية (بدون قيمة سفلية)
@@ -103,7 +103,6 @@ class KPICardsSection(QWidget):
         self.layout.addWidget(KPICard("SORTIES STOCK", qty_str, "📦", "#16a085"))
         
         # البطاقة الرابعة (مع القيمة السفلية)
-        # نمرر waste_qty_str كقيمة رئيسية، و waste_val_str كقيمة فرعية
         self.layout.addWidget(KPICard(
             title="PERTES & DÉCHETS", 
             value=waste_qty_str,         # الكمية (كبير)
