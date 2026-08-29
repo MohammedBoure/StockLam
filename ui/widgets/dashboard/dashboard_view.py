@@ -30,9 +30,9 @@ class DashboardTab(QWidget):
         # --- Toolbar ---
         toolbar = QFrame()
         toolbar.setStyleSheet("background-color: white; border-bottom: 1px solid #dcdde1;")
-        toolbar.setFixedHeight(75)
+        toolbar.setFixedHeight(46)
         tool_layout = QHBoxLayout(toolbar)
-        tool_layout.setContentsMargins(25, 0, 25, 0)
+        tool_layout.setContentsMargins(15, 2, 15, 2)
 
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_to = QDateEdit(QDate.currentDate())

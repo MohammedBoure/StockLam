@@ -3,7 +3,7 @@
 import logging
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QHeaderView, 
                                QTableWidgetItem, QMessageBox, QLabel, QHBoxLayout, QPushButton,
-                               QAbstractItemView, QDateEdit)
+                               QAbstractItemView, QDateEdit, QFrame)
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QBrush, QFont
 import qtawesome as qta
@@ -18,9 +18,14 @@ class ReclamationTab(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
         
-        # Header
-        top_layout = QHBoxLayout()
+        # Toolbar
+        top_frame = QFrame()
+        top_frame.setStyleSheet("QFrame { background-color: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; }")
+        top_layout = QHBoxLayout(top_frame)
+        top_layout.setContentsMargins(10, 5, 10, 5)
         
         # --- [جديد] إضافة حقول النطاق التاريخي ---
         self.date_from = QDateEdit(QDate.currentDate().addMonths(-3)) # الافتراضي: آخر 3 أشهر
@@ -48,7 +53,7 @@ class ReclamationTab(QWidget):
         top_layout.addSpacing(10)
         
         top_layout.addWidget(btn_refresh)
-        layout.addLayout(top_layout)
+        layout.addWidget(top_frame)
 
         # Table
         self.table = QTableWidget()
