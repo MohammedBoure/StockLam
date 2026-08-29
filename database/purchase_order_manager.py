@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, date
 from typing import List, Dict, Optional, Any
 from .system_logger import log_methods 
+from ui.formatting import format_money 
 
 @log_methods()
 class PurchaseOrderManager:
@@ -387,15 +388,15 @@ class PurchaseOrderManager:
                     elif known_items < total_items:
                         po['Total_Amount_TTC'] = amt_ttc
                         po['Estimated_Amount_TTC'] = amt_ttc
-                        po['Estimated_Amount_Display'] = f"> {amt_ttc:,.2f} DA"
-                        po['Total_Amount_Display'] = f"> {amt_ttc:,.2f} DA"
+                        po['Estimated_Amount_Display'] = f"> {format_money(amt_ttc, 'DA')}"
+                        po['Total_Amount_Display'] = f"> {format_money(amt_ttc, 'DA')}"
                         po['Has_Estimated_Price'] = True
                         po['Is_Partial_Estimate'] = True
                     else:
                         po['Total_Amount_TTC'] = amt_ttc
                         po['Estimated_Amount_TTC'] = amt_ttc
-                        po['Estimated_Amount_Display'] = f"{amt_ttc:,.2f} DA"
-                        po['Total_Amount_Display'] = f"{amt_ttc:,.2f} DA"
+                        po['Estimated_Amount_Display'] = format_money(amt_ttc, 'DA')
+                        po['Total_Amount_Display'] = format_money(amt_ttc, 'DA')
                         po['Has_Estimated_Price'] = True
                         po['Is_Partial_Estimate'] = False
 
@@ -505,14 +506,14 @@ class PurchaseOrderManager:
                     header['Is_Partial_Estimate'] = False
                 elif known_items < total_items:
                     header['Estimated_Amount_TTC'] = total_estimated_ttc
-                    header['Estimated_Amount_Display'] = f"> {total_estimated_ttc:,.2f} DA"
-                    header['Total_Amount_Display'] = f"> {total_estimated_ttc:,.2f} DA"
+                    header['Estimated_Amount_Display'] = f"> {format_money(total_estimated_ttc, 'DA')}"
+                    header['Total_Amount_Display'] = f"> {format_money(total_estimated_ttc, 'DA')}"
                     header['Has_Estimated_Price'] = True
                     header['Is_Partial_Estimate'] = True
                 else:
                     header['Estimated_Amount_TTC'] = total_estimated_ttc
-                    header['Estimated_Amount_Display'] = f"{total_estimated_ttc:,.2f} DA"
-                    header['Total_Amount_Display'] = f"{total_estimated_ttc:,.2f} DA"
+                    header['Estimated_Amount_Display'] = format_money(total_estimated_ttc, 'DA')
+                    header['Total_Amount_Display'] = format_money(total_estimated_ttc, 'DA')
                     header['Has_Estimated_Price'] = True
                     header['Is_Partial_Estimate'] = False
                 

@@ -300,7 +300,7 @@ class InvoicesListWidget(QWidget):
 
                 partner_text = t.get('Partner_Name') or t.get('City') or "-"
                 amount = float(t.get('Total_Amount') or 0)
-                amount_item = QTableWidgetItem(f"{amount:,.2f}")
+                amount_item = QTableWidgetItem(format_money(amount, 'DA'))
                 amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
                 t_type = t.get('Transfer_Type', 'Outbound') or 'Outbound'
@@ -628,7 +628,7 @@ class InvoicesListWidget(QWidget):
                 line_val = (qty_numeric * price) if is_billable else 0.0
                 grand_total += line_val
 
-                obs_text = f"{line_val:,.2f}" if is_billable else "<font color='red'>Gratuit</font>"
+                obs_text = format_money(line_val) if is_billable else "<font color='red'>Gratuit</font>"
                 lot_info = item.get('Lot_Number', '-')
                 exp_info = str(item.get('Expiry_Date', '-'))[:10]
                 p_info = f"<b>{item.get('Product_Name', '-')}</b><br/><font size=8 color='#555555'>Lot: {lot_info} | Exp: {exp_info}</font>"

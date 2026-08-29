@@ -290,10 +290,11 @@ class PurchaseOrderListView(QWidget):
                 status_item.setForeground(QColor(colors_map.get(raw_status, 'black')))
                 self.table.setItem(row, 4, status_item)
                 
-                amt_display = po.get('Estimated_Amount_Display') or po.get('Total_Amount_Display')
                 amt_val = float(po.get('Estimated_Amount_TTC') or po.get('Total_Amount_TTC') or 0)
-                if not amt_display:
-                    amt_display = format_money(amt_val, 'DA') if amt_val > 0 else "---"
+                if po.get('Is_Partial_Estimate'):
+                    amt_display = f"> {format_money(amt_val, 'DA')}" if amt_val > 0 else "---"
+                else:
+                    amt_display = format_money(amt_val, 'DA') if (amt_val > 0 or po.get('Has_Estimated_Price')) else "---"
 
                 amt_item = create_numeric_item(amt_display, amt_val)
                 if po.get('Is_Partial_Estimate'):
