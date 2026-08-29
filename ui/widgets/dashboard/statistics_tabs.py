@@ -113,7 +113,7 @@ class StockValuationTab(QWidget):
                 # Value
                 val = float(item['total_value_ht'])
                 total_value += val
-                item_val = NumericTableWidgetItem(format_money(val), val)
+                item_val = NumericTableWidgetItem(format_money(val, 'DA'), val)
                 item_val.setForeground(QColor("#27ae60"))
                 self.table.setItem(row, 3, item_val)
 
@@ -174,7 +174,7 @@ class FullConsumptionTab(QWidget):
                 self.table.setItem(row, 2, NumericTableWidgetItem(format_quantity(qty), qty))
                 
                 cost = float(item['total_cost_ttc'])
-                cost_item = NumericTableWidgetItem(format_money(cost), cost)
+                cost_item = NumericTableWidgetItem(format_money(cost, 'DA'), cost)
                 cost_item.setForeground(QColor("#007572"))
                 cost_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
                 self.table.setItem(row, 3, cost_item)
@@ -260,7 +260,7 @@ class DeletedProductsAuditTab(QWidget):
                 self.table_hist.setItem(row, 2, QTableWidgetItem(format_quantity(h['qty_consumed'])))
                 
                 val = float(h['value_consumed'])
-                self.table_hist.setItem(row, 3, QTableWidgetItem(format_money(val)))
+                self.table_hist.setItem(row, 3, QTableWidgetItem(format_money(val, 'DA')))
                 
             if self.txt_search_audit.text():
                 filter_table_rows(self.table_hist, self.txt_search_audit.text())

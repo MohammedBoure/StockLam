@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCharts import (
     QChart, QChartView, QBarSeries, QStackedBarSeries, 
-    QBarSet, QBarCategoryAxis, QValueAxis, QLegend
+    QBarSet, QBarCategoryAxis, QValueAxis, QLegend, QCategoryAxis
 )
 from PySide6.QtCore import Qt, QDate, QMargins, Signal, QPoint, QRect, QEvent
 from PySide6.QtGui import (
@@ -69,7 +69,7 @@ class ChartHoverCard(QFrame):
         self.row_in = QHBoxLayout()
         self.lbl_in_title = QLabel("📥 Entrées (Achats) :", self)
         self.lbl_in_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
-        self.lbl_in_val = QLabel("0 DA", self)
+        self.lbl_in_val = QLabel("0,00 DA", self)
         self.lbl_in_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #1e824c;")
         self.row_in.addWidget(self.lbl_in_title)
         self.row_in.addStretch()
@@ -80,7 +80,7 @@ class ChartHoverCard(QFrame):
         self.row_out = QHBoxLayout()
         self.lbl_out_title = QLabel("📤 Sorties (Consommation) :", self)
         self.lbl_out_title.setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b;")
-        self.lbl_out_val = QLabel("0 DA", self)
+        self.lbl_out_val = QLabel("0,00 DA", self)
         self.lbl_out_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #c0392b;")
         self.row_out.addWidget(self.lbl_out_title)
         self.row_out.addStretch()
@@ -91,7 +91,7 @@ class ChartHoverCard(QFrame):
         self.row_net = QHBoxLayout()
         self.lbl_net_title = QLabel("⚖️ Solde Net (Flux) :", self)
         self.lbl_net_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #334155;")
-        self.lbl_net_val = QLabel("0 DA", self)
+        self.lbl_net_val = QLabel("0,00 DA", self)
         self.lbl_net_val.setStyleSheet("font-size: 11px; font-weight: 800; color: #007572;")
         self.row_net.addWidget(self.lbl_net_title)
         self.row_net.addStretch()
@@ -465,7 +465,7 @@ class ChartsSection(QWidget):
         # --- 5. Badges KPI Compacts (sur la droite) ---
         self.badge_in = self._create_compact_metric_pill(
             title="Entrées :", 
-            value="0 DA", 
+            value="0,00 DA", 
             icon="📥", 
             bg_color=self.COLOR_IN_LIGHT, 
             text_color=self.COLOR_IN_BORDER,
@@ -473,7 +473,7 @@ class ChartsSection(QWidget):
         )
         self.badge_out = self._create_compact_metric_pill(
             title="Sorties :", 
-            value="0 DA", 
+            value="0,00 DA", 
             icon="📤", 
             bg_color=self.COLOR_OUT_LIGHT, 
             text_color=self.COLOR_OUT_BORDER,
@@ -481,7 +481,7 @@ class ChartsSection(QWidget):
         )
         self.badge_net = self._create_compact_metric_pill(
             title="Solde :", 
-            value="0 DA", 
+            value="0,00 DA", 
             icon="⚖️", 
             bg_color="#f8fafc", 
             text_color=self.COLOR_TEXT_MAIN,
@@ -887,18 +887,42 @@ class ChartsSection(QWidget):
         series.attachAxis(axis_x)
 
         # --- Axe Y (Valeurs en DA) ---
-        axis_y = QValueAxis()
-        axis_y.setLabelsFont(QFont("Segoe UI", 9))
-        axis_y.setGridLineColor(QColor("#f1f5f9"))
-        
-        y_max = max(max_val * 1.15, 1000.0)
-        axis_y.setRange(0, y_max)
-        axis_y.setLabelFormat("%.0f")
-        axis_y.setTitleText("Montant (DA)")
-        axis_y.setTitleFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-
+        axis_y = QCategoryAxis()
+        self._setup_y_axis(axis_y, max_val, "Montant (DA)")
         self.chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
+
+    def _setup_y_axis(self, axis_y: QCategoryAxis, max_val: float, title: str = "Montant (DA)"):
+        """Configure l'axe Y avec des intervalles clairs formatés en dinars (1 987 654,32 DA)"""
+        axis_y.setLabelsFont(QFont("Segoe UI", 9))
+        axis_y.setGridLineColor(QColor("#f1f5f9"))
+        axis_y.setTitleText(title)
+        axis_y.setTitleFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        axis_y.setLabelsPosition(QCategoryAxis.AxisLabelsPosition.AxisLabelsPositionOnValue)
+
+        y_max = max(max_val * 1.15, 1000.0)
+        raw_step = y_max / 5.0
+        magnitude = 10 ** max(0, len(str(int(raw_step))) - 1)
+        factor = raw_step / magnitude
+        if factor < 1.5:
+            step = 1 * magnitude
+        elif factor < 3.5:
+            step = 2 * magnitude
+        elif factor < 7.5:
+            step = 5 * magnitude
+        else:
+            step = 10 * magnitude
+
+        actual_max = step * 5
+        while actual_max < y_max:
+            actual_max += step
+
+        axis_y.setRange(0, actual_max)
+        axis_y.append(format_money(0, "DA"), 0)
+        curr = step
+        while curr <= actual_max:
+            axis_y.append(format_money(curr, "DA"), curr)
+            curr += step
 
     def _render_net_flow_chart(self, buckets: List[Dict[str, Any]], categories: List[str], max_val: float):
         """Construit le graphique de solde net (Vert si positif, Rouge si négatif)"""
@@ -935,10 +959,8 @@ class ChartsSection(QWidget):
         self.chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         series.attachAxis(axis_x)
 
-        axis_y = QValueAxis()
-        axis_y.setRange(0, max(max_val * 1.15, 1000.0))
-        axis_y.setTitleText("Solde Net (DA)")
-        axis_y.setLabelFormat("%.0f")
+        axis_y = QCategoryAxis()
+        self._setup_y_axis(axis_y, max_val, "Solde Net (DA)")
         self.chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
 
