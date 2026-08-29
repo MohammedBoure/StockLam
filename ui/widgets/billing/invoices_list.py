@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QMessageBox, QFileDialog, QMenu
 )
 from PySide6.QtCore import Qt, QDate, Signal
+from PySide6.QtGui import QFont, QColor
 import qtawesome as qta
 import json
 from branding import get_banner_path
