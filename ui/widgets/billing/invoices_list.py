@@ -664,13 +664,14 @@ class InvoicesListWidget(QWidget):
             
             grand_total = 0.0
             for item in details_data:
-                is_billable = item.get('Is_Billable', False)
+                is_billable = bool(item.get('Is_Billable', False))
                 qty = item.get('Qty_Transferred', 0)
                 qty_numeric = float(qty or 0)
                 price = float(item.get('Unit_Price', 0))
                 line_val = (qty_numeric * price) if is_billable else 0.0
                 grand_total += line_val
 
+                pu_text = format_money(price) if is_billable else "/"
                 obs_text = format_money(line_val) if is_billable else "<font color='red'>Gratuit</font>"
                 lot_info = item.get('Lot_Number', '-')
                 exp_info = str(item.get('Expiry_Date', '-'))[:10]
@@ -679,7 +680,7 @@ class InvoicesListWidget(QWidget):
                 table_data.append([
                     Paragraph(p_info, styles["Normal"]), 
                     format_quantity(qty), 
-                    format_money(price), 
+                    pu_text, 
                     Paragraph(obs_text, styles["Normal"])
                 ])
 

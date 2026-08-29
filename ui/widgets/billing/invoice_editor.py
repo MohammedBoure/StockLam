@@ -737,9 +737,12 @@ class InvoiceEditorWidget(QWidget):
         sb_qty = QSpinBox()
         sb_qty.setRange(1, max_allowed); sb_qty.setValue(initial_qty); sb_qty.setAlignment(Qt.AlignCenter)
 
-        unit_price = float(batch.get('Unit_Price_Received', 0))
+        unit_price = float(batch.get('Unit_Price_Received', 0)) if is_billable else 0.0
         sb_price = QDoubleSpinBox()
         sb_price.setRange(0, 1000000); sb_price.setValue(unit_price); sb_price.setGroupSeparatorShown(True)
+        if not is_billable:
+            sb_price.setSpecialValueText("/")
+            sb_price.setEnabled(False)
 
         txt_obs = QLineEdit()
         txt_obs.setPlaceholderText("Note...")
@@ -836,14 +839,23 @@ class InvoiceEditorWidget(QWidget):
         """حساب المجاميع مع حماية ضد NoneType"""
         grand = 0.0
         for r in range(self.table.rowCount()):
+            table_item = self.table.item(r, 0)
+            meta = table_item.data(Qt.UserRole) if table_item else {}
+            is_billable = bool(meta.get('is_billable', True)) if isinstance(meta, dict) else True
+
             qty_widget = self.table.cellWidget(r, 2)
             price_widget = self.table.cellWidget(r, 3)
             total_label = self.table.cellWidget(r, 5)
 
             if qty_widget and price_widget and total_label:
-                line = qty_widget.value() * price_widget.value()
-                total_label.setText(format_money(line))
-                grand += line
+                if is_billable:
+                    line = qty_widget.value() * price_widget.value()
+                    total_label.setText(format_money(line))
+                    total_label.setStyleSheet("font-weight: bold; color: #2980b9; padding-right: 5px;")
+                    grand += line
+                else:
+                    total_label.setText("Gratuit")
+                    total_label.setStyleSheet("font-weight: bold; color: #e74c3c; padding-right: 5px;")
 
         self.lbl_total.setText(format_money(grand, 'DA'))
 
