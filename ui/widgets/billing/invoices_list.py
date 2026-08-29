@@ -70,8 +70,10 @@ class InvoicesListWidget(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
 
         # --- 1. Filter Bar ---
-        filter_group = QGroupBox("Filtres & Recherche")
+        filter_group = QFrame()
+        filter_group.setStyleSheet("QFrame { background-color: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; }")
         filter_layout = QHBoxLayout(filter_group)
+        filter_layout.setContentsMargins(10, 8, 10, 8)
 
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_from.setCalendarPopup(True)

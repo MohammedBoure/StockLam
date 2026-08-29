@@ -34,9 +34,6 @@ class DashboardTab(QWidget):
         tool_layout = QHBoxLayout(toolbar)
         tool_layout.setContentsMargins(25, 0, 25, 0)
 
-        lbl_title = QLabel("📊 TABLEAU DE BORD INTÉGRAL")
-        lbl_title.setStyleSheet("font-size: 18px; font-weight: 900; color: #2c3e50;")
-        
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_to = QDateEdit(QDate.currentDate())
         for d in [self.date_from, self.date_to]:
@@ -56,7 +53,6 @@ class DashboardTab(QWidget):
         """)
         self.btn_refresh.clicked.connect(self.refresh_all)
 
-        tool_layout.addWidget(lbl_title)
         tool_layout.addStretch()
         tool_layout.addWidget(QLabel("Du:"))
         tool_layout.addWidget(self.date_from)

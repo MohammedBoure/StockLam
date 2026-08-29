@@ -21,8 +21,6 @@ class ReclamationTab(QWidget):
         
         # Header
         top_layout = QHBoxLayout()
-        lbl_title = QLabel("Suivi des Réclamations & Anomalies")
-        lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #c0392b;")
         
         # --- [جديد] إضافة حقول النطاق التاريخي ---
         self.date_from = QDateEdit(QDate.currentDate().addMonths(-3)) # الافتراضي: آخر 3 أشهر
@@ -40,7 +38,6 @@ class ReclamationTab(QWidget):
         btn_refresh.setIcon(qta.icon("fa5s.sync-alt"))
         btn_refresh.clicked.connect(self.load_data)
         
-        top_layout.addWidget(lbl_title)
         top_layout.addStretch()
         
         # إضافة الفلاتر للتخطيط
