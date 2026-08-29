@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QGroupBox, QSc
 from PySide6.QtCore import QDate, Qt, QEvent, QTimer
 from PySide6.QtGui import QGuiApplication
 import logging
+from ui.formatting import format_money
 
 class BaseDialog(QDialog):
     """Fenêtre de dialogue de base unifiée"""
@@ -975,15 +976,21 @@ class PartnerDialog(BaseDialog):
         # BL
         bl_layout = QVBoxLayout(self.tab_bl)
         self.table_bl = QTableWidget(0, 3)
-        self.table_bl.setHorizontalHeaderLabels(["Date", "Total (DZD)", "Statut"])
-        self.table_bl.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_bl.setHorizontalHeaderLabels(["Date & Heure", "Total (DA)", "Statut"])
+        self.table_bl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table_bl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table_bl.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table_bl.setAlternatingRowColors(True)
         bl_layout.addWidget(self.table_bl)
         
         # BR
         br_layout = QVBoxLayout(self.tab_br)
         self.table_br = QTableWidget(0, 3)
-        self.table_br.setHorizontalHeaderLabels(["Date", "Total (DZD)", "Statut"])
-        self.table_br.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_br.setHorizontalHeaderLabels(["Date & Heure", "Total (DA)", "Statut"])
+        self.table_br.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table_br.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table_br.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table_br.setAlternatingRowColors(True)
         br_layout.addWidget(self.table_br)
         
         try:
@@ -994,9 +1001,12 @@ class PartnerDialog(BaseDialog):
                 transfers = cursor.fetchall()
             
             for t in transfers:
+                raw_dt = t.get('Transaction_Date')
+                date_str = raw_dt.strftime("%Y-%m-%d %H:%M") if hasattr(raw_dt, 'strftime') else str(raw_dt or "")[:16]
+                amt_val = float(t.get('Total_Amount') or 0)
                 row_data = [
-                    str(t.get('Transaction_Date', ''))[:16],
-                    f"{float(t.get('Total_Amount') or 0):,.2f}",
+                    date_str,
+                    format_money(amt_val, 'DA'),
                     str(t.get('Status', ''))
                 ]
                 ttype = t.get('Transfer_Type') or 'Outbound'

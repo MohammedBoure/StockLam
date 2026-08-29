@@ -34,6 +34,19 @@ from ui.widgets.settings.pdf.pdf_stamp import (
 )
 from ui.widgets.settings.local_settings import get_local_settings_store
 
+class NumericTableWidgetItem(QTableWidgetItem):
+    def __lt__(self, other):
+        if other is None:
+            return False
+        v1 = self.data(Qt.UserRole)
+        v2 = other.data(Qt.UserRole)
+        if v1 is not None and v2 is not None:
+            try:
+                return float(v1) < float(v2)
+            except (ValueError, TypeError):
+                pass
+        return super().__lt__(other)
+
 class InvoicesListWidget(QWidget):
     """
     Interface for the list of invoices/delivery notes.
@@ -127,11 +140,23 @@ class InvoicesListWidget(QWidget):
 
         # --- 3. Table ---
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["ID Trans.", "Type", "Date", "Client / Partenaire", "Montant (DZD)"])
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        columns = ["ID Trans.", "Type", "Date & Heure", "Client / Sous-Traitant", "Montant (DA)"]
+        self.table.setColumnCount(len(columns))
+        self.table.setHorizontalHeaderLabels(columns)
+        
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSortingEnabled(True)
+        header.setSectionsClickable(True)
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         self.table.cellDoubleClicked.connect(lambda r, c: self.on_edit_clicked())
 
@@ -279,15 +304,16 @@ class InvoicesListWidget(QWidget):
         end = self.date_to.date().toString("yyyy-MM-dd") + " 23:59:59"
         p_id = self.combo_filter_partner.currentData()
 
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         if hasattr(self.manager, 'external_transfers'):
             transfers = self.manager.external_transfers.get_transfers_filtered(start, end, p_id, None)
             for row, t in enumerate(transfers):
                 self.table.insertRow(row)
 
-                # التعديل هنا: استخدام التنسيق الجديد للعرض
                 formatted_ref = t.get('Display_Ref') or self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
                 id_item = QTableWidgetItem(formatted_ref)
+                id_item.setTextAlignment(Qt.AlignCenter)
                 id_item.setData(Qt.UserRole, t['Transfer_ID']) # حفظ الـ ID الحقيقي في الـ Data للعمليات البرمجية
                 id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
                 id_item.setData(Qt.UserRole + 2, t.get('Ref_Transfer_ID'))
@@ -295,28 +321,44 @@ class InvoicesListWidget(QWidget):
                 raw_date = t.get('Transaction_Date')
                 if hasattr(raw_date, 'strftime'):
                     date_text = raw_date.strftime("%Y-%m-%d %H:%M")
+                elif isinstance(raw_date, str) and raw_date:
+                    date_text = raw_date[:16]
                 else:
                     date_text = str(raw_date or "")
 
+                date_item = QTableWidgetItem(date_text)
+                date_item.setTextAlignment(Qt.AlignCenter)
+
                 partner_text = t.get('Partner_Name') or t.get('City') or "-"
+                partner_item = QTableWidgetItem(str(partner_text))
+
                 amount = float(t.get('Total_Amount') or 0)
-                amount_item = QTableWidgetItem(format_money(amount, 'DA'))
+                amount_item = NumericTableWidgetItem(format_money(amount, 'DA'))
+                amount_item.setData(Qt.UserRole, amount)
                 amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                font_bold = QFont()
+                font_bold.setBold(True)
+                amount_item.setFont(font_bold)
 
                 t_type = t.get('Transfer_Type', 'Outbound') or 'Outbound'
                 type_str = "Retour" if t_type == 'Return' else "BL (Sortie)"
                 type_item = QTableWidgetItem(type_str)
+                type_item.setTextAlignment(Qt.AlignCenter)
+                type_item.setFont(font_bold)
                 if t_type == 'Return':
-                    type_item.setForeground(Qt.magenta)
+                    type_item.setForeground(QColor("#8e44ad"))
                 else:
-                    type_item.setForeground(Qt.darkGreen)
+                    type_item.setForeground(QColor("#27ae60"))
 
                 self.table.setItem(row, 0, id_item)
                 self.table.setItem(row, 1, type_item)
-                self.table.setItem(row, 2, QTableWidgetItem(date_text))
-                self.table.setItem(row, 3, QTableWidgetItem(str(partner_text)))
+                self.table.setItem(row, 2, date_item)
+                self.table.setItem(row, 3, partner_item)
                 self.table.setItem(row, 4, amount_item)
 
+        self.table.setSortingEnabled(True)
+        self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.on_selection_changed()
         self.filter_table(self.search_input.text())
 
