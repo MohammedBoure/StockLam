@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QFont, QBrush, QAction
 import qtawesome as qta
 
 from database.system_logger import active_user_id
-from ui.formatting import format_money
+from ui.formatting import format_money, _to_decimal
 
 
 
@@ -169,7 +169,7 @@ class CreditNoteList(QWidget):
                 
                 self.table.setItem(row, 4, QTableWidgetItem(type_display))
                 
-                amt = float(note.get('Total_Amount_TTC') or 0)
+                amt = float(_to_decimal(note.get('Total_Amount_TTC') or 0))
                 amt_item = QTableWidgetItem(format_money(amt, 'DA'))
                 amt_item.setForeground(QBrush(QColor("#c0392b")))
                 self.table.setItem(row, 5, amt_item)

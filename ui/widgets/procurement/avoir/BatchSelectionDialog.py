@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QDialog, QDialogButtonBox
 )
 from PySide6.QtCore import Qt
+from ui.formatting import _to_decimal, format_money, format_quantity
 
 
 
@@ -34,10 +35,10 @@ class BatchSelectionDialog(QDialog):
             self.table.setItem(i, 2, QTableWidgetItem(str(item.get('Expiry_Date') or '---')))
             
             qty = item.get('Quantity_Initial') or item.get('Qty_Received') or 0
-            self.table.setItem(i, 3, QTableWidgetItem(str(qty)))
+            self.table.setItem(i, 3, QTableWidgetItem(format_quantity(qty)))
             
-            price = float(item.get('Unit_Price_Received') or item.get('Purchase_Price') or 0)
-            self.table.setItem(i, 4, QTableWidgetItem(f"{price:.2f}"))
+            price = float(_to_decimal(item.get('Unit_Price_Received') or item.get('Purchase_Price') or 0))
+            self.table.setItem(i, 4, QTableWidgetItem(format_money(price)))
             
             self.table.item(i, 0).setData(Qt.UserRole, item)
             

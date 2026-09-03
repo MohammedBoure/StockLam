@@ -23,7 +23,7 @@ except ImportError:
     HAS_REPORTLAB = False
 
 from .reception_dialog import ReceptionDialog
-from ui.formatting import format_money
+from ui.formatting import format_money, _to_decimal
 from ui.widgets.settings.pdf.pdf_stamp import fit_stamp_size_cm, get_active_stamp, SignatureFooter
 from ui.widgets.settings.local_settings import get_local_settings_store
 
@@ -218,7 +218,7 @@ class ReceptionHistoryTab(QWidget):
         item = QTableWidgetItem()
         if is_numeric:
             try:
-                val = float(str(text).replace(',', ''))
+                val = float(_to_decimal(text))
                 item.setData(Qt.EditRole, val)
             except:
                 item.setText(str(text))

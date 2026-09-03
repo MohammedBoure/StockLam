@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from decimal import Decimal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, 
     QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QPushButton, 
@@ -35,6 +36,7 @@ class CreditNoteForm(QWidget):
         self.selected_product = None 
         
         self.linked_br_id = None  # [NOUVEAU] متغير لتخزين معرف وصل الاستلام المرتبط
+        self.current_total = Decimal("0")
         
         self.init_ui()
         self.load_initial_data()
@@ -337,7 +339,7 @@ class CreditNoteForm(QWidget):
         self.lbl_product_name.setText(f"✅ {found['Product_Name']}")
         
         lot = found.get('Lot_Number', '')
-        price = float(found.get('Unit_Price_Received') or found.get('Purchase_Price') or found.get('Unit_Price', 0))
+        price = float(_to_decimal(found.get('Unit_Price_Received') or found.get('Purchase_Price') or found.get('Unit_Price', 0)))
         
         raw_expiry = found.get('Expiry_Date')
         if raw_expiry and str(raw_expiry) != 'None' and str(raw_expiry) != '---':
@@ -393,8 +395,15 @@ class CreditNoteForm(QWidget):
             if expiry_txt and expiry_txt != "---":
                 self.date_expiry.setDate(QDate.fromString(expiry_txt, "yyyy-MM-dd"))
             
-            self.spin_qty.setValue(quantity_to_int(self.table.item(row, 4).text().replace(",", "")))
-            self.spin_price.setValue(float(self.table.item(row, 5).text().replace(",", "")))
+            qty_item = self.table.item(row, 4)
+            raw_qty = qty_item.data(Qt.UserRole) if qty_item else None
+            qty_val = quantity_to_int(raw_qty) if raw_qty is not None else quantity_to_int(qty_item.text() if qty_item else 0)
+            self.spin_qty.setValue(qty_val)
+
+            price_item = self.table.item(row, 5)
+            raw_price = price_item.data(Qt.UserRole) if price_item else None
+            price_val = float(raw_price) if raw_price is not None else float(_to_decimal(price_item.text() if price_item else 0))
+            self.spin_price.setValue(price_val)
             
             self.editing_row = row
             self.btn_add_line.setText("Modifier la ligne")
@@ -424,7 +433,7 @@ class CreditNoteForm(QWidget):
 
         batch_id = self.selected_product.get('Batch_ID')
         current_qty = self.selected_product.get('Quantity_Current')
-        if is_return and batch_id and current_qty is not None and qty > float(current_qty):
+        if is_return and batch_id and current_qty is not None and qty > float(_to_decimal(current_qty)):
             QMessageBox.warning(
                 self,
                 "Stock insuffisant",
@@ -447,9 +456,18 @@ class CreditNoteForm(QWidget):
             self.table.item(row, 1).setText(self.selected_product['Product_Name'])
             self.table.item(row, 2).setText(lot if is_return else "---")
             self.table.item(row, 3).setText(expiry if is_return else "---")
-            self.table.item(row, 4).setText(format_quantity(qty))
-            self.table.item(row, 5).setText(format_money(price))
-            self.table.item(row, 6).setText(format_money(total_line))
+            
+            item_qty = QTableWidgetItem(format_quantity(qty))
+            item_qty.setData(Qt.UserRole, qty)
+            self.table.setItem(row, 4, item_qty)
+            
+            item_price = QTableWidgetItem(format_money(price))
+            item_price.setData(Qt.UserRole, price)
+            self.table.setItem(row, 5, item_price)
+            
+            item_total = QTableWidgetItem(format_money(total_line))
+            item_total.setData(Qt.UserRole, total_line)
+            self.table.setItem(row, 6, item_total)
             
             self.editing_row = None
             self.btn_add_line.setText("Ajouter")
@@ -466,9 +484,18 @@ class CreditNoteForm(QWidget):
             self.table.setItem(row, 1, QTableWidgetItem(self.selected_product['Product_Name']))
             self.table.setItem(row, 2, QTableWidgetItem(lot if is_return else "---"))
             self.table.setItem(row, 3, QTableWidgetItem(expiry if is_return else "---"))
-            self.table.setItem(row, 4, QTableWidgetItem(format_quantity(qty)))
-            self.table.setItem(row, 5, QTableWidgetItem(format_money(price)))
-            self.table.setItem(row, 6, QTableWidgetItem(format_money(total_line)))
+            
+            item_qty = QTableWidgetItem(format_quantity(qty))
+            item_qty.setData(Qt.UserRole, qty)
+            self.table.setItem(row, 4, item_qty)
+            
+            item_price = QTableWidgetItem(format_money(price))
+            item_price.setData(Qt.UserRole, price)
+            self.table.setItem(row, 5, item_price)
+            
+            item_total = QTableWidgetItem(format_money(total_line))
+            item_total.setData(Qt.UserRole, total_line)
+            self.table.setItem(row, 6, item_total)
             
             btn_del = QPushButton("✖")
             btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
@@ -509,13 +536,19 @@ class CreditNoteForm(QWidget):
         return -1
 
     def calculate_total(self):
-        total = 0.0
+        total = Decimal("0")
         for r in range(self.table.rowCount()):
             try:
-                txt = self.table.item(r, 6).text()
-                total += float(_to_decimal(txt))
+                line_item = self.table.item(r, 6)
+                if line_item:
+                    raw_val = line_item.data(Qt.UserRole)
+                    if raw_val is not None:
+                        total += _to_decimal(raw_val)
+                    else:
+                        total += _to_decimal(line_item.text())
             except Exception:
                 pass
+        self.current_total = total
         self.lbl_total.setText(f"Total TTC: {format_money(total, 'DA')}")
 
     def clear_entry_fields(self, keep_search=False):
@@ -542,6 +575,7 @@ class CreditNoteForm(QWidget):
         self.txt_ref.clear()
         self.linked_br_id = None
         self.current_edit_id = None
+        self.current_total = Decimal("0")
         self.editing_row = None
         self.selected_product = None
         self.btn_save.setText(" Valider l'Avoir")
@@ -649,9 +683,18 @@ class CreditNoteForm(QWidget):
                 self.table.setItem(row, 1, QTableWidgetItem(str(item['Product_Name'])))
                 self.table.setItem(row, 2, QTableWidgetItem(item.get('Lot_Number') or "---"))
                 self.table.setItem(row, 3, QTableWidgetItem(str(item.get('Expiry_Date')) if item.get('Expiry_Date') else "---"))
-                self.table.setItem(row, 4, QTableWidgetItem(format_quantity(item['Qty_Returned'])))
-                self.table.setItem(row, 5, QTableWidgetItem(format_money(item['Unit_Price'])))
-                self.table.setItem(row, 6, QTableWidgetItem(format_money(item['Line_Total'])))
+                
+                item_qty = QTableWidgetItem(format_quantity(item['Qty_Returned']))
+                item_qty.setData(Qt.UserRole, item['Qty_Returned'])
+                self.table.setItem(row, 4, item_qty)
+                
+                item_price = QTableWidgetItem(format_money(item['Unit_Price']))
+                item_price.setData(Qt.UserRole, item['Unit_Price'])
+                self.table.setItem(row, 5, item_price)
+                
+                item_total = QTableWidgetItem(format_money(item['Line_Total']))
+                item_total.setData(Qt.UserRole, item['Line_Total'])
+                self.table.setItem(row, 6, item_total)
                 
                 btn_del = QPushButton("✖")
                 btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
@@ -681,7 +724,7 @@ class CreditNoteForm(QWidget):
             QMessageBox.warning(self, "Manquant", "Fournisseur et Reference obligatoires.")
             return None
 
-        total_ttc = float(_to_decimal(self.lbl_total.text()))
+        total_ttc = float(self.current_total) if hasattr(self, 'current_total') and self.current_total is not None else float(_to_decimal(self.lbl_total.text()))
         return {
             'Supplier_ID': supplier_id,
             'Credit_Note_Ref': ref,
@@ -703,13 +746,21 @@ class CreditNoteForm(QWidget):
             item_data = self.table.item(r, 0).data(Qt.UserRole)
             batch_id = item_data.get('Batch_ID') if item_data else None
 
+            qty_item = self.table.item(r, 4)
+            raw_qty = qty_item.data(Qt.UserRole) if qty_item else None
+            qty_val = float(raw_qty) if raw_qty is not None else float(_to_decimal(qty_item.text() if qty_item else 0))
+
+            price_item = self.table.item(r, 5)
+            raw_price = price_item.data(Qt.UserRole) if price_item else None
+            price_val = float(raw_price) if raw_price is not None else float(_to_decimal(price_item.text() if price_item else 0))
+
             items.append({
                 'Product_ID': int(self.table.item(r, 0).text()),
                 'Batch_ID': batch_id,
                 'Lot_Number': self.table.item(r, 2).text(),
                 'Expiry_Date': expiry_val,
-                'Qty_Returned': float(self.table.item(r, 4).text().replace(",", "")),
-                'Unit_Price': float(self.table.item(r, 5).text().replace(",", ""))
+                'Qty_Returned': qty_val,
+                'Unit_Price': price_val
             })
         return items
 

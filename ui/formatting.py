@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 
@@ -11,7 +12,22 @@ def _to_decimal(value):
     if not text or text in {"<NULL>", "None", "nan", "NaN"}:
         return Decimal("0")
 
-    normalized = text.replace(" ", "").replace("DA", "").replace("DZD", "").replace("€", "").replace("$", "").strip()
+    # Extract numeric pattern if embedded in descriptive text (e.g. 'Total TTC: 29 950,00 DA')
+    match = re.search(r'[-+]?\s*\d[\d\s\xa0\u202f.,]*', text)
+    if match:
+        text = match.group(0)
+
+    normalized = (
+        text.replace(" ", "")
+        .replace("\xa0", "")
+        .replace("\u202f", "")
+        .replace("\t", "")
+        .replace("DA", "")
+        .replace("DZD", "")
+        .replace("€", "")
+        .replace("$", "")
+        .strip()
+    )
     if "," in normalized and "." in normalized:
         if normalized.rfind(",") > normalized.rfind("."):
             normalized = normalized.replace(".", "").replace(",", ".")
