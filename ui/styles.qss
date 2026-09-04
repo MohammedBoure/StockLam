@@ -44,7 +44,7 @@ QWidget#sidebar_header {
 /* ============================================================
    3. TABLES (الجداول - النسخة المصححة والمحسنة)
    ============================================================ */
-QTableWidget {
+QTableWidget, QTableView {
     background-color: #ffffff;
     border: 1px solid #cfd8dc; /* حدود رمادية واضحة */
     border-radius: 8px;
@@ -52,6 +52,20 @@ QTableWidget {
     selection-background-color: #e0f2f1; /* لون التحديد */
     selection-color: #007572; /* لون النص المحدد */
     alternate-background-color: #fafbfc; /* تلوين الأسطر الزوجية */
+}
+
+/* --- رؤوس الجداول العامة --- */
+QHeaderView {
+    background-color: #ffffff;
+    border: none;
+}
+
+/* الزاوية العلوية اليسرى الفاصلة بين الأعمدة والأسطر */
+QTableCornerButton::section {
+    background-color: #f8f9fa;
+    border: none;
+    border-right: 1px solid #cfd8dc;
+    border-bottom: 2px solid #007572;
 }
 
 /* --- الرؤوس الأفقية (الأعمدة) --- */
@@ -87,13 +101,13 @@ QHeaderView::section:vertical {
 }
 
 /* --- محتوى الخلايا --- */
-QTableWidget::item {
+QTableWidget::item, QTableView::item {
     padding: 8px; 
     border-bottom: 1px solid #f5f5f5;
     color: #2c3e50;
 }
 
-QTableWidget::item:selected {
+QTableWidget::item:selected, QTableView::item:selected {
     background-color: #e0f2f1;
     color: #007572;
 }

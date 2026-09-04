@@ -36,7 +36,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QDialog,
 )
-from PySide6.QtCore import QSettings, QLockFile, QDir
+from PySide6.QtCore import QSettings, QLockFile, QDir, QFile, QTextStream
+from PySide6.QtGui import QPalette, QColor
 from database.base import Database, get_external_path
 from database import LabDataManager
 from ui.main_window import MainWindow
@@ -296,6 +297,35 @@ def main():
         return
 
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+
+    # --- فرض الثيم الأبيض وتفادي تأثير الوضع الداكن للنظام ---
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#f4f7fa"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#2c3e50"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#fafbfc"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#2c3e50"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#2c3e50"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#2c3e50"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#e74c3c"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#007572"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(palette)
+
+    # تطبيق نمط QSS على مستوى التطبيق بالكامل
+    try:
+        style_path = branding.get_resource_path("ui/styles.qss")
+        style_file = QFile(style_path)
+        if style_file.open(QFile.ReadOnly | QFile.Text):
+            stream = QTextStream(style_file)
+            app.setStyleSheet(stream.readAll())
+            style_file.close()
+    except Exception as e:
+        logger.error(f"Error loading global stylesheet: {e}")
+
     app.setApplicationName(branding.get_app_name())
     app.setOrganizationName(branding.get_organization_name())
     app.aboutToQuit.connect(stop_inventory_mobile_api)
