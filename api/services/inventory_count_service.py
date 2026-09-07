@@ -290,6 +290,7 @@ def apply_session(
     user_id: Optional[int] = None,
     allow_unknown: bool = False,
     uncounted_action: str = "ignore",
+    conflict_resolutions: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Applique les ajustements d'inventaire sur le stock réel."""
     try:
@@ -298,10 +299,22 @@ def apply_session(
             user_id=user_id,
             allow_unknown=allow_unknown,
             uncounted_action=uncounted_action,
+            conflict_resolutions=conflict_resolutions,
         )
         return result
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+def get_session_conflicts(data_manager: Any, session_id: int) -> List[Dict[str, Any]]:
+    """Récupère les éventuels conflits de stock pour une session."""
+    try:
+        manager = getattr(data_manager, "inventory_counts", None)
+        if manager and hasattr(manager, "get_session_conflicts"):
+            return manager.get_session_conflicts(session_id)
+        return []
+    except Exception:
+        return []
 
 
 def cancel_session(data_manager: Any, session_id: int, user_id: Optional[int] = None) -> Dict[str, Any]:

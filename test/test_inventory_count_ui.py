@@ -8,7 +8,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ui.widgets.inventaire import inventory_count_tab as tab_module
-from ui.widgets.inventaire import InventoryCountScanDialog, InventoryCountTab, NewInventorySessionDialog
+from ui.widgets.inventaire import (
+    InventoryConflictDialog,
+    InventoryCountScanDialog,
+    InventoryCountTab,
+    NewInventorySessionDialog,
+)
 
 
 class FakeInventoryCounts:
@@ -93,7 +98,7 @@ class FakeInventoryCounts:
         self.apply_result = {"success": True, "message": "Inventaire applique.", "conflicts": []}
         self.export_result = {"success": True, "message": "Export termine."}
 
-    def get_sessions(self, status=None, limit=100):
+    def get_sessions(self, status=None, limit=100, **kwargs):
         if status:
             return [session for session in self.sessions if session["Status"] == status]
         return self.sessions[:limit]
@@ -193,7 +198,7 @@ class FakeInventoryCounts:
         self.cancel_calls.append((session_id, user_id))
         return self.cancel_result
 
-    def apply_session(self, session_id, user_id=None, allow_unknown=False):
+    def apply_session(self, session_id, user_id=None, allow_unknown=False, **kwargs):
         self.apply_calls.append((session_id, user_id, allow_unknown))
         return self.apply_result
 
@@ -636,13 +641,16 @@ class InventoryCountUiTests(unittest.TestCase):
         data_manager = FakeDataManager()
         data_manager.inventory_counts.summary["UNKNOWN"] = 1
         tab = InventoryCountTab(data_manager, {"User_ID": 7, "Permissions": ["act_inventory_apply"]})
+        tab._prompt_uncounted_action = lambda _qty: "ignore"
+        tab._confirm_sensitive_action = lambda *args, **kwargs: True
         tab.sessions_table.selectRow(0)
         tab.load_current_session()
         messages = FakeMessageBox([QMessageBox.No, QMessageBox.Yes, QMessageBox.Yes, QMessageBox.Yes])
 
         with patch.object(tab_module.QMessageBox, "question", messages.question), \
              patch.object(tab_module.QMessageBox, "information", messages.information), \
-             patch.object(tab_module.QMessageBox, "warning", messages.warning):
+             patch.object(tab_module.QMessageBox, "warning", messages.warning), \
+             patch.object(tab, "_resolve_conflicts", return_value=None):
             tab.apply_session()
             self.assertEqual(data_manager.inventory_counts.apply_calls, [])
 
@@ -660,6 +668,40 @@ class InventoryCountUiTests(unittest.TestCase):
 
         self.assertEqual(len(messages.informations), 1)
         self.assertTrue(any("Conflits: 1" in warning[1] for warning in messages.warnings))
+        tab.deleteLater()
+
+    def test_apply_session_resolves_conflicts_via_dialog(self):
+        data_manager = FakeDataManager()
+        tab = InventoryCountTab(data_manager, {"User_ID": 7, "Permissions": ["act_inventory_apply"]})
+        tab._prompt_uncounted_action = lambda _qty: "ignore"
+        tab._confirm_sensitive_action = lambda *args, **kwargs: True
+        tab.sessions_table.selectRow(0)
+        tab.load_current_session()
+
+        calls = []
+        def fake_apply(session_id, user_id=None, allow_unknown=False, conflict_resolutions=None, **kwargs):
+            calls.append({"session_id": session_id, "resolutions": conflict_resolutions})
+            if conflict_resolutions is None:
+                return {
+                    "success": False,
+                    "message": "Inventory changed after the count snapshot.",
+                    "conflicts": [{"Batch_ID": 1, "Product_Name": "Reagent A"}],
+                }
+            return {"success": True, "message": "Inventaire applique."}
+
+        data_manager.inventory_counts.apply_session = fake_apply
+
+        messages = FakeMessageBox()
+        with patch.object(tab_module.QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes), \
+             patch.object(tab_module.QMessageBox, "information", messages.information), \
+             patch.object(tab, "_resolve_conflicts", return_value={1: "force_counted"}):
+            tab.apply_session()
+
+        self.assertEqual(len(calls), 2)
+        self.assertIsNone(calls[0]["resolutions"])
+        self.assertEqual(calls[1]["resolutions"], {1: "force_counted"})
+        self.assertEqual(len(messages.informations), 1)
+        self.assertIn("Inventaire applique", messages.informations[0][1])
         tab.deleteLater()
 
     def test_export_session_adds_xlsx_extension_and_reports_result(self):
@@ -994,6 +1036,53 @@ class InventoryCountUiTests(unittest.TestCase):
         dialog.record_current_quantity()
         self.assertEqual(dialog.scan_table.item(0, 2).text(), "ERROR")
         self.assertIn("scan boom", dialog.scan_table.item(0, 4).text())
+        dialog.deleteLater()
+
+    def test_conflict_dialog_resolutions_and_bulk_actions(self):
+        conflicts = [
+            {
+                "Batch_ID": 42,
+                "Product_Code": "REF-42",
+                "Product_Name": "Albumin",
+                "Lot_Number": "LOT-99",
+                "barcode": "BAR-42",
+                "snapshot_qty": Decimal("10"),
+                "current_qty": Decimal("8"),
+                "counted_qty": Decimal("9"),
+            },
+            {
+                "Batch_ID": 43,
+                "Product_Code": "REF-43",
+                "Product_Name": "Creatinine",
+                "Lot_Number": "LOT-100",
+                "barcode": "BAR-43",
+                "snapshot_qty": Decimal("5"),
+                "current_qty": Decimal("6"),
+                "counted_qty": Decimal("4"),
+            },
+        ]
+        dialog = InventoryConflictDialog(conflicts)
+        self.assertEqual(dialog.table.rowCount(), 2)
+
+        # Default action is force_counted
+        resolutions = dialog.get_resolutions()
+        self.assertEqual(resolutions, {42: "force_counted", 43: "force_counted"})
+        self.assertEqual(dialog.table.item(0, 8).text(), "9")
+
+        # Test bulk set to apply_delta
+        dialog._set_all_action(InventoryConflictDialog.ACTION_DELTA)
+        resolutions = dialog.get_resolutions()
+        self.assertEqual(resolutions, {42: "apply_delta", 43: "apply_delta"})
+        # Row 0: current is 8, delta is (9-10) = -1, final is 8 + (-1) = 7
+        self.assertEqual(dialog.table.item(0, 8).text(), "7")
+
+        # Test bulk set to skip
+        dialog._set_all_action(InventoryConflictDialog.ACTION_SKIP)
+        resolutions = dialog.get_resolutions()
+        self.assertEqual(resolutions, {42: "skip", 43: "skip"})
+        # Row 0: current is 8, final is 8
+        self.assertEqual(dialog.table.item(0, 8).text(), "8")
+
         dialog.deleteLater()
 
 

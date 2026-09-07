@@ -747,6 +747,141 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
         self.assertTrue(connection.rolled_back)
         self.assertFalse(connection.committed)
 
+    def test_apply_session_resolves_conflict_with_force_counted(self):
+        line = {
+            "Line_ID": 10,
+            "Batch_ID": 34,
+            "Internal_Barcode": "ABC-123",
+            "Program_Qty_Snapshot": Decimal("5"),
+            "Counted_Qty": Decimal("3"),
+            "Difference_Qty": Decimal("-2"),
+        }
+        batch = {
+            "Batch_ID": 34,
+            "Product_ID": 2,
+            "Internal_Barcode": "ABC-123",
+            "Quantity_Current": Decimal("6"),
+            "Status": "Available",
+            "Stock_Unit": "Unit",
+        }
+        cursor = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {"Total_Lines": 1},
+                {"Unknown_Lines": 0},
+                {"Unknown_Scans": 0},
+                batch,
+            ],
+            fetchall_rows=[[line]],
+        )
+        connection = FakeConnection(cursor)
+        stock_log = FakeStockMovementLog()
+        manager = make_manager(FakeDb(connection), stock_log)
+
+        result = manager.apply_session(
+            session_id=99,
+            user_id=7,
+            allow_unknown=True,
+            conflict_resolutions={34: "force_counted"},
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["applied_count"], 1)
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(len(stock_log.calls), 1)
+        self.assertEqual(stock_log.calls[0]["qty_change"], Decimal("-3"))
+        self.assertTrue(connection.committed)
+
+    def test_apply_session_resolves_conflict_with_apply_delta(self):
+        line = {
+            "Line_ID": 10,
+            "Batch_ID": 34,
+            "Internal_Barcode": "ABC-123",
+            "Program_Qty_Snapshot": Decimal("5"),
+            "Counted_Qty": Decimal("3"),
+            "Difference_Qty": Decimal("-2"),
+        }
+        batch = {
+            "Batch_ID": 34,
+            "Product_ID": 2,
+            "Internal_Barcode": "ABC-123",
+            "Quantity_Current": Decimal("6"),
+            "Status": "Available",
+            "Stock_Unit": "Unit",
+        }
+        cursor = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {"Total_Lines": 1},
+                {"Unknown_Lines": 0},
+                {"Unknown_Scans": 0},
+                batch,
+            ],
+            fetchall_rows=[[line]],
+        )
+        connection = FakeConnection(cursor)
+        stock_log = FakeStockMovementLog()
+        manager = make_manager(FakeDb(connection), stock_log)
+
+        result = manager.apply_session(
+            session_id=99,
+            user_id=7,
+            allow_unknown=True,
+            conflict_resolutions={34: "apply_delta"},
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["applied_count"], 1)
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(len(stock_log.calls), 1)
+        # Live is 6, delta is (3 - 5) = -2, target is 4 -> adjustment is 4 - 6 = -2
+        self.assertEqual(stock_log.calls[0]["qty_change"], Decimal("-2"))
+        self.assertTrue(connection.committed)
+
+    def test_apply_session_resolves_conflict_with_skip(self):
+        line = {
+            "Line_ID": 10,
+            "Batch_ID": 34,
+            "Internal_Barcode": "ABC-123",
+            "Program_Qty_Snapshot": Decimal("5"),
+            "Counted_Qty": Decimal("3"),
+            "Difference_Qty": Decimal("-2"),
+        }
+        batch = {
+            "Batch_ID": 34,
+            "Product_ID": 2,
+            "Internal_Barcode": "ABC-123",
+            "Quantity_Current": Decimal("6"),
+            "Status": "Available",
+            "Stock_Unit": "Unit",
+        }
+        cursor = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {"Total_Lines": 1},
+                {"Unknown_Lines": 0},
+                {"Unknown_Scans": 0},
+                batch,
+            ],
+            fetchall_rows=[[line]],
+        )
+        connection = FakeConnection(cursor)
+        stock_log = FakeStockMovementLog()
+        manager = make_manager(FakeDb(connection), stock_log)
+
+        result = manager.apply_session(
+            session_id=99,
+            user_id=7,
+            allow_unknown=True,
+            conflict_resolutions={34: "skip"},
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["applied_count"], 0)
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(stock_log.calls, [])
+        self.assertTrue(connection.committed)
+
     def test_apply_session_zero_difference_marks_applied_without_movement(self):
         cursor = FakeCursor(
             [

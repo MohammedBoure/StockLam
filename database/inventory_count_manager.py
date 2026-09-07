@@ -2,7 +2,7 @@ import importlib.util
 import logging
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import mysql.connector
 import pandas as pd
@@ -668,7 +668,14 @@ class InventoryCountManager:
             logging.error(f"Error cancelling inventory count session: {err}", exc_info=True)
             return {"success": False, "message": str(err)}
 
-    def apply_session(self, session_id, user_id=None, allow_unknown=False, uncounted_action="ignore") -> Dict:
+    def apply_session(
+        self,
+        session_id,
+        user_id=None,
+        allow_unknown=False,
+        uncounted_action="ignore",
+        conflict_resolutions: Optional[Dict[Any, Any]] = None,
+    ) -> Dict:
         conn = None
         cursor = None
         try:
@@ -791,9 +798,12 @@ class InventoryCountManager:
                     SELECT
                         b.Batch_ID,
                         b.Product_ID,
+                        b.Lot_Number,
                         b.Internal_Barcode,
                         b.Quantity_Current,
                         b.Status,
+                        p.Product_Code,
+                        p.Product_Name,
                         p.Stock_Unit
                     FROM Inventory_Batches b
                     JOIN Products_Master p ON b.Product_ID = p.Product_ID
@@ -806,11 +816,18 @@ class InventoryCountManager:
                 if not batch:
                     conflicts.append(
                         {
+                            "Line_ID": line.get("Line_ID"),
                             "Batch_ID": line["Batch_ID"],
                             "barcode": line.get("Internal_Barcode"),
+                            "Product_Code": line.get("Product_Code") or "",
+                            "Product_Name": line.get("Product_Name") or "",
+                            "Lot_Number": line.get("Lot_Number") or "",
+                            "Stock_Unit": line.get("Stock_Unit") or "",
                             "snapshot_qty": line.get("Program_Qty_Snapshot"),
                             "current_qty": None,
                             "counted_qty": line.get("Counted_Qty"),
+                            "difference_qty": line.get("Difference_Qty"),
+                            "intermediate_movement": Decimal("0"),
                             "reason": "Batch not found.",
                         }
                     )
@@ -819,24 +836,87 @@ class InventoryCountManager:
                 snapshot_qty = self._to_decimal(line["Program_Qty_Snapshot"])
                 current_qty = self._to_decimal(batch["Quantity_Current"])
                 counted_qty = self._to_decimal(line["Counted_Qty"])
+                batch_id = batch["Batch_ID"]
+
                 if current_qty != snapshot_qty:
-                    conflicts.append(
-                        {
-                            "Batch_ID": batch["Batch_ID"],
-                            "barcode": batch.get("Internal_Barcode"),
-                            "snapshot_qty": snapshot_qty,
-                            "current_qty": current_qty,
-                            "counted_qty": counted_qty,
-                            "reason": "Stock changed after snapshot.",
-                        }
-                    )
-                    continue
+                    resolution = None
+                    if conflict_resolutions:
+                        resolution = conflict_resolutions.get(batch_id)
+                        if resolution is None:
+                            resolution = conflict_resolutions.get(str(batch_id))
+
+                    if isinstance(resolution, dict):
+                        resolution = resolution.get("action")
+
+                    if resolution == "force_counted":
+                        target_qty = counted_qty
+                        adjustment = target_qty - current_qty
+                        adjustments.append(
+                            {
+                                "batch": batch,
+                                "current_qty": current_qty,
+                                "target_qty": target_qty,
+                                "adjustment": adjustment,
+                                "note": (
+                                    f"Inventaire #{session_id} - conflit resolu (force comptage: "
+                                    f"snapshot={snapshot_qty}, live={current_qty}, compte={counted_qty})"
+                                ),
+                                "line_id": line.get("Line_ID"),
+                                "update_line_snapshot": True,
+                            }
+                        )
+                        continue
+                    elif resolution == "apply_delta":
+                        delta = counted_qty - snapshot_qty
+                        target_qty = max(Decimal("0"), current_qty + delta)
+                        adjustment = target_qty - current_qty
+                        adjustments.append(
+                            {
+                                "batch": batch,
+                                "current_qty": current_qty,
+                                "target_qty": target_qty,
+                                "adjustment": adjustment,
+                                "note": (
+                                    f"Inventaire #{session_id} - conflit resolu (delta relatif: "
+                                    f"snapshot={snapshot_qty}, live={current_qty}, delta={delta})"
+                                ),
+                                "line_id": line.get("Line_ID"),
+                                "update_line_snapshot": True,
+                            }
+                        )
+                        continue
+                    elif resolution == "skip":
+                        continue
+                    else:
+                        conflicts.append(
+                            {
+                                "Line_ID": line.get("Line_ID"),
+                                "Batch_ID": batch["Batch_ID"],
+                                "Product_ID": batch.get("Product_ID"),
+                                "Product_Code": batch.get("Product_Code") or line.get("Product_Code") or "",
+                                "Product_Name": batch.get("Product_Name") or line.get("Product_Name") or "",
+                                "Lot_Number": batch.get("Lot_Number") or line.get("Lot_Number") or "",
+                                "barcode": batch.get("Internal_Barcode") or line.get("Internal_Barcode") or "",
+                                "Stock_Unit": batch.get("Stock_Unit") or line.get("Stock_Unit") or "",
+                                "snapshot_qty": snapshot_qty,
+                                "current_qty": current_qty,
+                                "counted_qty": counted_qty,
+                                "difference_qty": counted_qty - snapshot_qty,
+                                "intermediate_movement": current_qty - snapshot_qty,
+                                "reason": "Stock changed after snapshot.",
+                            }
+                        )
+                        continue
 
                 adjustments.append(
                     {
                         "batch": batch,
                         "current_qty": current_qty,
-                        "counted_qty": counted_qty,
+                        "target_qty": counted_qty,
+                        "adjustment": counted_qty - current_qty,
+                        "note": f"Inventaire #{session_id} - ajustement apres comptage",
+                        "line_id": line.get("Line_ID"),
+                        "update_line_snapshot": False,
                     }
                 )
 
@@ -853,16 +933,16 @@ class InventoryCountManager:
             for adjustment_item in adjustments:
                 batch = adjustment_item["batch"]
                 current_qty = adjustment_item["current_qty"]
-                counted_qty = adjustment_item["counted_qty"]
-                adjustment = counted_qty - current_qty
+                target_qty = adjustment_item["target_qty"]
+                adjustment = adjustment_item["adjustment"]
                 if adjustment == 0:
                     continue
 
                 new_status = batch["Status"]
                 if new_status not in {"Quarantined", "Expired"}:
-                    if counted_qty == 0:
+                    if target_qty == 0:
                         new_status = "Depleted"
-                    elif counted_qty > 0 and new_status == "Depleted":
+                    elif target_qty > 0 and new_status == "Depleted":
                         new_status = "Available"
 
                 cursor.execute(
@@ -872,7 +952,7 @@ class InventoryCountManager:
                         Status = %s
                     WHERE Batch_ID = %s
                     """,
-                    (counted_qty, new_status, batch["Batch_ID"])
+                    (target_qty, new_status, batch["Batch_ID"])
                 )
 
                 movement_id = self.stock_movement_log.create_movement_log(
@@ -881,7 +961,7 @@ class InventoryCountManager:
                     qty_change=adjustment,
                     unit_used=batch.get("Stock_Unit") or "Unit",
                     batch_id=batch["Batch_ID"],
-                    notes=f"Inventaire #{session_id} - ajustement apres comptage",
+                    notes=adjustment_item.get("note") or f"Inventaire #{session_id} - ajustement apres comptage",
                     user_id=user_id,
                     external_cursor=cursor
                 )
@@ -893,6 +973,19 @@ class InventoryCountManager:
                         "conflicts": [],
                         "message": "Failed to write stock movement log.",
                     }
+
+                if adjustment_item.get("update_line_snapshot") and adjustment_item.get("line_id"):
+                    cursor.execute(
+                        """
+                        UPDATE Inventory_Count_Lines
+                        SET Program_Qty_Snapshot = %s,
+                            Counted_Qty = %s,
+                            Difference_Qty = %s
+                        WHERE Line_ID = %s
+                        """,
+                        (current_qty, target_qty, adjustment, adjustment_item["line_id"])
+                    )
+
                 applied_count += 1
 
             cursor.execute(
@@ -924,6 +1017,64 @@ class InventoryCountManager:
                 cursor.close()
             if conn and conn.is_connected():
                 conn.close()
+
+    def get_session_conflicts(self, session_id: int) -> List[Dict[str, Any]]:
+        """Returns list of batches that changed in live stock since snapshot was created."""
+        try:
+            with self.db.get_db_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(
+                    """
+                    SELECT
+                        l.Line_ID,
+                        l.Batch_ID,
+                        l.Program_Qty_Snapshot,
+                        l.Counted_Qty,
+                        l.Difference_Qty,
+                        l.Line_Status,
+                        b.Internal_Barcode,
+                        b.Lot_Number,
+                        b.Quantity_Current,
+                        p.Product_ID,
+                        p.Product_Code,
+                        p.Product_Name,
+                        p.Stock_Unit
+                    FROM Inventory_Count_Lines l
+                    JOIN Inventory_Batches b ON l.Batch_ID = b.Batch_ID
+                    JOIN Products_Master p ON b.Product_ID = p.Product_ID
+                    WHERE l.Session_ID = %s
+                      AND l.Batch_ID IS NOT NULL
+                      AND b.Quantity_Current <> l.Program_Qty_Snapshot
+                    ORDER BY l.Line_ID
+                    """,
+                    (session_id,)
+                )
+                rows = cursor.fetchall() or []
+                conflicts = []
+                for row in rows:
+                    snapshot_qty = self._to_decimal(row["Program_Qty_Snapshot"])
+                    current_qty = self._to_decimal(row["Quantity_Current"])
+                    counted_qty = self._to_decimal(row["Counted_Qty"])
+                    conflicts.append({
+                        "Line_ID": row["Line_ID"],
+                        "Batch_ID": row["Batch_ID"],
+                        "Product_ID": row["Product_ID"],
+                        "Product_Code": row.get("Product_Code") or "",
+                        "Product_Name": row.get("Product_Name") or "",
+                        "Lot_Number": row.get("Lot_Number") or "",
+                        "barcode": row.get("Internal_Barcode") or "",
+                        "Stock_Unit": row.get("Stock_Unit") or "",
+                        "snapshot_qty": snapshot_qty,
+                        "current_qty": current_qty,
+                        "counted_qty": counted_qty,
+                        "difference_qty": counted_qty - snapshot_qty,
+                        "intermediate_movement": current_qty - snapshot_qty,
+                        "reason": "Stock changed after snapshot.",
+                    })
+                return conflicts
+        except Exception as err:
+            logging.error(f"Error checking session conflicts: {err}", exc_info=True)
+            return []
 
     def export_session_to_excel(self, session_id, output_path) -> Dict:
         try:

@@ -519,6 +519,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                     user_id = data.get("user_id")
                     allow_unknown = bool(data.get("allow_unknown", False))
                     uncounted_action = str(data.get("uncounted_action") or "ignore")
+                    conflict_resolutions = data.get("conflict_resolutions")
 
                     result = apply_session(
                         data_manager=self.data_manager,
@@ -526,6 +527,7 @@ class StockLamApiHandler(BaseHTTPRequestHandler):
                         user_id=user_id,
                         allow_unknown=allow_unknown,
                         uncounted_action=uncounted_action,
+                        conflict_resolutions=conflict_resolutions,
                     )
                     http_status = HTTPStatus.OK if result.get("success") else HTTPStatus.BAD_REQUEST
                     self._send_json(http_status, result)

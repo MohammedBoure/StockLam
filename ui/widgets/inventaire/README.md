@@ -4,6 +4,7 @@ Ce sous-dossier regroupe les composants graphiques PySide6 dédiés à la gestio
 
 ## Fichiers et Rôles
 
-- **`__init__.py`** : Expose les classes principales (`InventoryCountTab`, `NewInventorySessionDialog`, `InventoryCountScanDialog`).
+- **`__init__.py`** : Expose les classes principales (`InventoryCountTab`, `NewInventorySessionDialog`, `InventoryCountScanDialog`, `InventoryConflictDialog`).
 - **`inventory_count_tab.py`** : Onglet principal d'inventaire bureautique (`InventoryCountTab`) permettant de lister les sessions avec badges de statut (`Counting`, `Review`, `Applied`, `Cancelled`), d'analyser les indicateurs clés (OK, Manquants, Excédents, Non comptés, Inconnus, Écart financier estimé), de créer de nouvelles sessions (`NewInventorySessionDialog`), de passer en revue, d'exporter sous Excel et d'appliquer les ajustements au stock réel.
 - **`inventory_count_scan_dialog.py`** : Boîte de dialogue de comptage rapide (`InventoryCountScanDialog`) avec saisie de code-barres (douchette ou clavier), affichage en temps réel des informations de lot/produit, ajustement de quantité comptée et historique des scans de la session.
+- **`inventory_count_conflict_dialog.py`** : Boîte de dialogue interactive de résolution des conflits (`InventoryConflictDialog`) lorsqu'un produit voit son stock varier entre le snapshot initial et la validation finale (options : écraser avec comptage physique, appliquer écart relatif, ou ignorer le lot).

@@ -971,22 +971,9 @@ class InventoryCountTab(QWidget):
         uncounted_qty = summary.get("NOT_COUNTED", 0)
         uncounted_action = "ignore"
         if uncounted_qty > 0:
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("Inventaire")
-            msg_box.setText(f"Il y a {uncounted_qty} produits non comptés. Que voulez-vous faire ?")
-            
-            btn_ignore = msg_box.addButton("Ignorer (Garder le stock)", QMessageBox.ActionRole)
-            btn_zero = msg_box.addButton("Mettre à zéro", QMessageBox.DestructiveRole)
-            btn_cancel = msg_box.addButton("Annuler", QMessageBox.RejectRole)
-            
-            msg_box.exec()
-            
-            if msg_box.clickedButton() == btn_cancel:
+            uncounted_action = self._prompt_uncounted_action(uncounted_qty)
+            if uncounted_action == "cancel":
                 return
-            elif msg_box.clickedButton() == btn_zero:
-                uncounted_action = "zero"
-            else:
-                uncounted_action = "ignore"
 
         if not self._confirm_sensitive_action(
             "Inventaire",
@@ -1000,6 +987,24 @@ class InventoryCountTab(QWidget):
             allow_unknown=allow_unknown,
             uncounted_action=uncounted_action
         )
+        if not result.get("success") and result.get("conflicts"):
+            conflicts = result.get("conflicts") or []
+            resolutions = self._resolve_conflicts(conflicts)
+            if resolutions:
+                result = manager.apply_session(
+                    self.current_session_id,
+                    self._user_id(),
+                    allow_unknown=allow_unknown,
+                    uncounted_action=uncounted_action,
+                    conflict_resolutions=resolutions
+                )
+            else:
+                details = f"\nConflits: {len(conflicts)}" if conflicts else ""
+                QMessageBox.warning(self, "Inventaire", f"{result.get('message', 'Echec application.')}{details}")
+                self.load_sessions()
+                self._select_session(self.current_session_id)
+                return
+
         if result.get("success"):
             QMessageBox.information(self, "Inventaire", result.get("message", "Inventaire applique."))
         else:
@@ -1010,6 +1015,29 @@ class InventoryCountTab(QWidget):
         session_id = self.current_session_id
         self.load_sessions()
         self._select_session(session_id)
+
+    def _resolve_conflicts(self, conflicts: list):
+        """Open the conflict resolution dialog to let the user choose how to resolve each conflict."""
+        from .inventory_count_conflict_dialog import InventoryConflictDialog
+        dialog = InventoryConflictDialog(conflicts, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            return dialog.get_resolutions()
+        return None
+
+    def _prompt_uncounted_action(self, uncounted_qty: int) -> str:
+        """Prompt user for action on uncounted items."""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Inventaire")
+        msg_box.setText(f"Il y a {uncounted_qty} produits non comptés. Que voulez-vous faire ?")
+        btn_ignore = msg_box.addButton("Ignorer (Garder le stock)", QMessageBox.ActionRole)
+        btn_zero = msg_box.addButton("Mettre à zéro", QMessageBox.DestructiveRole)
+        btn_cancel = msg_box.addButton("Annuler", QMessageBox.RejectRole)
+        msg_box.exec()
+        if msg_box.clickedButton() == btn_cancel:
+            return "cancel"
+        elif msg_box.clickedButton() == btn_zero:
+            return "zero"
+        return "ignore"
 
     def cancel_session(self):
         manager = self._manager()
