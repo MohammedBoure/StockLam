@@ -882,6 +882,75 @@ class InventoryCountManagerHelperTests(unittest.TestCase):
         self.assertEqual(stock_log.calls, [])
         self.assertTrue(connection.committed)
 
+    def test_apply_session_detects_conflict_when_counted_matches_snapshot_but_live_stock_changed(self):
+        # Counted is 10, snapshot was 10 (Difference_Qty = 0), but live stock was modified to 8
+        line = {
+            "Line_ID": 10,
+            "Batch_ID": 34,
+            "Internal_Barcode": "ABC-123",
+            "Program_Qty_Snapshot": Decimal("10"),
+            "Counted_Qty": Decimal("10"),
+            "Difference_Qty": Decimal("0"),
+            "Line_Status": "OK",
+        }
+        batch = {
+            "Batch_ID": 34,
+            "Product_ID": 2,
+            "Internal_Barcode": "ABC-123",
+            "Quantity_Current": Decimal("8"),
+            "Status": "Available",
+            "Stock_Unit": "Unit",
+        }
+        cursor = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {"Total_Lines": 1},
+                {"Unknown_Lines": 0},
+                {"Unknown_Scans": 0},
+                batch,
+            ],
+            fetchall_rows=[[line]],
+        )
+        connection = FakeConnection(cursor)
+        stock_log = FakeStockMovementLog()
+        manager = make_manager(FakeDb(connection), stock_log)
+
+        # Without resolution: detected as conflict
+        result = manager.apply_session(session_id=99, user_id=7, allow_unknown=True)
+        self.assertFalse(result["success"])
+        self.assertEqual(len(result["conflicts"]), 1)
+        self.assertEqual(result["conflicts"][0]["Batch_ID"], 34)
+        self.assertEqual(result["conflicts"][0]["snapshot_qty"], Decimal("10"))
+        self.assertEqual(result["conflicts"][0]["current_qty"], Decimal("8"))
+        self.assertEqual(result["conflicts"][0]["counted_qty"], Decimal("10"))
+
+        # With force_counted: updates batch to 10
+        cursor2 = FakeCursor(
+            [
+                {"Session_ID": 99, "Status": "Counting"},
+                {"Total_Lines": 1},
+                {"Unknown_Lines": 0},
+                {"Unknown_Scans": 0},
+                batch,
+            ],
+            fetchall_rows=[[line]],
+        )
+        connection2 = FakeConnection(cursor2)
+        stock_log2 = FakeStockMovementLog()
+        manager2 = make_manager(FakeDb(connection2), stock_log2)
+
+        result2 = manager2.apply_session(
+            session_id=99,
+            user_id=7,
+            allow_unknown=True,
+            conflict_resolutions={34: "force_counted"},
+        )
+        self.assertTrue(result2["success"])
+        self.assertEqual(result2["applied_count"], 1)
+        self.assertEqual(len(stock_log2.calls), 1)
+        self.assertEqual(stock_log2.calls[0]["qty_change"], Decimal("2"))
+        self.assertTrue(connection2.committed)
+
     def test_apply_session_zero_difference_marks_applied_without_movement(self):
         cursor = FakeCursor(
             [

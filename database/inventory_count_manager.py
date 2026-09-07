@@ -780,7 +780,6 @@ class InventoryCountManager:
                 FROM Inventory_Count_Lines
                 WHERE Session_ID = %s
                   AND Batch_ID IS NOT NULL
-                  AND Difference_Qty <> 0
                 ORDER BY Line_ID
                 """,
                 (session_id,)
@@ -835,7 +834,7 @@ class InventoryCountManager:
 
                 snapshot_qty = self._to_decimal(line["Program_Qty_Snapshot"])
                 current_qty = self._to_decimal(batch["Quantity_Current"])
-                counted_qty = self._to_decimal(line["Counted_Qty"])
+                counted_qty = Decimal("0") if line.get("Line_Status") == "NOT_COUNTED" else self._to_decimal(line["Counted_Qty"])
                 batch_id = batch["Batch_ID"]
 
                 if current_qty != snapshot_qty:
