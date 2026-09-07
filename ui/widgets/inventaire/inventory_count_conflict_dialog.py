@@ -22,88 +22,170 @@ from ui.formatting import format_quantity
 
 CONFLICT_STYLE = """
 QDialog#inventoryConflictDialog {
-    background: #f8fafc;
-    color: #1e293b;
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
 }
+
+/* Header Alert Card */
 QFrame#conflictHeaderCard {
-    background: #ffffff;
+    background-color: #ffffff;
+    border: 1px solid #fed7aa;
+    border-left: 5px solid #d97706;
+    border-radius: 8px;
+    padding: 12px 18px;
+}
+QLabel#conflictHeaderTitle {
+    color: #b45309;
+    font-size: 14px;
+    font-weight: 700;
+}
+QLabel#conflictHeaderDesc {
+    color: #475569;
+    font-size: 12px;
+}
+
+/* Instructions / Rules Card */
+QFrame#instructionsCard {
+    background-color: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 12px 16px;
+    padding: 10px 16px;
 }
-QFrame#instructionsCard {
-    background: #fffbeb;
-    border: 1px solid #fef3c7;
-    border-radius: 6px;
-    padding: 10px 14px;
+
+/* Bulk Action Bar */
+QLabel#bulkActionLabel {
+    font-weight: 700;
+    font-size: 12px;
+    color: #334155;
 }
-QTableWidget {
-    background: #ffffff;
+QPushButton.bulkBtn {
+    background-color: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
-    gridline-color: #f1f5f9;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 12px;
+    min-height: 28px;
 }
-QTableWidget::item {
-    padding: 4px 6px;
+QPushButton.bulkBtn:hover {
+    background-color: #f1f5f9;
+    border-color: #007572;
+    color: #007572;
 }
-QTableWidget::item:selected {
+QPushButton.bulkBtn:pressed {
     background-color: #e2e8f0;
-    color: #0f172a;
 }
-QHeaderView::section {
+
+/* Table Widget */
+QDialog#inventoryConflictDialog QTableWidget {
+    background-color: #ffffff;
+    alternate-background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    gridline-color: #f1f5f9;
+    selection-background-color: #e6f4f1;
+    selection-color: #004d4a;
+    outline: none;
+}
+QDialog#inventoryConflictDialog QTableWidget::item {
+    padding: 4px 8px;
+    border: none;
+}
+QDialog#inventoryConflictDialog QTableWidget::item:selected {
+    background-color: #e6f4f1;
+    color: #004d4a;
+}
+QDialog#inventoryConflictDialog QHeaderView::section {
     background-color: #f1f5f9;
     color: #334155;
     font-size: 11px;
     font-weight: 700;
-    padding: 6px 4px;
-    border: 1px solid #e2e8f0;
+    padding: 8px 6px;
+    border: none;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 2px solid #cbd5e1;
 }
-QComboBox {
-    background: #ffffff;
+
+/* Drop-down ComboBox inside Dialog Table */
+QDialog#inventoryConflictDialog QTableWidget QComboBox,
+QDialog#inventoryConflictDialog QComboBox {
+    background-color: #ffffff;
     border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    padding: 3px 6px;
+    border-radius: 5px;
+    padding: 3px 26px 3px 8px;
     font-size: 12px;
-    min-height: 26px;
+    font-weight: 600;
+    color: #1e293b;
+    min-height: 28px;
 }
+QDialog#inventoryConflictDialog QComboBox:hover {
+    border: 1px solid #007572;
+}
+QDialog#inventoryConflictDialog QComboBox:focus {
+    border: 1.5px solid #007572;
+    background-color: #ffffff;
+}
+QDialog#inventoryConflictDialog QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border-left: 1px solid #e2e8f0;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    background-color: #f8fafc;
+}
+QDialog#inventoryConflictDialog QComboBox::drop-down:hover {
+    background-color: #e0f2f1;
+}
+QDialog#inventoryConflictDialog QComboBox::down-arrow {
+    image: url(ui/assets/icons/chevron_down.svg);
+    width: 11px;
+    height: 11px;
+}
+QDialog#inventoryConflictDialog QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    border: 1.5px solid #007572;
+    border-radius: 6px;
+    padding: 4px;
+    color: #1e293b;
+    selection-background-color: #007572;
+    selection-color: #ffffff;
+    outline: none;
+    font-size: 12px;
+}
+
+/* Footer Buttons */
 QPushButton#applyResolutionsBtn {
-    background: #007572;
+    background-color: #007572;
     border: 1px solid #005f5d;
     border-radius: 6px;
     color: #ffffff;
     font-size: 13px;
     font-weight: 700;
-    padding: 8px 18px;
-    min-height: 36px;
+    padding: 8px 20px;
+    min-height: 38px;
 }
 QPushButton#applyResolutionsBtn:hover {
-    background: #005f5d;
+    background-color: #005f5d;
+}
+QPushButton#applyResolutionsBtn:pressed {
+    background-color: #004d4a;
 }
 QPushButton#cancelResolutionsBtn {
-    background: #ffffff;
+    background-color: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     color: #475569;
     font-size: 13px;
     font-weight: 600;
     padding: 8px 16px;
-    min-height: 36px;
+    min-height: 38px;
 }
 QPushButton#cancelResolutionsBtn:hover {
-    background: #f1f5f9;
-}
-QPushButton.bulkBtn {
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    color: #334155;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 10px;
-    min-height: 26px;
-}
-QPushButton.bulkBtn:hover {
-    background: #e2e8f0;
+    background-color: #f1f5f9;
+    color: #1e293b;
 }
 """
 
@@ -120,8 +202,8 @@ class InventoryConflictDialog(QDialog):
         self.setObjectName("inventoryConflictDialog")
         self.setStyleSheet(CONFLICT_STYLE)
         self.setWindowTitle("Inventaire - Conflits de stock détectés")
-        self.resize(1080, 580)
-        self.setMinimumSize(900, 480)
+        self.resize(1160, 620)
+        self.setMinimumSize(980, 500)
 
         self.conflicts = list(conflicts or [])
         self.combos: List[QComboBox] = []
@@ -131,7 +213,7 @@ class InventoryConflictDialog(QDialog):
 
     def _build_ui(self):
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(16, 16, 16, 16)
+        root_layout.setContentsMargins(18, 18, 18, 18)
         root_layout.setSpacing(12)
 
         # Header card
@@ -142,19 +224,15 @@ class InventoryConflictDialog(QDialog):
         header_layout.setSpacing(4)
 
         title_label = QLabel(f"⚠️ {len(self.conflicts)} conflit(s) détecté(s) lors de l'application")
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(12)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #b45309;")
+        title_label.setObjectName("conflictHeaderTitle")
 
         desc_label = QLabel(
             "Le stock de ces produits a été modifié dans le système après la création de la session d'inventaire "
             "(ex: consommation, sortie, réception ou ajustement en cours). "
             "Veuillez choisir la règle d'ajustement à appliquer pour chaque lot :"
         )
+        desc_label.setObjectName("conflictHeaderDesc")
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: #475569; font-size: 12px;")
 
         header_layout.addWidget(title_label)
         header_layout.addWidget(desc_label)
@@ -168,12 +246,24 @@ class InventoryConflictDialog(QDialog):
         instr_layout.setSpacing(4)
 
         help_text = QLabel(
-            "• <b>Écraser (stock = compté)</b> : La quantité comptée physiquement est la vérité absolue. Le stock final sera égal au comptage.<br>"
-            "• <b>Écart relatif (stock = actuel + écart)</b> : Applique la variation comptée sur le stock actuel (préserve une consommation légitime intervenue entre-temps).<br>"
-            "• <b>Ignorer le lot</b> : Aucune modification ne sera appliquée à ce lot (son stock actuel reste intact)."
+            "<table style='width: 100%; border-collapse: collapse; font-size: 11px;'>"
+            "<tr>"
+            "<td style='padding-right: 14px; vertical-align: top; width: 33%;'>"
+            "  <b style='color: #0284c7;'>• Écraser (stock = compté) :</b><br/>"
+            "  <span style='color: #475569;'>Le comptage physique fait foi. Le stock final est aligné sur la quantité comptée.</span>"
+            "</td>"
+            "<td style='padding-right: 14px; vertical-align: top; width: 34%;'>"
+            "  <b style='color: #7c3aed;'>• Écart relatif (+/-) :</b><br/>"
+            "  <span style='color: #475569;'>Applique l'écart constaté au stock actuel (préserve consommations/sorties récentes).</span>"
+            "</td>"
+            "<td style='vertical-align: top; width: 33%;'>"
+            "  <b style='color: #475569;'>• Ignorer le lot :</b><br/>"
+            "  <span style='color: #64748b;'>Ne modifie pas ce lot. Le stock système actuel reste strictement inchangé.</span>"
+            "</td>"
+            "</tr>"
+            "</table>"
         )
         help_text.setWordWrap(True)
-        help_text.setStyleSheet("color: #92400e; font-size: 11px;")
         instr_layout.addWidget(help_text)
         root_layout.addWidget(instr_card)
 
@@ -182,7 +272,7 @@ class InventoryConflictDialog(QDialog):
         bulk_bar.setSpacing(8)
 
         bulk_label = QLabel("Appliquer à tous les lots :")
-        bulk_label.setStyleSheet("font-weight: 700; font-size: 11px; color: #475569;")
+        bulk_label.setObjectName("bulkActionLabel")
         bulk_bar.addWidget(bulk_label)
 
         btn_all_force = QPushButton("Tout écraser (Comptage physique)")
@@ -219,16 +309,27 @@ class InventoryConflictDialog(QDialog):
         ])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.verticalHeader().setDefaultSectionSize(40)
+
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.table.setColumnWidth(0, 110)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.table.setColumnWidth(2, 115)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
+        self.table.setColumnWidth(3, 95)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Interactive)
+        self.table.setColumnWidth(4, 95)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Interactive)
+        self.table.setColumnWidth(5, 105)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Interactive)
+        self.table.setColumnWidth(6, 100)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Interactive)
+        self.table.setColumnWidth(7, 230)
+        self.table.horizontalHeader().setSectionResizeMode(8, QHeaderView.Interactive)
+        self.table.setColumnWidth(8, 110)
         root_layout.addWidget(self.table, 1)
 
         # Footer buttons
@@ -327,6 +428,7 @@ class InventoryConflictDialog(QDialog):
             combo.addItem("Écart relatif (+/-)", self.ACTION_DELTA)
             combo.addItem("Ignorer le lot", self.ACTION_SKIP)
             combo.setCurrentIndex(0)
+            combo.setMinimumWidth(210)
             combo.currentIndexChanged.connect(lambda _idx, r=row: self._update_row_preview(r))
             self.combos.append(combo)
             self.table.setCellWidget(row, 7, combo)

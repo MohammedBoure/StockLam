@@ -62,6 +62,7 @@ def build_lims_production(brand_key=DEFAULT_BRAND_KEY):
 
     data_args = [
         _data_arg(project_dir, "ui/styles.qss", "ui"),
+        _data_arg(project_dir, "ui/assets", "ui/assets"),
         _data_arg(project_dir, brand["logo"], f"brand_assets/{brand_key}"),
         _data_arg(project_dir, f"brand_assets/{brand_key}/brand.json", "."),
         f"--add-data={plugins_src}{DATA_SEPARATOR}mysql/connector/plugins",

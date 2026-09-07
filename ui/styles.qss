@@ -379,14 +379,9 @@ QComboBox::drop-down {
 
 /* --- تصميم السهم نفسه --- */
 QComboBox::down-arrow {
-    image: none; /* إلغاء الصورة الافتراضية */
-    border-left: 2px solid #007572; /* رسم سهم باستخدام الحدود */
-    border-bottom: 2px solid #007572;
-    width: 6px;
-    height: 6px;
-    margin-top: -2px; /* ضبط الموضع عمودياً */
-    transform: rotate(-45deg); /* تدوير المربع ليشكل زاوية السهم (V) */
-    left: 1px;
+    image: url(ui/assets/icons/chevron_down.svg);
+    width: 12px;
+    height: 12px;
 }
 
 QComboBox::drop-down:hover {
@@ -412,23 +407,15 @@ QAbstractSpinBox::down-button {
 
 /* --- تصميم الأسهم الداخلية --- */
 QAbstractSpinBox::up-arrow {
-    image: none;
-    border-left: 2px solid #007572;
-    border-top: 2px solid #007572;
-    width: 5px;
-    height: 5px;
-    transform: rotate(45deg);
-    margin-top: 2px;
+    image: url(ui/assets/icons/chevron_up.svg);
+    width: 10px;
+    height: 10px;
 }
 
 QAbstractSpinBox::down-arrow {
-    image: none;
-    border-left: 2px solid #007572;
-    border-bottom: 2px solid #007572;
-    width: 5px;
-    height: 5px;
-    transform: rotate(-45deg);
-    margin-bottom: 2px;
+    image: url(ui/assets/icons/chevron_down.svg);
+    width: 10px;
+    height: 10px;
 }
 
 /* تأثير التمرير للأزرار */
