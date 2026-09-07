@@ -801,7 +801,8 @@ class InventoryCountManager:
                         b.Internal_Barcode,
                         b.Quantity_Current,
                         b.Status,
-                        p.Product_Code,
+                        p.Manuf_Cat_No,
+                        p.Barcode AS Product_Barcode,
                         p.Product_Name,
                         p.Stock_Unit
                     FROM Inventory_Batches b
@@ -818,7 +819,7 @@ class InventoryCountManager:
                             "Line_ID": line.get("Line_ID"),
                             "Batch_ID": line["Batch_ID"],
                             "barcode": line.get("Internal_Barcode"),
-                            "Product_Code": line.get("Product_Code") or "",
+                            "Product_Code": line.get("Manuf_Cat_No") or line.get("Product_Barcode") or line.get("Product_Code") or "",
                             "Product_Name": line.get("Product_Name") or "",
                             "Lot_Number": line.get("Lot_Number") or "",
                             "Stock_Unit": line.get("Stock_Unit") or "",
@@ -892,7 +893,7 @@ class InventoryCountManager:
                                 "Line_ID": line.get("Line_ID"),
                                 "Batch_ID": batch["Batch_ID"],
                                 "Product_ID": batch.get("Product_ID"),
-                                "Product_Code": batch.get("Product_Code") or line.get("Product_Code") or "",
+                                "Product_Code": batch.get("Manuf_Cat_No") or batch.get("Product_Barcode") or batch.get("Product_Code") or line.get("Product_Code") or "",
                                 "Product_Name": batch.get("Product_Name") or line.get("Product_Name") or "",
                                 "Lot_Number": batch.get("Lot_Number") or line.get("Lot_Number") or "",
                                 "barcode": batch.get("Internal_Barcode") or line.get("Internal_Barcode") or "",
@@ -1035,7 +1036,8 @@ class InventoryCountManager:
                         b.Lot_Number,
                         b.Quantity_Current,
                         p.Product_ID,
-                        p.Product_Code,
+                        p.Manuf_Cat_No,
+                        p.Barcode AS Product_Barcode,
                         p.Product_Name,
                         p.Stock_Unit
                     FROM Inventory_Count_Lines l
@@ -1058,7 +1060,7 @@ class InventoryCountManager:
                         "Line_ID": row["Line_ID"],
                         "Batch_ID": row["Batch_ID"],
                         "Product_ID": row["Product_ID"],
-                        "Product_Code": row.get("Product_Code") or "",
+                        "Product_Code": row.get("Manuf_Cat_No") or row.get("Product_Barcode") or row.get("Product_Code") or "",
                         "Product_Name": row.get("Product_Name") or "",
                         "Lot_Number": row.get("Lot_Number") or "",
                         "barcode": row.get("Internal_Barcode") or "",
