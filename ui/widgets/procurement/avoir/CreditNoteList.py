@@ -14,6 +14,18 @@ from database.system_logger import active_user_id
 from ui.formatting import format_money, _to_decimal
 
 
+class NumericTableWidgetItem(QTableWidgetItem):
+    def __lt__(self, other):
+        if other is None:
+            return False
+        v1 = self.data(Qt.UserRole)
+        v2 = other.data(Qt.UserRole)
+        if v1 is not None and v2 is not None:
+            try:
+                return float(v1) < float(v2)
+            except (ValueError, TypeError):
+                pass
+        return super().__lt__(other)
 
 
 # ==============================================================================
@@ -159,18 +171,32 @@ class CreditNoteList(QWidget):
             
             for row, note in enumerate(notes):
                 self.table.insertRow(row)
-                self.table.setItem(row, 0, QTableWidgetItem(str(note['Credit_Note_ID'])))
-                self.table.setItem(row, 1, QTableWidgetItem(str(note['Credit_Note_Ref'])))
-                self.table.setItem(row, 2, QTableWidgetItem(str(note.get('Supplier_Name', '---'))))
-                self.table.setItem(row, 3, QTableWidgetItem(str(note['Credit_Date'])))
+                item_id = QTableWidgetItem(str(note['Credit_Note_ID']))
+                item_id.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 0, item_id)
+
+                item_ref = QTableWidgetItem(str(note['Credit_Note_Ref']))
+                item_ref.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 1, item_ref)
+
+                item_supp = QTableWidgetItem(str(note.get('Supplier_Name', '---')))
+                item_supp.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 2, item_supp)
+
+                item_date = QTableWidgetItem(str(note['Credit_Date']))
+                item_date.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 3, item_date)
                 
                 type_map = {"Return_Goods": "Retour Marchandise", "Price_Correction": "Correction Prix"}
                 type_display = type_map.get(note['Type'], note['Type'])
-                
-                self.table.setItem(row, 4, QTableWidgetItem(type_display))
+                item_type = QTableWidgetItem(type_display)
+                item_type.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 4, item_type)
                 
                 amt = float(_to_decimal(note.get('Total_Amount_TTC') or 0))
-                amt_item = QTableWidgetItem(format_money(amt, 'DA'))
+                amt_item = NumericTableWidgetItem(format_money(amt))
+                amt_item.setData(Qt.UserRole, amt)
+                amt_item.setTextAlignment(Qt.AlignCenter)
                 amt_item.setForeground(QBrush(QColor("#c0392b")))
                 self.table.setItem(row, 5, amt_item)
 

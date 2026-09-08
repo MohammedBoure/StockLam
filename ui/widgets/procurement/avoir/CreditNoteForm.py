@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QLabel, QMessageBox, 
     QFrame, QCompleter, QTabWidget, QAbstractItemView, QMenu, QDialog, QDialogButtonBox
 )
-from PySide6.QtCore import Qt, QDate, QStringListModel, Signal
+from PySide6.QtCore import Qt, QDate, QStringListModel, Signal, QLocale
 import qtawesome as qta
 
 from ui.widgets.inventory.dialogs import BarcodeLineEdit, NumericSpinBox
@@ -137,6 +137,8 @@ class CreditNoteForm(QWidget):
         self.spin_qty = NumericSpinBox() 
         self.spin_qty.setRange(0, 99999)
         self.spin_price = QDoubleSpinBox()
+        self.spin_price.setLocale(QLocale(QLocale.French, QLocale.France))
+        self.spin_price.setGroupSeparatorShown(True)
         self.spin_price.setRange(0, 99999999)
         self.spin_price.setDecimals(2)
         
@@ -459,14 +461,17 @@ class CreditNoteForm(QWidget):
             
             item_qty = QTableWidgetItem(format_quantity(qty))
             item_qty.setData(Qt.UserRole, qty)
+            item_qty.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 4, item_qty)
             
             item_price = QTableWidgetItem(format_money(price))
             item_price.setData(Qt.UserRole, price)
+            item_price.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 5, item_price)
             
             item_total = QTableWidgetItem(format_money(total_line))
             item_total.setData(Qt.UserRole, total_line)
+            item_total.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 6, item_total)
             
             self.editing_row = None
@@ -487,14 +492,17 @@ class CreditNoteForm(QWidget):
             
             item_qty = QTableWidgetItem(format_quantity(qty))
             item_qty.setData(Qt.UserRole, qty)
+            item_qty.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 4, item_qty)
             
             item_price = QTableWidgetItem(format_money(price))
             item_price.setData(Qt.UserRole, price)
+            item_price.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 5, item_price)
             
             item_total = QTableWidgetItem(format_money(total_line))
             item_total.setData(Qt.UserRole, total_line)
+            item_total.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 6, item_total)
             
             btn_del = QPushButton("✖")
@@ -686,14 +694,17 @@ class CreditNoteForm(QWidget):
                 
                 item_qty = QTableWidgetItem(format_quantity(item['Qty_Returned']))
                 item_qty.setData(Qt.UserRole, item['Qty_Returned'])
+                item_qty.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, 4, item_qty)
                 
                 item_price = QTableWidgetItem(format_money(item['Unit_Price']))
                 item_price.setData(Qt.UserRole, item['Unit_Price'])
+                item_price.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, 5, item_price)
                 
                 item_total = QTableWidgetItem(format_money(item['Line_Total']))
                 item_total.setData(Qt.UserRole, item['Line_Total'])
+                item_total.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, 6, item_total)
                 
                 btn_del = QPushButton("✖")

@@ -27,6 +27,19 @@ from ui.formatting import format_money, _to_decimal
 from ui.widgets.settings.pdf.pdf_stamp import fit_stamp_size_cm, get_active_stamp, SignatureFooter
 from ui.widgets.settings.local_settings import get_local_settings_store
 
+class NumericTableWidgetItem(QTableWidgetItem):
+    def __lt__(self, other):
+        if other is None:
+            return False
+        v1 = self.data(Qt.UserRole)
+        v2 = other.data(Qt.UserRole)
+        if v1 is not None and v2 is not None:
+            try:
+                return float(v1) < float(v2)
+            except (ValueError, TypeError):
+                pass
+        return super().__lt__(other)
+
 class ReceptionHistoryTab(QWidget):
     """
     تبويب يعرض سجل جميع عمليات الاستلام المكتملة.
@@ -214,16 +227,13 @@ class ReceptionHistoryTab(QWidget):
         else:
             QMessageBox.warning(self, "Erreur", "Impossible de charger les détails.")
 
-    def _create_centered_item(self, text, is_numeric=False):
-        item = QTableWidgetItem()
+    def _create_centered_item(self, text, is_numeric=False, raw_value=None):
         if is_numeric:
-            try:
-                val = float(_to_decimal(text))
-                item.setData(Qt.EditRole, val)
-            except:
-                item.setText(str(text))
+            item = NumericTableWidgetItem(str(text))
+            val = raw_value if raw_value is not None else float(_to_decimal(text))
+            item.setData(Qt.UserRole, val)
         else:
-            item.setText(str(text))
+            item = QTableWidgetItem(str(text))
         
         item.setTextAlignment(Qt.AlignCenter)
         return item
@@ -351,10 +361,10 @@ class ReceptionHistoryTab(QWidget):
                 self.table.setItem(row, 1, self._create_centered_item(display_ref)) 
                 self.table.setItem(row, 2, self._create_centered_item(reception.get('Supplier_Name', 'N/A')))
                 self.table.setItem(row, 3, self._create_centered_item(display_date))
-                self.table.setItem(row, 4, self._create_centered_item(format_money(total_ht, 'DA'), is_numeric=True))
-                self.table.setItem(row, 5, self._create_centered_item(format_money(total_tva, 'DA'), is_numeric=True))
-                self.table.setItem(row, 6, self._create_centered_item(format_money(remise, 'DA'), is_numeric=True))
-                self.table.setItem(row, 7, self._create_centered_item(format_money(total_ttc, 'DA'), is_numeric=True))
+                self.table.setItem(row, 4, self._create_centered_item(format_money(total_ht), is_numeric=True, raw_value=total_ht))
+                self.table.setItem(row, 5, self._create_centered_item(format_money(total_tva), is_numeric=True, raw_value=total_tva))
+                self.table.setItem(row, 6, self._create_centered_item(format_money(remise), is_numeric=True, raw_value=remise))
+                self.table.setItem(row, 7, self._create_centered_item(format_money(total_ttc), is_numeric=True, raw_value=total_ttc))
                 self.table.setItem(row, 8, self._create_centered_item(po_id or '---'))
                 
                 self.table.item(row, 0).setData(Qt.UserRole, reception)

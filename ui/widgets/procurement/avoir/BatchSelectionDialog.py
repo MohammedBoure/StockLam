@@ -30,15 +30,27 @@ class BatchSelectionDialog(QDialog):
         
         self.table.setRowCount(len(matches))
         for i, item in enumerate(matches):
-            self.table.setItem(i, 0, QTableWidgetItem(str(item.get('Product_Name'))))
-            self.table.setItem(i, 1, QTableWidgetItem(str(item.get('Lot_Number'))))
-            self.table.setItem(i, 2, QTableWidgetItem(str(item.get('Expiry_Date') or '---')))
+            item_name = QTableWidgetItem(str(item.get('Product_Name')))
+            self.table.setItem(i, 0, item_name)
+
+            item_lot = QTableWidgetItem(str(item.get('Lot_Number') or '---'))
+            item_lot.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(i, 1, item_lot)
+
+            item_exp = QTableWidgetItem(str(item.get('Expiry_Date') or '---'))
+            item_exp.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(i, 2, item_exp)
             
             qty = item.get('Quantity_Initial') or item.get('Qty_Received') or 0
-            self.table.setItem(i, 3, QTableWidgetItem(format_quantity(qty)))
+            item_qty = QTableWidgetItem(format_quantity(qty))
+            item_qty.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(i, 3, item_qty)
             
             price = float(_to_decimal(item.get('Unit_Price_Received') or item.get('Purchase_Price') or 0))
-            self.table.setItem(i, 4, QTableWidgetItem(format_money(price)))
+            item_price = QTableWidgetItem(format_money(price))
+            item_price.setData(Qt.UserRole, price)
+            item_price.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(i, 4, item_price)
             
             self.table.item(i, 0).setData(Qt.UserRole, item)
             
