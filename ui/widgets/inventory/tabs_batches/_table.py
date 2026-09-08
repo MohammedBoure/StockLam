@@ -9,7 +9,7 @@ import json
 from PySide6.QtWidgets import (
     QTableWidgetItem, QApplication, QHeaderView, QStyle, QStyleOptionHeader
 )
-from PySide6.QtCore import Qt, QRect, QSize
+from PySide6.QtCore import Qt, QRect, QSize, QEvent
 from PySide6.QtGui import QColor, QFont, QIcon
 
 from ui.formatting import format_money, format_quantity
@@ -31,12 +31,15 @@ class BatchesVerticalHeader(QHeaderView):
     - يضمن بقاء أرقام الأسطر مرتبة تحت بعضها عمودياً بمحاذاة موحدة وثابتة تماماً.
     - يخصص مساحة ثابتة للأيقونة التحذيرية الحمراء (Réclamation) على اليسار دون التأثير
       إطلاقاً على موقع أو محاذاة أرقام الأسطر.
+    - يدعم النقر على الأيقونة/الصف لفتح حوار تعديل الشكوى (setSectionsClickable).
+    - يغير شكل المؤشر إلى PointingHandCursor عند التمرير فوق صف يحتوي على شكوى.
     """
     def __init__(self, parent=None):
         super().__init__(Qt.Vertical, parent)
         self.setDefaultSectionSize(30)
         self.setSectionResizeMode(QHeaderView.Fixed)
-        self.setMouseTracking(True)
+        self.setSectionsClickable(True)
+        self.viewport().setMouseTracking(True)
 
     def sizeHint(self):
         s = super().sizeHint()
@@ -88,23 +91,20 @@ class BatchesVerticalHeader(QHeaderView):
 
         painter.restore()
 
-    def mouseMoveEvent(self, event):
-        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
-        idx = self.logicalIndexAt(pos)
-        m = self.model()
-        if m and idx >= 0:
-            icon = m.headerData(idx, Qt.Vertical, Qt.DecorationRole)
-            if icon and isinstance(icon, QIcon) and not icon.isNull():
-                self.setCursor(Qt.PointingHandCursor)
-            else:
-                self.setCursor(Qt.ArrowCursor)
-        else:
-            self.setCursor(Qt.ArrowCursor)
-        super().mouseMoveEvent(event)
-
-    def leaveEvent(self, event):
-        self.setCursor(Qt.ArrowCursor)
-        super().leaveEvent(event)
+    def viewportEvent(self, event):
+        if event.type() == QEvent.MouseMove:
+            pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+            idx = self.logicalIndexAt(pos)
+            m = self.model()
+            if m and idx >= 0:
+                icon = m.headerData(idx, Qt.Vertical, Qt.DecorationRole)
+                if icon and isinstance(icon, QIcon) and not icon.isNull():
+                    self.viewport().setCursor(Qt.PointingHandCursor)
+                    return super().viewportEvent(event)
+            self.viewport().setCursor(Qt.ArrowCursor)
+        elif event.type() == QEvent.Leave:
+            self.viewport().setCursor(Qt.ArrowCursor)
+        return super().viewportEvent(event)
 
 
 # ---------------------------------------------------------------------------
