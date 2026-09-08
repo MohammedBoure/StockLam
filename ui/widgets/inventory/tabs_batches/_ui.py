@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont
 
 from ..location_tree_combo import LocationTreeComboBox
+from ._table import BatchesVerticalHeader
 
 
 def build_ui(self):
@@ -210,9 +211,7 @@ def _build_right_filters(self):
 
 def _build_table(self):
     self.table = QTableWidget()
-    self.table.verticalHeader().setDefaultSectionSize(30)
-    self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
-    self.table.verticalHeader().setLayoutDirection(Qt.RightToLeft)
+    self.table.setVerticalHeader(BatchesVerticalHeader(self.table))
 
     cols = [
         "Désignation Produit", "Stock (Actuel)", "N° Lot", "Date Exp.",

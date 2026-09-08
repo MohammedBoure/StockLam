@@ -6,9 +6,11 @@
 import logging
 import json
 
-from PySide6.QtWidgets import QTableWidgetItem, QApplication
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtWidgets import (
+    QTableWidgetItem, QApplication, QHeaderView, QStyle, QStyleOptionHeader
+)
+from PySide6.QtCore import Qt, QRect, QSize
+from PySide6.QtGui import QColor, QFont, QIcon
 
 from ui.formatting import format_money, format_quantity
 
@@ -17,6 +19,93 @@ from ui.formatting import format_money, format_quantity
 # أيقونات مخصصة
 # ---------------------------------------------------------------------------
 from ui.icons import get_reclamation_icon
+
+
+# ---------------------------------------------------------------------------
+# رأس عمودي مخصص يضمن محاذاة أرقام الأسطر دون تأثر بأيقونة الشكاوى
+# ---------------------------------------------------------------------------
+
+class BatchesVerticalHeader(QHeaderView):
+    """
+    رأس عمودي مخصص لجدول اللوطات (Batches Table):
+    - يضمن بقاء أرقام الأسطر مرتبة تحت بعضها عمودياً بمحاذاة موحدة وثابتة تماماً.
+    - يخصص مساحة ثابتة للأيقونة التحذيرية الحمراء (Réclamation) على اليسار دون التأثير
+      إطلاقاً على موقع أو محاذاة أرقام الأسطر.
+    """
+    def __init__(self, parent=None):
+        super().__init__(Qt.Vertical, parent)
+        self.setDefaultSectionSize(30)
+        self.setSectionResizeMode(QHeaderView.Fixed)
+        self.setMouseTracking(True)
+
+    def sizeHint(self):
+        s = super().sizeHint()
+        model = self.model()
+        rows = model.rowCount() if model else 0
+        max_num_str = str(max(rows, 99))
+        text_w = self.fontMetrics().horizontalAdvance(max_num_str)
+        w = max(46, text_w + 32)
+        return QSize(w, s.height())
+
+    def paintSection(self, painter, rect, logicalIndex):
+        painter.save()
+        # رسم خلفية وحدود قسم الهيدر الافتراضية المناسبة للمظهر العام
+        opt = QStyleOptionHeader()
+        self.initStyleOption(opt)
+        opt.rect = rect
+        opt.section = logicalIndex
+        opt.text = ''
+        opt.icon = QIcon()
+        self.style().drawControl(QStyle.CE_Header, opt, painter, self)
+
+        model = self.model()
+        if model:
+            text = str(model.headerData(logicalIndex, Qt.Vertical, Qt.DisplayRole) or '')
+            icon = model.headerData(logicalIndex, Qt.Vertical, Qt.DecorationRole)
+        else:
+            text = str(logicalIndex + 1)
+            icon = None
+
+        # رسم أيقونة الشكوى في موضع مخصص وثابت على اليسار
+        icon_sz = 14
+        if icon and isinstance(icon, QIcon) and not icon.isNull():
+            icon_rect = QRect(
+                rect.left() + 4,
+                rect.top() + (rect.height() - icon_sz) // 2,
+                icon_sz,
+                icon_sz
+            )
+            icon.paint(painter, icon_rect)
+
+        # رسم رقم السطر في مساحة ثابتة ومحاذاة موحدة لجميع الأسطر
+        num_rect = QRect(rect.left() + 22, rect.top(), rect.width() - 28, rect.height())
+        if opt.state & QStyle.State_Selected:
+            painter.setPen(opt.palette.highlightedText().color())
+        else:
+            painter.setPen(opt.palette.buttonText().color())
+        painter.setFont(self.font())
+        painter.drawText(num_rect, Qt.AlignCenter, text)
+
+        painter.restore()
+
+    def mouseMoveEvent(self, event):
+        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        idx = self.logicalIndexAt(pos)
+        m = self.model()
+        if m and idx >= 0:
+            icon = m.headerData(idx, Qt.Vertical, Qt.DecorationRole)
+            if icon and isinstance(icon, QIcon) and not icon.isNull():
+                self.setCursor(Qt.PointingHandCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        self.setCursor(Qt.ArrowCursor)
+        super().leaveEvent(event)
+
 
 # ---------------------------------------------------------------------------
 # مساعد بناء خلية والتحقق من الصلاحيات
@@ -222,14 +311,12 @@ def _fill_row(table, r, b, hide_fin):
         rec_item.setIcon(get_reclamation_icon())
     table.setItem(r, 16, rec_item)
     
-    # تعيين الهيدر العمودي (رقم الصف وأيقونة الشكوى الدائرية إذا وجدت)
-    v_header_item = QTableWidgetItem(str(r+1))
+    # تعيين الهيدر العمودي (رقم الصف وأيقونة الشكوى إذا وجدت)
+    v_header_item = QTableWidgetItem(str(r + 1))
+    v_header_item.setTextAlignment(Qt.AlignCenter)
     if reclamation:
         v_header_item.setIcon(get_reclamation_icon())
         v_header_item.setToolTip(f"Réclamation: {reclamation}")
-        v_header_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-    else:
-        v_header_item.setTextAlignment(Qt.AlignCenter)
     table.setVerticalHeaderItem(r, v_header_item)
 
 
