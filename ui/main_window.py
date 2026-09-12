@@ -4,7 +4,7 @@ import os
 import logging
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QStackedWidget, QLabel, QPushButton, QFrame, QButtonGroup, 
-                               QTabWidget, QMessageBox) 
+                               QTabWidget, QMessageBox, QApplication) 
 from PySide6.QtCore import Qt, QSize, QFile, QTextStream, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
 from PySide6.QtGui import QPixmap, QIcon
 import qtawesome as qta
@@ -170,7 +170,11 @@ class MainWindow(QMainWindow):
             style_file = QFile(style_path)
             if style_file.open(QFile.ReadOnly | QFile.Text):
                 stream = QTextStream(style_file)
-                self.setStyleSheet(stream.readAll())
+                content = stream.readAll()
+                self.setStyleSheet(content)
+                app = QApplication.instance()
+                if app:
+                    app.setStyleSheet(content)
                 style_file.close()
         except Exception as e:
             logging.error(f"Error loading stylesheet: {e}")
@@ -562,7 +566,12 @@ class MainWindow(QMainWindow):
                 widget.tabs.addTab(widget.tab_db, "Base de données")
                 widget.tabs.setCurrentWidget(widget.tab_db)
             if self.has_permission("tab_config"):
-                widget.tabs.addTab(widget.tab_general, "🏢 Général / Gestion des données")
+                if hasattr(widget, 'tab_lab_info'):
+                    widget.tabs.addTab(widget.tab_lab_info, "🏢 Informations du Laboratoire")
+                elif hasattr(widget, 'tab_general'):
+                    widget.tabs.addTab(widget.tab_general, "🏢 Informations du Laboratoire")
+            if (self.has_permission("tab_auto_backup") or self.has_permission("tab_config")) and hasattr(widget, 'tab_auto_backup'):
+                widget.tabs.addTab(widget.tab_auto_backup, "⏱️ Sauvegarde Automatique")
             if self.has_permission("tab_set_db"):
                 widget.tabs.addTab(widget.tab_db, "🗄️ Base de données")
             if self.has_permission("tab_set_printer"):

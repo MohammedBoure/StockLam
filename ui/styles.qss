@@ -325,43 +325,195 @@ QComboBox QAbstractItemView {
 
 /* --- 2. تقويم التاريخ (Calendar Widget) --- */
 
-/* الخلفية العامة للتقويم */
+/* حاوية التقويم المنبثق للحقول */
+QWidget#qt_datetimedit_calendar {
+    background-color: #ffffff;
+    border: 1px solid #cfd8dc;
+    border-radius: 8px;
+}
+
+/* الحاوية العامة لعنصر التقويم */
+QCalendarWidget {
+    background-color: #ffffff;
+    min-width: 320px;
+    min-height: 270px;
+}
+
+/* الخلفية العامة للعناصر الداخلية */
 QCalendarWidget QWidget {
-    background-color: #ffffff; 
+    background-color: #ffffff;
     color: #2c3e50;
+    font-size: 13px;
 }
 
 /* شريط التنقل العلوي (الشهر والسنة) */
-QCalendarWidget QToolButton {
-    color: #2c3e50;
+QCalendarWidget QWidget#qt_calendar_navigationbar {
+    background-color: #f8fbfb;
+    border-bottom: 1px solid #e0e0e0;
+    min-height: 38px;
+    max-height: 38px;
+    padding: 2px 6px;
+}
+
+/* أزرار التنقل بين الأشهر (السابق والقادم) */
+QCalendarWidget QToolButton#qt_calendar_prevmonth {
+    border: none;
     background-color: transparent;
-    font-weight: bold;
-    icon-size: 24px;
     border-radius: 4px;
-    margin: 2px;
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    qproperty-icon: url(ui/assets/icons/chevron_left.svg);
+    icon-size: 16px;
 }
 
-QCalendarWidget QToolButton:hover {
-    background-color: #e0f2f1; /* خلفية خفيفة عند التمرير */
+QCalendarWidget QToolButton#qt_calendar_nextmonth {
+    border: none;
+    background-color: transparent;
+    border-radius: 4px;
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    qproperty-icon: url(ui/assets/icons/chevron_right.svg);
+    icon-size: 16px;
 }
 
-/* جدول الأيام */
-QCalendarWidget QAbstractItemView:enabled {
-    background-color: #ffffff;  /* خلفية الأيام بيضاء */
-    color: #2c3e50;             /* أرقام الأيام داكنة */
-    selection-background-color: #007572; /* اليوم المختار */
+QCalendarWidget QToolButton#qt_calendar_prevmonth:hover,
+QCalendarWidget QToolButton#qt_calendar_nextmonth:hover {
+    background-color: #e0f2f1;
+}
+
+/* أزرار اختيار الشهر والسنة */
+QCalendarWidget QToolButton#qt_calendar_monthbutton,
+QCalendarWidget QToolButton#qt_calendar_yearbutton {
+    color: #007572;
+    font-size: 14px;
+    font-weight: 700;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin: 0px 2px;
+}
+
+QCalendarWidget QToolButton#qt_calendar_monthbutton:hover,
+QCalendarWidget QToolButton#qt_calendar_yearbutton:hover {
+    background-color: #e0f2f1;
+    border: 1px solid #b2dfdb;
+}
+
+/* إزالة سهم القائمة الافتراضي المشوه فوق نص الشهر */
+QCalendarWidget QToolButton::menu-indicator {
+    image: none;
+    width: 0px;
+}
+
+/* حقل تعديل السنة */
+QCalendarWidget QSpinBox#qt_calendar_yearedit {
+    background-color: #ffffff;
+    color: #2c3e50;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid #007572;
+    border-radius: 4px;
+    padding: 2px 4px;
+    selection-background-color: #007572;
     selection-color: #ffffff;
+}
+
+/* قائمة اختيار الأشهر */
+QCalendarWidget QMenu {
+    background-color: #ffffff;
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QCalendarWidget QMenu::item {
+    padding: 6px 18px;
+    border-radius: 4px;
+    color: #2c3e50;
+    font-size: 13px;
+}
+
+QCalendarWidget QMenu::item:selected {
+    background-color: #e0f2f1;
+    color: #007572;
+    font-weight: 600;
+}
+
+/* جدول الأيام - إزالة الحدود والشبكة الافتراضية */
+QCalendarWidget QTableView {
+    background-color: #ffffff;
+    border: none;
+    border-radius: 0px;
+    gridline-color: transparent;
+    selection-background-color: transparent;
+    selection-color: #ffffff;
+    outline: none;
+}
+
+/* رؤوس أيام الأسبوع (اثنين، ثلاثاء / lun, mar...) */
+QCalendarWidget QHeaderView {
+    background-color: #ffffff;
     border: none;
 }
 
-/* أيام غير مفعلة (من شهر آخر) */
-QCalendarWidget QAbstractItemView:disabled {
-    color: #bdc3c7;
+QCalendarWidget QHeaderView::section:horizontal {
+    background-color: #ffffff;
+    color: #78909c;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    text-align: center;
+    padding: 4px 0px;
+    border: none;
+    border-bottom: 1px solid #eceff1;
+    height: 26px;
 }
 
-/* رأس الجدول (أسماء الأيام: أحد، اثنين...) */
-QCalendarWidget QTableView {
-    alternate-background-color: #ffffff;
+/* أرقام الأسابيع (الرأس العمودي) */
+QCalendarWidget QHeaderView::section:vertical {
+    background-color: #fafbfc;
+    color: #b0bec5;
+    font-size: 10px;
+    font-weight: 500;
+    text-align: center;
+    padding: 0px;
+    border: none;
+    border-right: 1px solid #eceff1;
+    min-width: 22px;
+    max-width: 22px;
+}
+
+/* خلايا الأيام - تجاوز الحشو الافتراضي QTableView::item الذي كان يسبب ظهور النقاط (...) */
+QCalendarWidget QTableView::item {
+    border: none;
+    border-bottom: none;
+    border-radius: 5px;
+    padding: 0px;
+    margin: 1px;
+    color: #2c3e50;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QCalendarWidget QTableView::item:hover {
+    background-color: #e0f2f1;
+    color: #007572;
+}
+
+QCalendarWidget QTableView::item:selected {
+    background-color: #007572;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+/* الأيام غير المفعلة (من الشهر السابق أو القادم) */
+QCalendarWidget QAbstractItemView:disabled {
+    color: #cfd8dc;
 }
 
 
@@ -428,40 +580,53 @@ QAbstractSpinBox::up-button:pressed, QAbstractSpinBox::down-button:pressed {
     background-color: #b2dfdb;
 }
 
-/* --- حقل التاريخ (QDateEdit) بنمط Minimalist --- */
+/* --- حقل التاريخ (QDateEdit) بنمط عصري مطابق للقوائم المنسدلة --- */
 
 /* في حال كان الحقل يستخدم أسهم الزيادة والنقصان (مثل SpinBox) */
 QDateEdit::up-button, QDateEdit::down-button {
-    background-color: transparent;
-    width: 18px;
-    border: none;
-    margin-right: 4px;
+    background-color: #f8f9fa;
+    width: 24px;
+    border-left: 1px solid #cfd8dc;
+}
+
+QDateEdit::up-button {
+    border-top-right-radius: 6px;
+}
+
+QDateEdit::down-button {
+    border-bottom-right-radius: 6px;
+    border-top: 1px solid #f0f0f0;
 }
 
 QDateEdit::up-arrow {
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 4px solid #007572; /* مثلث صغير للأعلى */
+    image: url(ui/assets/icons/chevron_up.svg);
+    width: 10px;
+    height: 10px;
 }
 
 QDateEdit::down-arrow {
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 4px solid #007572; /* مثلث صغير للأسفل */
+    image: url(ui/assets/icons/chevron_down.svg);
+    width: 10px;
+    height: 10px;
+}
+
+QDateEdit::up-button:hover, QDateEdit::down-button:hover {
+    background-color: #e0f2f1;
 }
 
 /* في حال تفعيل خاصية التقويم المنبثق (Calendar Popup) */
 QDateEdit::drop-down {
-    border: none;
-    background: transparent;
-    width: 25px;
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 30px;
+    border-left: 1px solid #cfd8dc;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    background-color: #f8f9fa;
 }
 
-/* سهم منسدل بسيط جداً للتقويم */
-QDateEdit::down-arrow:on { /* عند فتح القائمة */
-    top: 1px;
+QDateEdit::drop-down:hover {
+    background-color: #e0f2f1;
 }
 
 /* تحسين شكل الحقل عند التفاعل */
@@ -469,8 +634,9 @@ QDateEdit:hover {
     border: 1px solid #007572;
     background-color: #ffffff;
 }
+
 /* توحيد المسافات الداخلية لضمان استواء النص داخل الحقول */
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
     padding: 10px 12px;
     margin: 0px;
     border: 1px solid #cfd8dc;
