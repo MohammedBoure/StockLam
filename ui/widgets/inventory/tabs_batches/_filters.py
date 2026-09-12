@@ -19,7 +19,7 @@ def load_data(self):
     try:
         status_idx  = self.combo_status.currentIndex()
         search_text = self.search_input.text().strip()
-        fetch_zero  = (status_idx in [5, 6]) or (len(search_text) > 0)
+        fetch_zero  = (status_idx in [0, 5, 6]) or (len(search_text) > 0)
 
         # حفظ الصف المحدد حالياً للعودة إليه بعد التحديث
         selected_batch_id = None
@@ -83,7 +83,7 @@ def apply_filters_local(self):
             has_waste = bool(row.get('Has_Waste')) or (float(row.get('Quantity_Wasted', 0) or 0) > 0)
 
             # --- فلتر الحالة ---
-            if status_idx in [0, 1, 2, 3, 4] and qty <= 0:
+            if status_idx in [1, 2, 3, 4] and qty <= 0:
                 continue
             elif status_idx == 5 and qty > 0:
                 continue

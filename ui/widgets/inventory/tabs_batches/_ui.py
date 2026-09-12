@@ -101,7 +101,7 @@ def _build_left_filters(self):
 
     self.combo_status = QComboBox()
     self.combo_status.addItems([
-        "📋 Tous (>0)", "✅ En Stock", "⚠️ Faible (Seuil)",
+        "📋 Tous", "✅ En Stock", "⚠️ Faible (Seuil)",
         "❌ Périmés", "🕒 Bientôt Exp.", "⭕ Épuisé (Qté=0)",
         "🗑️ Rebuts / Pertes"
     ])

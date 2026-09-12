@@ -108,7 +108,7 @@ class BatchesTab(QWidget):
 
         self.combo_status = QComboBox()
         self.combo_status.addItems([
-            "📋 Tous (>0)", "✅ En Stock", "⚠️ Faible (Seuil)", 
+            "📋 Tous", "✅ En Stock", "⚠️ Faible (Seuil)", 
             "❌ Périmés", "🕒 Bientôt Exp.", "⭕ Épuisé (Qté=0)",
             "🗑️ Rebuts / Pertes"
         ])
@@ -1033,7 +1033,7 @@ class BatchesTab(QWidget):
         try:
             status_idx = self.combo_status.currentIndex()
             search_text = self.search_input.text().strip()
-            fetch_zero = (status_idx in [5, 6]) or (len(search_text) > 0)
+            fetch_zero = (status_idx in [0, 5, 6]) or (len(search_text) > 0)
             
             selected_batch_id = None
             if self.table.currentRow() >= 0:
@@ -1083,7 +1083,7 @@ class BatchesTab(QWidget):
                 has_waste = bool(row.get('Has_Waste')) or (float(row.get('Quantity_Wasted', 0) or 0) > 0)
                 
                 # الحالة
-                if status_idx in [0, 1, 2, 3, 4] and qty <= 0: continue 
+                if status_idx in [1, 2, 3, 4] and qty <= 0: continue 
                 elif status_idx == 5 and qty > 0: continue
                 elif status_idx == 6 and not has_waste: continue
 
