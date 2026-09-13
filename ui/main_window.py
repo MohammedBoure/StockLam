@@ -37,6 +37,7 @@ from branding import (
     get_organization_name,
     get_resource_path as get_brand_resource_path,
     get_settings_app_name,
+    load_stylesheet_content,
 )
 
 class MainWindow(QMainWindow):
@@ -166,16 +167,23 @@ class MainWindow(QMainWindow):
 
     def load_stylesheet(self):
         try:
-            style_path = get_brand_resource_path("ui/styles.qss")
-            style_file = QFile(style_path)
-            if style_file.open(QFile.ReadOnly | QFile.Text):
-                stream = QTextStream(style_file)
-                content = stream.readAll()
+            content = load_stylesheet_content("ui/styles.qss")
+            if content:
                 self.setStyleSheet(content)
                 app = QApplication.instance()
                 if app:
                     app.setStyleSheet(content)
-                style_file.close()
+            else:
+                style_path = get_brand_resource_path("ui/styles.qss")
+                style_file = QFile(style_path)
+                if style_file.open(QFile.ReadOnly | QFile.Text):
+                    stream = QTextStream(style_file)
+                    content = stream.readAll()
+                    self.setStyleSheet(content)
+                    app = QApplication.instance()
+                    if app:
+                        app.setStyleSheet(content)
+                    style_file.close()
         except Exception as e:
             logging.error(f"Error loading stylesheet: {e}")
 

@@ -71,7 +71,7 @@ def _build_left_filters(self):
 
     self.loc_filter = LocationTreeComboBox(self.manager.locations)
     self.loc_filter.setPlaceholderText("📍 Emplacement")
-    self.loc_filter.setFixedWidth(180)
+    self.loc_filter.setMinimumWidth(190)
     self.loc_filter.currentIndexChanged.connect(self.apply_filters_local)
 
     row1.addWidget(self.search_input)
@@ -83,19 +83,19 @@ def _build_left_filters(self):
 
     self.combo_family = QComboBox()
     self.combo_family.addItem("📁 Familles", None)
-    self.combo_family.setFixedWidth(130)
+    self.combo_family.setMinimumWidth(135)
     self.populate_families()
     self.combo_family.currentIndexChanged.connect(self.apply_filters_local)
 
     self.combo_manuf = QComboBox()
     self.combo_manuf.addItem("🏭 Marques", None)
-    self.combo_manuf.setFixedWidth(130)
+    self.combo_manuf.setMinimumWidth(135)
     self.populate_manufacturers()
     self.combo_manuf.currentIndexChanged.connect(self.apply_filters_local)
 
     self.combo_automate = QComboBox()
     self.combo_automate.addItem("⚙️ Automates", None)
-    self.combo_automate.setFixedWidth(130)
+    self.combo_automate.setMinimumWidth(135)
     self.populate_automates()
     self.combo_automate.currentIndexChanged.connect(self.apply_filters_local)
 
@@ -105,7 +105,7 @@ def _build_left_filters(self):
         "❌ Périmés", "🕒 Bientôt Exp.", "⭕ Épuisé (Qté=0)",
         "🗑️ Rebuts / Pertes"
     ])
-    self.combo_status.setFixedWidth(135)
+    self.combo_status.setMinimumWidth(140)
     self.combo_status.setCurrentIndex(1)
     self.combo_status.currentIndexChanged.connect(self.load_data)
 
@@ -132,11 +132,13 @@ def _build_right_filters(self):
     self.date_from = QDateEdit(QDate.currentDate())
     self.date_from.setCalendarPopup(True)
     self.date_from.setEnabled(False)
+    self.date_from.setFixedWidth(135)
     self.date_from.dateChanged.connect(self.apply_filters_local)
 
     self.date_to = QDateEdit(QDate.currentDate().addYears(1))
     self.date_to.setCalendarPopup(True)
     self.date_to.setEnabled(False)
+    self.date_to.setFixedWidth(135)
     self.date_to.dateChanged.connect(self.apply_filters_local)
 
     exp_layout.addWidget(self.chk_date_filter)
@@ -156,11 +158,13 @@ def _build_right_filters(self):
     self.date_in_from = QDateEdit(QDate.currentDate().addMonths(-1))
     self.date_in_from.setCalendarPopup(True)
     self.date_in_from.setEnabled(False)
+    self.date_in_from.setFixedWidth(135)
     self.date_in_from.dateChanged.connect(self.apply_filters_local)
 
     self.date_in_to = QDateEdit(QDate.currentDate())
     self.date_in_to.setCalendarPopup(True)
     self.date_in_to.setEnabled(False)
+    self.date_in_to.setFixedWidth(135)
     self.date_in_to.dateChanged.connect(self.apply_filters_local)
 
     ent_layout.addWidget(self.chk_entry_filter)

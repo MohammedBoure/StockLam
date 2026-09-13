@@ -5,7 +5,7 @@ Modular sub-package responsible for displaying and managing inventory batches (l
 ## Files and Purpose
 
 - **`__init__.py`**: Main package entry point and definition of the `BatchesTab` widget class.
-- **`_ui.py`**: Builds the filter panels (with "En Stock" pre-selected as default), search bar, table columns configuration, and footer layout.
+- **`_ui.py`**: Builds the filter panels (with "En Stock" pre-selected as default, responsive combo box widths, and unified dropdown arrows), search bar, table columns configuration, and footer layout.
 - **`_table.py`**: Manages table row rendering (`_fill_row`), custom vertical header (`BatchesVerticalHeader`) for row numbering and complaint indicator icons, lazy loading, infinite scroll, and multi-column sorting.
 - **`_filters.py`**: Handles local and global filter application (families, suppliers, expiry dates, stock status where "Tous" includes all items including zero stock).
 - **`_actions.py`**: Handles batch operations (FEFO validation, direct use, transfer, reclamation notes).

@@ -317,12 +317,16 @@ def main():
 
     # تطبيق نمط QSS على مستوى التطبيق بالكامل
     try:
-        style_path = branding.get_resource_path("ui/styles.qss")
-        style_file = QFile(style_path)
-        if style_file.open(QFile.ReadOnly | QFile.Text):
-            stream = QTextStream(style_file)
-            app.setStyleSheet(stream.readAll())
-            style_file.close()
+        content = branding.load_stylesheet_content("ui/styles.qss")
+        if content:
+            app.setStyleSheet(content)
+        else:
+            style_path = branding.get_resource_path("ui/styles.qss")
+            style_file = QFile(style_path)
+            if style_file.open(QFile.ReadOnly | QFile.Text):
+                stream = QTextStream(style_file)
+                app.setStyleSheet(stream.readAll())
+                style_file.close()
     except Exception as e:
         logger.error(f"Error loading global stylesheet: {e}")
 

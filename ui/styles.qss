@@ -522,11 +522,9 @@ QCalendarWidget QAbstractItemView:disabled {
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 30px;
-    border-left: 1px solid #cfd8dc; /* فاصل خفيف */
-    border-top-right-radius: 6px;   /* تطابق مع انحناء الحقل */
-    border-bottom-right-radius: 6px;
-    background-color: #f8f9fa;      /* خلفية رمادية فاتحة جداً للزر */
+    width: 28px;
+    border: none;
+    background-color: transparent;
 }
 
 /* --- تصميم السهم نفسه --- */
@@ -534,10 +532,12 @@ QComboBox::down-arrow {
     image: url(ui/assets/icons/chevron_down.svg);
     width: 12px;
     height: 12px;
+    margin-right: 8px;
 }
 
-QComboBox::drop-down:hover {
-    background-color: #e0f2f1; /* تغيير اللون عند تمرير الماوس */
+QComboBox:hover {
+    border: 1px solid #007572;
+    background-color: #ffffff;
 }
 
 
@@ -618,15 +618,16 @@ QDateEdit::up-button:hover, QDateEdit::down-button:hover {
 QDateEdit::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 30px;
-    border-left: 1px solid #cfd8dc;
-    border-top-right-radius: 6px;
-    border-bottom-right-radius: 6px;
-    background-color: #f8f9fa;
+    width: 28px;
+    border: none;
+    background-color: transparent;
 }
 
-QDateEdit::drop-down:hover {
-    background-color: #e0f2f1;
+QDateEdit::down-arrow {
+    image: url(ui/assets/icons/chevron_down.svg);
+    width: 12px;
+    height: 12px;
+    margin-right: 8px;
 }
 
 /* تحسين شكل الحقل عند التفاعل */
@@ -636,8 +637,22 @@ QDateEdit:hover {
 }
 
 /* توحيد المسافات الداخلية لضمان استواء النص داخل الحقول */
-QLineEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
+QLineEdit, QSpinBox, QDoubleSpinBox {
     padding: 10px 12px;
+    margin: 0px;
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+}
+
+QComboBox {
+    padding: 8px 26px 8px 10px;
+    margin: 0px;
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+}
+
+QDateEdit {
+    padding: 8px 24px 8px 8px;
     margin: 0px;
     border: 1px solid #cfd8dc;
     border-radius: 6px;

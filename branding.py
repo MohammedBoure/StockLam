@@ -98,6 +98,32 @@ def get_resource_path(relative_path):
     return os.path.join(get_resource_base_path(), relative_path)
 
 
+def load_stylesheet_content(relative_path="ui/styles.qss"):
+    """
+    Lit le fichier QSS et convertit les chemins relatifs aux assets (url(...))
+    en chemins absolus avec barres obliques directes (/), assurant que les icônes
+    (flèches de déroulement, etc.) sont toujours chargées quel que soit le
+    répertoire de travail courant ou le mode d'exécution (dev / PyInstaller).
+    """
+    style_path = get_resource_path(relative_path)
+    if not os.path.exists(style_path):
+        return ""
+    try:
+        with open(style_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        base_dir = get_resource_base_path().replace("\\", "/")
+        import re
+        content = re.sub(
+            r'url\s*\(\s*(["\']?)(ui/[^"\')]+)\1\s*\)',
+            lambda m: f'url({base_dir}/{m.group(2)})',
+            content
+        )
+        return content
+    except Exception:
+        return ""
+
+
 def _read_packaged_brand_key():
     brand_file = get_resource_path("brand.json")
     if not os.path.exists(brand_file):
