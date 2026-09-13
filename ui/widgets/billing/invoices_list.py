@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QPushButton, QLabel, QLineEdit,
     QComboBox, QDateEdit, QGroupBox, QTableWidgetItem,
     QAbstractItemView, QMessageBox, QFileDialog, QMenu,
-    QFrame
+    QFrame, QTabWidget
 )
 from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QFont, QColor
@@ -75,218 +75,451 @@ class InvoicesListWidget(QWidget):
         filter_group = QFrame()
         filter_group.setStyleSheet("QFrame { background-color: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; }")
         filter_layout = QHBoxLayout(filter_group)
-        filter_layout.setContentsMargins(10, 5, 10, 5)
+        filter_layout.setContentsMargins(10, 6, 10, 6)
+        filter_layout.setSpacing(8)
 
         self.date_from = QDateEdit(QDate.currentDate().addDays(-30))
         self.date_from.setCalendarPopup(True)
+        self.date_from.setFixedWidth(135)
+
         self.date_to = QDateEdit(QDate.currentDate())
         self.date_to.setCalendarPopup(True)
+        self.date_to.setFixedWidth(135)
 
         self.combo_filter_partner = QComboBox()
+        self.combo_filter_partner.setMinimumWidth(200)
         self.load_partners()
 
         btn_filter = QPushButton(" Appliquer")
         btn_filter.setIcon(qta.icon("fa5s.filter", color="white"))
-        btn_filter.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 5px 15px;")
+        btn_filter.setStyleSheet("background-color: #007572; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
         btn_filter.clicked.connect(self.load_data)
 
         filter_layout.addWidget(QLabel("Du :"))
         filter_layout.addWidget(self.date_from)
         filter_layout.addWidget(QLabel("Au :"))
         filter_layout.addWidget(self.date_to)
-        filter_layout.addWidget(QLabel("Client :"))
+        filter_layout.addWidget(QLabel("Sous-Traitant / Partenaire :"))
         filter_layout.addWidget(self.combo_filter_partner, stretch=1)
         filter_layout.addWidget(btn_filter)
         layout.addWidget(filter_group)
 
-        # --- 2. Action Bar ---
-        actions_bar = QHBoxLayout()
+        # --- 2. Tabs: Bons de Livraison vs Bons de Retour ---
+        self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.on_tab_changed)
 
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Rechercher par ID ou par Client...")
-        self.search_input.setMinimumHeight(35)
-        self.search_input.textChanged.connect(self.filter_table)
+        # === Tab 1: Bons de Livraison ===
+        self.tab_bl = QWidget()
+        tab_bl_layout = QVBoxLayout(self.tab_bl)
+        tab_bl_layout.setContentsMargins(8, 8, 8, 8)
+        tab_bl_layout.setSpacing(8)
+
+        bl_actions_bar = QHBoxLayout()
+        self.search_input_bl = QLineEdit()
+        self.search_input_bl.setPlaceholderText("🔍 Rechercher par N° BL ou par Client / Sous-Traitant...")
+        self.search_input_bl.setMinimumHeight(35)
+        self.search_input_bl.setClearButtonEnabled(True)
+        self.search_input_bl.textChanged.connect(self.filter_table_bl)
 
         self.btn_new = QPushButton(" Nouveau BL")
         self.btn_new.setIcon(qta.icon("fa5s.file-export", color="white"))
         self.btn_new.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
         self.btn_new.clicked.connect(self.on_new_clicked)
 
-        self.btn_new_return = QPushButton(" Nouveau Retour")
+        self.btn_create_return_from_bl = QPushButton(" Créer Retour pour ce BL")
+        self.btn_create_return_from_bl.setIcon(qta.icon("fa5s.file-import", color="white"))
+        self.btn_create_return_from_bl.setStyleSheet("background-color: #8e44ad; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_create_return_from_bl.setEnabled(False)
+        self.btn_create_return_from_bl.clicked.connect(self.on_create_return_for_selected_bl)
+
+        self.btn_edit_bl = QPushButton(" Modifier")
+        self.btn_edit_bl.setIcon(qta.icon("fa5s.edit", color="white"))
+        self.btn_edit_bl.setEnabled(False)
+        self.btn_edit_bl.setStyleSheet("background-color: #f39c12; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_edit_bl.clicked.connect(self.on_edit_bl_clicked)
+
+        self.btn_pdf_bl = QPushButton(" Imprimer PDF")
+        self.btn_pdf_bl.setIcon(qta.icon("fa5s.file-pdf", color="white"))
+        self.btn_pdf_bl.setEnabled(False)
+        self.btn_pdf_bl.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_pdf_bl.clicked.connect(self.on_pdf_bl_clicked)
+
+        self.btn_delete_bl = QPushButton(" Supprimer")
+        self.btn_delete_bl.setIcon(qta.icon("fa5s.trash-alt", color="white"))
+        self.btn_delete_bl.setEnabled(False)
+        self.btn_delete_bl.setStyleSheet("background-color: #d35400; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_delete_bl.clicked.connect(self.on_delete_bl_clicked)
+
+        bl_actions_bar.addWidget(self.search_input_bl, stretch=1)
+        bl_actions_bar.addWidget(self.btn_new)
+        bl_actions_bar.addWidget(self.btn_create_return_from_bl)
+        bl_actions_bar.addWidget(self.btn_edit_bl)
+        bl_actions_bar.addWidget(self.btn_pdf_bl)
+        bl_actions_bar.addWidget(self.btn_delete_bl)
+        tab_bl_layout.addLayout(bl_actions_bar)
+
+        self.table_bl = QTableWidget(0, 4)
+        columns_bl = ["N° BL", "Date & Heure", "Client / Sous-Traitant", "Montant (DA)"]
+        self.table_bl.setHorizontalHeaderLabels(columns_bl)
+
+        header_bl = self.table_bl.horizontalHeader()
+        header_bl.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header_bl.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header_bl.setSectionResizeMode(2, QHeaderView.Stretch)
+        header_bl.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+
+        self.table_bl.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_bl.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table_bl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table_bl.setAlternatingRowColors(True)
+        self.table_bl.setSortingEnabled(True)
+        header_bl.setSectionsClickable(True)
+        self.table_bl.itemSelectionChanged.connect(self.on_bl_selection_changed)
+        self.table_bl.cellDoubleClicked.connect(lambda r, c: self.on_edit_bl_clicked())
+        self.table_bl.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_bl.customContextMenuRequested.connect(self.show_context_menu_bl)
+
+        tab_bl_layout.addWidget(self.table_bl)
+
+        # === Tab 2: Bons de Retour ===
+        self.tab_br = QWidget()
+        tab_br_layout = QVBoxLayout(self.tab_br)
+        tab_br_layout.setContentsMargins(8, 8, 8, 8)
+        tab_br_layout.setSpacing(8)
+
+        br_actions_bar = QHBoxLayout()
+        self.search_input_br = QLineEdit()
+        self.search_input_br.setPlaceholderText("🔍 Rechercher par N° Bon de Retour, Client / Sous-Traitant, BL d'origine...")
+        self.search_input_br.setMinimumHeight(35)
+        self.search_input_br.setClearButtonEnabled(True)
+        self.search_input_br.textChanged.connect(self.filter_table_br)
+
+        self.btn_new_return = QPushButton(" Nouveau Bon de Retour")
         self.btn_new_return.setIcon(qta.icon("fa5s.file-import", color="white"))
         self.btn_new_return.setStyleSheet("background-color: #8e44ad; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
         self.btn_new_return.clicked.connect(self.on_new_return_clicked)
 
-        self.btn_edit = QPushButton(" Modifier")
-        self.btn_edit.setIcon(qta.icon("fa5s.edit", color="white"))
-        self.btn_edit.setEnabled(False)
-        self.btn_edit.setStyleSheet("background-color: #f39c12; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
-        self.btn_edit.clicked.connect(self.on_edit_clicked)
+        self.btn_view_orig_bl = QPushButton(" Voir BL d'origine")
+        self.btn_view_orig_bl.setIcon(qta.icon("fa5s.file-invoice", color="white"))
+        self.btn_view_orig_bl.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_view_orig_bl.setEnabled(False)
+        self.btn_view_orig_bl.clicked.connect(self.on_view_orig_bl_clicked)
 
-        self.btn_pdf = QPushButton(" Imprimer PDF")
-        self.btn_pdf.setIcon(qta.icon("fa5s.file-pdf", color="white"))
-        self.btn_pdf.setEnabled(False)
-        self.btn_pdf.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
-        self.btn_pdf.clicked.connect(self.on_pdf_clicked)
+        self.btn_edit_br = QPushButton(" Modifier")
+        self.btn_edit_br.setIcon(qta.icon("fa5s.edit", color="white"))
+        self.btn_edit_br.setEnabled(False)
+        self.btn_edit_br.setStyleSheet("background-color: #f39c12; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_edit_br.clicked.connect(self.on_edit_br_clicked)
 
-        self.btn_delete = QPushButton(" Supprimer")
-        self.btn_delete.setIcon(qta.icon("fa5s.trash-alt", color="white"))
-        self.btn_delete.setEnabled(False)
-        self.btn_delete.setStyleSheet("background-color: #d35400; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
-        self.btn_delete.clicked.connect(self.on_delete_clicked)
+        self.btn_pdf_br = QPushButton(" Imprimer PDF")
+        self.btn_pdf_br.setIcon(qta.icon("fa5s.file-pdf", color="white"))
+        self.btn_pdf_br.setEnabled(False)
+        self.btn_pdf_br.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_pdf_br.clicked.connect(self.on_pdf_br_clicked)
 
-        actions_bar.addWidget(self.search_input, stretch=1)
-        actions_bar.addWidget(self.btn_new)
-        actions_bar.addWidget(self.btn_new_return)
-        actions_bar.addWidget(self.btn_edit)
-        actions_bar.addWidget(self.btn_pdf)
-        actions_bar.addWidget(self.btn_delete)
-        layout.addLayout(actions_bar)
+        self.btn_delete_br = QPushButton(" Supprimer")
+        self.btn_delete_br.setIcon(qta.icon("fa5s.trash-alt", color="white"))
+        self.btn_delete_br.setEnabled(False)
+        self.btn_delete_br.setStyleSheet("background-color: #d35400; color: white; font-weight: bold; border-radius: 4px; padding: 8px 15px;")
+        self.btn_delete_br.clicked.connect(self.on_delete_br_clicked)
 
-        # --- 3. Table ---
-        self.table = QTableWidget(0, 5)
-        columns = ["ID Trans.", "Type", "Date & Heure", "Client / Sous-Traitant", "Montant (DA)"]
-        self.table.setColumnCount(len(columns))
-        self.table.setHorizontalHeaderLabels(columns)
-        
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSortingEnabled(True)
-        header.setSectionsClickable(True)
-        self.table.itemSelectionChanged.connect(self.on_selection_changed)
-        self.table.cellDoubleClicked.connect(lambda r, c: self.on_edit_clicked())
+        br_actions_bar.addWidget(self.search_input_br, stretch=1)
+        br_actions_bar.addWidget(self.btn_new_return)
+        br_actions_bar.addWidget(self.btn_view_orig_bl)
+        br_actions_bar.addWidget(self.btn_edit_br)
+        br_actions_bar.addWidget(self.btn_pdf_br)
+        br_actions_bar.addWidget(self.btn_delete_br)
+        tab_br_layout.addLayout(br_actions_bar)
 
-        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        self.table_br = QTableWidget(0, 5)
+        columns_br = ["N° Bon de Retour", "Date & Heure", "Client / Sous-Traitant", "BL d'origine", "Montant (DA)"]
+        self.table_br.setHorizontalHeaderLabels(columns_br)
 
-        layout.addWidget(self.table)
+        header_br = self.table_br.horizontalHeader()
+        header_br.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header_br.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header_br.setSectionResizeMode(2, QHeaderView.Stretch)
+        header_br.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header_br.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+
+        self.table_br.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_br.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table_br.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table_br.setAlternatingRowColors(True)
+        self.table_br.setSortingEnabled(True)
+        header_br.setSectionsClickable(True)
+        self.table_br.itemSelectionChanged.connect(self.on_br_selection_changed)
+        self.table_br.cellDoubleClicked.connect(self.on_br_cell_double_clicked)
+        self.table_br.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_br.customContextMenuRequested.connect(self.show_context_menu_br)
+
+        tab_br_layout.addWidget(self.table_br)
+
+        # Add tabs
+        self.tabs.addTab(self.tab_bl, "📦 Bons de Livraison")
+        self.tabs.addTab(self.tab_br, "↩️ Bons de Retour")
+        layout.addWidget(self.tabs)
         filter_group.raise_()
+
+    @property
+    def current_table(self):
+        if hasattr(self, 'tabs') and self.tabs.currentIndex() == 1:
+            return getattr(self, 'table_br', None)
+        return getattr(self, 'table_bl', None)
+
+    @property
+    def table(self):
+        """Compatibility property pointing to the currently active table."""
+        return self.current_table
+
+    @property
+    def btn_edit(self):
+        return self.btn_edit_br if (hasattr(self, 'tabs') and self.tabs.currentIndex() == 1) else self.btn_edit_bl
+
+    @property
+    def btn_pdf(self):
+        return self.btn_pdf_br if (hasattr(self, 'tabs') and self.tabs.currentIndex() == 1) else self.btn_pdf_bl
+
+    @property
+    def btn_delete(self):
+        return self.btn_delete_br if (hasattr(self, 'tabs') and self.tabs.currentIndex() == 1) else self.btn_delete_bl
+
+    @property
+    def search_input(self):
+        return self.search_input_br if (hasattr(self, 'tabs') and self.tabs.currentIndex() == 1) else self.search_input_bl
+
+    def on_tab_changed(self, index):
+        if index == 0:
+            self.on_bl_selection_changed()
+        else:
+            self.on_br_selection_changed()
 
     def on_new_clicked(self):
         partner_id = self.combo_filter_partner.currentData()
         self.request_new.emit(partner_id)
 
     def on_new_return_clicked(self):
-        partner_id = self.get_selected_partner_id() or self.combo_filter_partner.currentData()
-        if not partner_id:
-            QMessageBox.warning(self, "Attention", "Selectionnez un BL ou filtrez par partenaire avant de creer un bon de retour.")
-            return
+        partner_id = self.get_selected_partner_id(self.table_br) or self.combo_filter_partner.currentData()
         self.request_new_return.emit({'partner_id': partner_id, 'ref_transfer_id': None})
+
+    def on_create_return_for_selected_bl(self):
+        tid = self.get_selected_id(self.table_bl)
+        partner_id = self.get_selected_partner_id(self.table_bl)
+        if not tid or not partner_id:
+            QMessageBox.warning(self, "Attention", "Veuillez sélectionner un Bon de Livraison pour créer son Bon de Retour.")
+            return
+        self.request_new_return.emit({'partner_id': partner_id, 'ref_transfer_id': tid})
+
+    def on_view_orig_bl_clicked(self):
+        row = self.table_br.currentRow()
+        if row >= 0:
+            item = self.table_br.item(row, 0)
+            if item:
+                ref_tid = item.data(Qt.UserRole + 2)
+                if ref_tid:
+                    self.request_edit.emit(ref_tid)
+                    return
+        QMessageBox.information(self, "Information", "Ce bon de retour n'est lié à aucun Bon de Livraison d'origine.")
+
+    def on_br_cell_double_clicked(self, row, column):
+        if column == 3:
+            item = self.table_br.item(row, 0)
+            if item:
+                ref_id = item.data(Qt.UserRole + 2)
+                if ref_id:
+                    self.request_edit.emit(ref_id)
+                    return
+        self.on_edit_br_clicked()
 
     def format_id(self, raw_id, date_str):
         """تحويل ID الرقمي إلى تنسيق YYYY/NNN"""
         try:
-            # استخراج السنة من تاريخ المعاملة (YYYY-MM-DD ...)
             year = date_str.split('-')[0] if date_str else str(datetime.now().year)
             return f"{year}/{int(raw_id):03d}"
         except:
             return str(raw_id)
 
-    # =========================================================================
-    # Logic & Handlers
-    # =========================================================================
+    def _format_date_text(self, raw_date):
+        if hasattr(raw_date, 'strftime'):
+            return raw_date.strftime("%Y-%m-%d %H:%M")
+        elif isinstance(raw_date, str) and raw_date:
+            return raw_date[:16]
+        return str(raw_date or "")
+
+    def on_bl_selection_changed(self):
+        has_sel = len(self.table_bl.selectedItems()) > 0
+        self.btn_edit_bl.setEnabled(has_sel)
+        self.btn_pdf_bl.setEnabled(has_sel)
+        self.btn_delete_bl.setEnabled(has_sel)
+        self.btn_create_return_from_bl.setEnabled(has_sel)
+
+    def on_br_selection_changed(self):
+        has_sel = len(self.table_br.selectedItems()) > 0
+        self.btn_edit_br.setEnabled(has_sel)
+        self.btn_pdf_br.setEnabled(has_sel)
+        self.btn_delete_br.setEnabled(has_sel)
+        has_ref = False
+        if has_sel:
+            row = self.table_br.currentRow()
+            if row >= 0:
+                item = self.table_br.item(row, 0)
+                if item and item.data(Qt.UserRole + 2):
+                    has_ref = True
+        self.btn_view_orig_bl.setEnabled(has_ref)
 
     def on_selection_changed(self):
-        has_selection = len(self.table.selectedItems()) > 0
-        self.btn_edit.setEnabled(has_selection)
-        self.btn_pdf.setEnabled(has_selection)
-        self.btn_delete.setEnabled(has_selection)
+        self.on_bl_selection_changed()
+        self.on_br_selection_changed()
 
-    def get_selected_id(self):
-        row = self.table.currentRow()
-        if row >= 0:
-            item = self.table.item(row, 0)
-            if item:
-                # نأخذ الـ ID الأصلي المخزن في UserRole
-                return item.data(Qt.UserRole)
+    def get_selected_id(self, table=None):
+        target_table = table or self.current_table
+        if target_table:
+            row = target_table.currentRow()
+            if row >= 0:
+                item = target_table.item(row, 0)
+                if item:
+                    return item.data(Qt.UserRole)
         return None
 
+    def get_selected_partner_id(self, table=None):
+        target_table = table or self.current_table
+        if target_table:
+            row = target_table.currentRow()
+            if row >= 0:
+                item = target_table.item(row, 0)
+                if item:
+                    return item.data(Qt.UserRole + 1)
+        return None
 
-
-    def show_context_menu(self, pos):
-        item = self.table.itemAt(pos)
+    def show_context_menu_bl(self, pos):
+        item = self.table_bl.itemAt(pos)
         if not item: return
         row = item.row()
-        
-        # جلب البيانات المخزنة في السطر الحالي
-        tid = self.table.item(row, 0).data(Qt.UserRole)
-        partner_id = self.table.item(row, 0).data(Qt.UserRole + 1)
-        transfer_type_text = self.table.item(row, 1).text()
-        ref_transfer_id = self.table.item(row, 0).data(Qt.UserRole + 2)
+        tid = self.table_bl.item(row, 0).data(Qt.UserRole)
+        partner_id = self.table_bl.item(row, 0).data(Qt.UserRole + 1)
 
         menu = QMenu(self)
-        
-        # 1. إذا كان السطر المحدد عبارة عن وصل تسليم BL
-        if transfer_type_text == "BL (Sortie)":
-            action_return = menu.addAction("Créer un Bon de Retour pour ce BL")
-            action_return.setIcon(qta.icon("fa5s.file-import", color="#8e44ad"))
-            action_return.triggered.connect(lambda: self.request_new_return.emit({'partner_id': partner_id, 'ref_transfer_id': tid}))
-            
-            menu.addSeparator() # خط فاصل للتنظيم
-            
-            action_partner = menu.addAction("Consulter le Sous-traitant (Profil)")
-            action_partner.setIcon(qta.icon("fa5s.user-tie", color="#2980b9"))
-            action_partner.triggered.connect(lambda: self.request_view_partner.emit(partner_id))
+        action_return = menu.addAction("Créer un Bon de Retour pour ce BL")
+        action_return.setIcon(qta.icon("fa5s.file-import", color="#8e44ad"))
+        action_return.triggered.connect(lambda: self.request_new_return.emit({'partner_id': partner_id, 'ref_transfer_id': tid}))
 
-        # 2. إذا كان السطر المحدد عبارة عن وصل إرجاع (Retour)
-        elif transfer_type_text == "Retour":
-            # خيار الانتقال إلى الـ BL الأصلي (يظهر فقط إذا كان مربوطاً بـ BL)
-            if ref_transfer_id:
-                action_orig = menu.addAction("Consulter le BL d'origine")
-                action_orig.setIcon(qta.icon("fa5s.file-invoice", color="#27ae60"))
-                action_orig.triggered.connect(lambda: self.request_edit.emit(ref_transfer_id))
-            
-            # خيار الانتقال مباشرة إلى ملف المقاول / الشريك (يظهر دائماً)
-            action_partner = menu.addAction("Consulter le Sous-traitant (Profil)")
-            action_partner.setIcon(qta.icon("fa5s.user-tie", color="#2980b9"))
-            action_partner.triggered.connect(lambda: self.request_view_partner.emit(partner_id))
-        
-        # إظهار القائمة في موقع مؤشر الفأرة
-        if not menu.isEmpty():
-            menu.exec(self.table.viewport().mapToGlobal(pos))
-    def get_selected_partner_id(self):
-        row = self.table.currentRow()
-        if row >= 0:
-            item = self.table.item(row, 0)
-            if item:
-                return item.data(Qt.UserRole + 1)
-        return None
+        menu.addSeparator()
+
+        action_edit = menu.addAction("Modifier ce BL")
+        action_edit.setIcon(qta.icon("fa5s.edit", color="#f39c12"))
+        action_edit.triggered.connect(lambda: self.request_edit.emit(tid))
+
+        action_pdf = menu.addAction("Imprimer PDF")
+        action_pdf.setIcon(qta.icon("fa5s.file-pdf", color="#c0392b"))
+        action_pdf.triggered.connect(lambda: (self.request_pdf.emit(tid), self.export_transfer_to_pdf(tid)))
+
+        action_delete = menu.addAction("Supprimer ce BL")
+        action_delete.setIcon(qta.icon("fa5s.trash-alt", color="#d35400"))
+        action_delete.triggered.connect(self.on_delete_bl_clicked)
+
+        menu.addSeparator()
+
+        action_partner = menu.addAction("Consulter le Sous-traitant (Profil)")
+        action_partner.setIcon(qta.icon("fa5s.user-tie", color="#2980b9"))
+        action_partner.triggered.connect(lambda: self.request_view_partner.emit(partner_id))
+
+        menu.exec(self.table_bl.viewport().mapToGlobal(pos))
+
+    def show_context_menu_br(self, pos):
+        item = self.table_br.itemAt(pos)
+        if not item: return
+        row = item.row()
+        tid = self.table_br.item(row, 0).data(Qt.UserRole)
+        partner_id = self.table_br.item(row, 0).data(Qt.UserRole + 1)
+        ref_transfer_id = self.table_br.item(row, 0).data(Qt.UserRole + 2)
+
+        menu = QMenu(self)
+        if ref_transfer_id:
+            action_orig = menu.addAction("Consulter le BL d'origine")
+            action_orig.setIcon(qta.icon("fa5s.file-invoice", color="#27ae60"))
+            action_orig.triggered.connect(lambda: self.request_edit.emit(ref_transfer_id))
+            menu.addSeparator()
+
+        action_edit = menu.addAction("Modifier ce Bon de Retour")
+        action_edit.setIcon(qta.icon("fa5s.edit", color="#f39c12"))
+        action_edit.triggered.connect(lambda: self.request_edit.emit(tid))
+
+        action_pdf = menu.addAction("Imprimer PDF")
+        action_pdf.setIcon(qta.icon("fa5s.file-pdf", color="#c0392b"))
+        action_pdf.triggered.connect(lambda: (self.request_pdf.emit(tid), self.export_transfer_to_pdf(tid)))
+
+        action_delete = menu.addAction("Supprimer ce Bon de Retour")
+        action_delete.setIcon(qta.icon("fa5s.trash-alt", color="#d35400"))
+        action_delete.triggered.connect(self.on_delete_br_clicked)
+
+        menu.addSeparator()
+
+        action_partner = menu.addAction("Consulter le Sous-traitant (Profil)")
+        action_partner.setIcon(qta.icon("fa5s.user-tie", color="#2980b9"))
+        action_partner.triggered.connect(lambda: self.request_view_partner.emit(partner_id))
+
+        menu.exec(self.table_br.viewport().mapToGlobal(pos))
+
+    def show_context_menu(self, pos):
+        if hasattr(self, 'tabs') and self.tabs.currentIndex() == 1:
+            self.show_context_menu_br(pos)
+        else:
+            self.show_context_menu_bl(pos)
+
+    def on_edit_bl_clicked(self):
+        tid = self.get_selected_id(self.table_bl)
+        if tid: self.request_edit.emit(tid)
+
+    def on_edit_br_clicked(self):
+        tid = self.get_selected_id(self.table_br)
+        if tid: self.request_edit.emit(tid)
 
     def on_edit_clicked(self):
         tid = self.get_selected_id()
         if tid: self.request_edit.emit(tid)
 
+    def on_pdf_bl_clicked(self):
+        tid = self.get_selected_id(self.table_bl)
+        if tid:
+            self.request_pdf.emit(tid)
+            self.export_transfer_to_pdf(tid)
+
+    def on_pdf_br_clicked(self):
+        tid = self.get_selected_id(self.table_br)
+        if tid:
+            self.request_pdf.emit(tid)
+            self.export_transfer_to_pdf(tid)
+
     def on_pdf_clicked(self):
         tid = self.get_selected_id()
         if tid:
-            # سنقوم بإرسال الإشارة للأب (BillingTab) كما يتوقع
             self.request_pdf.emit(tid)
-            # وأيضاً يمكنك تشغيل الدالة الداخلية التي أضفناها سابقاً إذا أردت
             self.export_transfer_to_pdf(tid)
 
+    def on_delete_bl_clicked(self):
+        self._delete_transfer_from_table(self.table_bl, "Bon de Livraison")
+
+    def on_delete_br_clicked(self):
+        self._delete_transfer_from_table(self.table_br, "Bon de Retour")
+
     def on_delete_clicked(self):
-        tid = self.get_selected_id()
+        target_table = self.current_table
+        doc_type = "Bon de Retour" if target_table == self.table_br else "Bon de Livraison"
+        self._delete_transfer_from_table(target_table, doc_type)
+
+    def _delete_transfer_from_table(self, target_table, doc_type):
+        tid = self.get_selected_id(target_table)
         if not tid: return
 
         reply = QMessageBox.question(
             self, "Confirmation",
-            f"Voulez-vous vraiment supprimer la transaction N° {tid} ?\n"
+            f"Voulez-vous vraiment supprimer le {doc_type} N° {tid} ?\n"
             "Cette action restaurera les quantités dans le stock.",
             QMessageBox.Yes | QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
             try:
-                # استدعاء دالة الحذف واسترجاع المخزون من المدير
                 success, msg = self.manager.external_transfers.delete_transfer_and_restore_stock(tid)
                 if success:
                     QMessageBox.information(self, "Succès", msg)
@@ -309,68 +542,152 @@ class InvoicesListWidget(QWidget):
         end = self.date_to.date().toString("yyyy-MM-dd") + " 23:59:59"
         p_id = self.combo_filter_partner.currentData()
 
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(0)
-        if hasattr(self.manager, 'external_transfers'):
-            transfers = self.manager.external_transfers.get_transfers_filtered(start, end, p_id, None)
-            for row, t in enumerate(transfers):
-                self.table.insertRow(row)
+        if not hasattr(self.manager, 'external_transfers'):
+            return
 
-                formatted_ref = t.get('Display_Ref') or self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
-                id_item = QTableWidgetItem(formatted_ref)
-                id_item.setTextAlignment(Qt.AlignCenter)
-                id_item.setData(Qt.UserRole, t['Transfer_ID']) # حفظ الـ ID الحقيقي في الـ Data للعمليات البرمجية
-                id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
-                id_item.setData(Qt.UserRole + 2, t.get('Ref_Transfer_ID'))
+        transfers = self.manager.external_transfers.get_transfers_filtered(start, end, p_id, None)
 
-                raw_date = t.get('Transaction_Date')
-                if hasattr(raw_date, 'strftime'):
-                    date_text = raw_date.strftime("%Y-%m-%d %H:%M")
-                elif isinstance(raw_date, str) and raw_date:
-                    date_text = raw_date[:16]
-                else:
-                    date_text = str(raw_date or "")
+        ref_map = {}
+        for t in transfers:
+            tid = t['Transfer_ID']
+            ref_map[tid] = t.get('Display_Ref') or self.format_id(tid, str(t.get('Transaction_Date', '')))
 
-                date_item = QTableWidgetItem(date_text)
-                date_item.setTextAlignment(Qt.AlignCenter)
+        bl_transfers = [t for t in transfers if (t.get('Transfer_Type') or 'Outbound') != 'Return']
+        br_transfers = [t for t in transfers if (t.get('Transfer_Type') or 'Outbound') == 'Return']
 
-                partner_text = t.get('Partner_Name') or t.get('City') or "-"
-                partner_item = QTableWidgetItem(str(partner_text))
+        font_bold = QFont()
+        font_bold.setBold(True)
 
-                amount = float(t.get('Total_Amount') or 0)
-                amount_item = NumericTableWidgetItem(format_money(amount, 'DA'))
-                amount_item.setData(Qt.UserRole, amount)
-                amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                font_bold = QFont()
-                font_bold.setBold(True)
-                amount_item.setFont(font_bold)
+        # 1. Bons de Livraison
+        self.table_bl.setSortingEnabled(False)
+        self.table_bl.setRowCount(0)
+        for row, t in enumerate(bl_transfers):
+            self.table_bl.insertRow(row)
 
-                t_type = t.get('Transfer_Type', 'Outbound') or 'Outbound'
-                type_str = "Retour" if t_type == 'Return' else "BL (Sortie)"
-                type_item = QTableWidgetItem(type_str)
-                type_item.setTextAlignment(Qt.AlignCenter)
-                type_item.setFont(font_bold)
-                if t_type == 'Return':
-                    type_item.setForeground(QColor("#8e44ad"))
-                else:
-                    type_item.setForeground(QColor("#27ae60"))
+            formatted_ref = t.get('Display_Ref') or self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
+            id_item = NumericTableWidgetItem(formatted_ref)
+            id_item.setTextAlignment(Qt.AlignCenter)
+            id_item.setFont(font_bold)
+            id_item.setForeground(QColor("#27ae60"))
+            id_item.setData(Qt.UserRole, t['Transfer_ID'])
+            id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
+            id_item.setData(Qt.UserRole + 2, t.get('Ref_Transfer_ID'))
 
-                self.table.setItem(row, 0, id_item)
-                self.table.setItem(row, 1, type_item)
-                self.table.setItem(row, 2, date_item)
-                self.table.setItem(row, 3, partner_item)
-                self.table.setItem(row, 4, amount_item)
+            date_text = self._format_date_text(t.get('Transaction_Date'))
+            date_item = QTableWidgetItem(date_text)
+            date_item.setTextAlignment(Qt.AlignCenter)
 
-        self.table.setSortingEnabled(True)
-        self.table.resizeColumnsToContents()
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.on_selection_changed()
-        self.filter_table(self.search_input.text())
+            partner_text = t.get('Partner_Name') or t.get('City') or "-"
+            partner_item = QTableWidgetItem(str(partner_text))
+
+            amount = float(t.get('Total_Amount') or 0)
+            amount_item = NumericTableWidgetItem(format_money(amount, 'DA'))
+            amount_item.setData(Qt.UserRole, amount)
+            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            amount_item.setFont(font_bold)
+
+            self.table_bl.setItem(row, 0, id_item)
+            self.table_bl.setItem(row, 1, date_item)
+            self.table_bl.setItem(row, 2, partner_item)
+            self.table_bl.setItem(row, 3, amount_item)
+
+        self.table_bl.setSortingEnabled(True)
+        self.table_bl.resizeColumnsToContents()
+        self.table_bl.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.on_bl_selection_changed()
+        self.filter_table_bl(self.search_input_bl.text())
+
+        # 2. Bons de Retour
+        self.table_br.setSortingEnabled(False)
+        self.table_br.setRowCount(0)
+        for row, t in enumerate(br_transfers):
+            self.table_br.insertRow(row)
+
+            formatted_ref = t.get('Display_Ref') or self.format_id(t['Transfer_ID'], str(t.get('Transaction_Date', '')))
+            id_item = NumericTableWidgetItem(formatted_ref)
+            id_item.setTextAlignment(Qt.AlignCenter)
+            id_item.setFont(font_bold)
+            id_item.setForeground(QColor("#8e44ad"))
+            id_item.setData(Qt.UserRole, t['Transfer_ID'])
+            id_item.setData(Qt.UserRole + 1, t.get('Partner_ID'))
+            id_item.setData(Qt.UserRole + 2, t.get('Ref_Transfer_ID'))
+
+            date_text = self._format_date_text(t.get('Transaction_Date'))
+            date_item = QTableWidgetItem(date_text)
+            date_item.setTextAlignment(Qt.AlignCenter)
+
+            partner_text = t.get('Partner_Name') or t.get('City') or "-"
+            partner_item = QTableWidgetItem(str(partner_text))
+
+            ref_id = t.get('Ref_Transfer_ID')
+            if ref_id:
+                orig_ref = ref_map.get(ref_id)
+                if not orig_ref and hasattr(self.manager.external_transfers, 'get_transfer_by_id'):
+                    try:
+                        orig_t = self.manager.external_transfers.get_transfer_by_id(ref_id)
+                        if orig_t:
+                            orig_ref = orig_t.get('Display_Ref') or self.format_id(ref_id, str(orig_t.get('Transaction_Date', '')))
+                            ref_map[ref_id] = orig_ref
+                    except Exception:
+                        pass
+                orig_ref_text = orig_ref or f"BL #{ref_id}"
+            else:
+                orig_ref_text = "-"
+
+            orig_bl_item = QTableWidgetItem(orig_ref_text)
+            orig_bl_item.setTextAlignment(Qt.AlignCenter)
+            if ref_id:
+                orig_bl_item.setForeground(QColor("#007572"))
+                orig_bl_item.setFont(font_bold)
+                orig_bl_item.setToolTip(f"Double-cliquez pour ouvrir le BL d'origine ({orig_ref_text})")
+
+            amount = float(t.get('Total_Amount') or 0)
+            amount_item = NumericTableWidgetItem(format_money(amount, 'DA'))
+            amount_item.setData(Qt.UserRole, amount)
+            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            amount_item.setFont(font_bold)
+
+            self.table_br.setItem(row, 0, id_item)
+            self.table_br.setItem(row, 1, date_item)
+            self.table_br.setItem(row, 2, partner_item)
+            self.table_br.setItem(row, 3, orig_bl_item)
+            self.table_br.setItem(row, 4, amount_item)
+
+        self.table_br.setSortingEnabled(True)
+        self.table_br.resizeColumnsToContents()
+        self.table_br.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.on_br_selection_changed()
+        self.filter_table_br(self.search_input_br.text())
+
+        # 3. Update Tab Titles with Counts
+        self.tabs.setTabText(0, f"📦 Bons de Livraison ({len(bl_transfers)})")
+        self.tabs.setTabText(1, f"↩️ Bons de Retour ({len(br_transfers)})")
+
+    def filter_table_bl(self, text=None):
+        if text is None:
+            text = self.search_input_bl.text()
+        text_lower = text.strip().lower()
+        for r in range(self.table_bl.rowCount()):
+            match = not text_lower or any(
+                text_lower in (self.table_bl.item(r, col).text().lower() if self.table_bl.item(r, col) else "")
+                for col in range(self.table_bl.columnCount())
+            )
+            self.table_bl.setRowHidden(r, not match)
+
+    def filter_table_br(self, text=None):
+        if text is None:
+            text = self.search_input_br.text()
+        text_lower = text.strip().lower()
+        for r in range(self.table_br.rowCount()):
+            match = not text_lower or any(
+                text_lower in (self.table_br.item(r, col).text().lower() if self.table_br.item(r, col) else "")
+                for col in range(self.table_br.columnCount())
+            )
+            self.table_br.setRowHidden(r, not match)
 
     def filter_table(self, text):
-        for r in range(self.table.rowCount()):
-            match = any(text.lower() in (self.table.item(r, col).text().lower() if self.table.item(r, col) else "") for col in [0, 2, 3])
-            self.table.setRowHidden(r, not match)
+        self.filter_table_bl(text)
+        self.filter_table_br(text)
 
     @staticmethod
     def _pdf_setting_enabled(settings, key, default=True):

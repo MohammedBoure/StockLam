@@ -35,6 +35,11 @@ class BillingTab(QWidget):
 
     def show_list(self):
         self.list_view.load_data()
+        mode = getattr(self.editor_view, 'transfer_type_mode', None)
+        if mode == 'Return' and hasattr(self.list_view, 'tabs'):
+            self.list_view.tabs.setCurrentIndex(1)
+        elif mode == 'Outbound' and hasattr(self.list_view, 'tabs'):
+            self.list_view.tabs.setCurrentIndex(0)
         self.stack.setCurrentWidget(self.list_view)
 
     def open_new_invoice(self, partner_id=None):
